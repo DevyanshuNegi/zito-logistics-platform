@@ -9,6 +9,11 @@ const { sequelize, User, Driver, Vehicle, Booking, Contract, AuditLog, DriverCom
 const { success, error }   = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { ROLES, ADMIN_ROLES } = require('../middleware/auth');
+const { autoAssignIfNeeded } = require('../services/assignment.service');
+const { suggestDriversForBooking } = require('../services/assignment.service');
+const { CustomerDriverRule } = require('../models');
+const { notifyDriverAssignment } = require('../services/notification.service');
+const { getIO } = require('../services/notification.service');
 
 // ── Dashboard Stats ───────────────────────────────────────────────────────────
 // GET /api/v1/admin/stats
@@ -300,6 +305,12 @@ exports.approveDriver = async (req, res) => {
       { compliance_status: 'approved', approved_by: req.user.id },
       { where: { id: driver.user_id } }
     );
+    if (DriverCompliance) {
+      await DriverCompliance.update(
+        { compliance_status: 'approved', status_updated_at: new Date(), status_updated_by: req.user.id, approved_by: req.user.id, approved_at: new Date(), rejection_reason: null, resubmission_comment: null },
+        { where: { driver_id: driver.id } }
+      );
+    }
 
     if (req.auditLog) await req.auditLog('DRIVER_APPROVED', { driver_id: driver.id, by: req.user.id });
     return success(res, { message: 'Driver approved successfully' });
@@ -319,6 +330,12 @@ exports.rejectDriver = async (req, res) => {
       { compliance_status: 'rejected', rejected_by: req.user.id, rejection_reason: reason },
       { where: { id: driver.user_id } }
     );
+    if (DriverCompliance) {
+      await DriverCompliance.update(
+        { compliance_status: 'rejected', status_updated_at: new Date(), status_updated_by: req.user.id, rejection_reason: reason },
+        { where: { driver_id: driver.id } }
+      );
+    }
 
     if (req.auditLog) await req.auditLog('DRIVER_REJECTED', { driver_id: driver.id, reason, by: req.user.id });
     return success(res, { message: 'Driver rejected' });
@@ -337,6 +354,12 @@ exports.requestDriverResubmit = async (req, res) => {
       { compliance_status: 'resubmission_required', data_locked: false, rejection_reason: comment },
       { where: { id: driver.user_id } }
     );
+    if (DriverCompliance) {
+      await DriverCompliance.update(
+        { compliance_status: 'resubmission_required', status_updated_at: new Date(), status_updated_by: req.user.id, resubmission_comment: comment },
+        { where: { driver_id: driver.id } }
+      );
+    }
 
     if (req.auditLog) await req.auditLog('DRIVER_RESUBMISSION_REQUESTED', { driver_id: driver.id, comment, by: req.user.id });
     return success(res, { message: 'Resubmission requested' });
@@ -528,7 +551,8 @@ exports.createBooking = async (req, res) => {
     const ref = 'VG' + Date.now().toString(36).toUpperCase();
     const booking = await Booking.create({ ...req.body, reference: ref });
     if (req.auditLog) await req.auditLog('BOOKING_CREATED', { booking_id: booking.id, by: req.user.id });
-    return success(res, { booking }, 201);
+    const autoResult = await autoAssignIfNeeded(booking, req.auditLog);
+    return success(res, { booking, auto_assignment: autoResult }, 201);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -556,7 +580,7 @@ exports.assignDriver = async (req, res) => {
     const driver = await Driver.findByPk(driver_id);
     if (!driver)                          return error(res, 'NOT_FOUND',                'Driver not found', 404);
     if (driver.is_blacklisted)            return error(res, 'DRIVER_BLACKLISTED',        'Driver is blacklisted', 400);
-    if (!driver.can_receive_assignments)  return error(res, 'DRIVER_ASSIGNMENT_BLOCKED', 'Driver cannot receive assignments', 400);
+    if (!driver.can_receive_assignments)  return error(res, 'DRIVER_NOT_APPROVED',       'Driver compliance not approved', 403);
     if (!driver.is_available)             return error(res, 'DRIVER_UNAVAILABLE',        'Driver is not available', 400);
 
     // PRD §18.2 — Vehicle assignment validation
@@ -576,6 +600,7 @@ exports.assignDriver = async (req, res) => {
     });
 
     if (req.auditLog) await req.auditLog('BOOKING_ASSIGNED', { booking_id: booking.id, driver_id, vehicle_id, by: req.user.id });
+    notifyDriverAssignment({ booking, driver_id }).catch(console.error);
     return success(res, { message: 'Driver assigned successfully', booking });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -611,6 +636,11 @@ exports.completeBooking = async (req, res) => {
   try {
     const booking = await Booking.findByPk(req.params.id);
     if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
+    const force = req.query.force === 'true';
+    const paidStatuses = ['released', 'refunded'];
+    if (!force && !paidStatuses.includes(booking.payment_status)) {
+      return error(res, 'PAYMENT_PENDING', 'Payment not confirmed. Add ?force=true to override.', 400);
+    }
     await booking.update({ status: 'completed', completed_at: new Date() });
     if (req.auditLog) await req.auditLog('BOOKING_COMPLETED', { booking_id: booking.id, by: req.user.id });
     return success(res, { message: 'Booking completed', booking });
@@ -736,6 +766,24 @@ exports.bookingReport = async (req, res) => {
   }
 };
 
+// Live driver positions for map
+exports.liveDrivers = async (req, res) => {
+  try {
+    const drivers = await Driver.findAll({
+      include: [{ model: User, as: 'user', attributes: ['id','full_name','phone'] }],
+      attributes: ['id','user_id','current_lat','current_lng','is_available','can_receive_assignments','location_updated'],
+      where: { current_lat: { [Op.ne]: null }, current_lng: { [Op.ne]: null } },
+    });
+    const activeBookings = await Booking.findAll({
+      where: { status: ['assigned','accepted','picked_up','in_transit'] },
+      attributes: ['id','assigned_driver_id','reference','pickup_address','delivery_address','pickup_lat','pickup_lng','delivery_lat','delivery_lng','status'],
+    });
+    return success(res, { drivers, activeBookings });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
 exports.financialReport = async (req, res) => {
   try {
     const { from, to } = req.query;
@@ -745,13 +793,59 @@ exports.financialReport = async (req, res) => {
     const [total] = await Booking.findAll({
       where,
       attributes: [
-        [sequelize.fn('SUM', sequelize.col('final_fare')), 'total_revenue'],
+        [sequelize.fn('SUM', sequelize.col('customer_rate')), 'total_revenue'],
+        [sequelize.fn('SUM', sequelize.col('hire_rate')), 'total_hire'],
+        [sequelize.fn('SUM', sequelize.col('total_expenses')), 'total_expenses'],
+        [sequelize.fn('SUM', sequelize.col('profit')), 'total_profit'],
         [sequelize.fn('COUNT', sequelize.col('id')),       'total_bookings'],
-        [sequelize.fn('AVG', sequelize.col('final_fare')), 'avg_fare'],
+        [sequelize.fn('AVG', sequelize.col('customer_rate')), 'avg_fare'],
       ],
     });
 
     return success(res, { report: total });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Assignment Suggestions (Semi-Auto) ───────────────────────────────────────
+// GET /api/v1/admin/assignment/suggest/:bookingId
+exports.suggestDrivers = async (req, res) => {
+  try {
+    const booking = await Booking.findByPk(req.params.bookingId);
+    if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
+    const result = await suggestDriversForBooking(booking, Number(req.query.limit) || 5);
+    return success(res, result);
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Customer whitelist/blacklist management ──────────────────────────────────
+// POST /api/v1/admin/customers/:customerId/driver-rule
+exports.upsertDriverRule = async (req, res) => {
+  try {
+    const { driver_id, rule_type } = req.body;
+    const { customerId } = req.params;
+    if (!driver_id || !rule_type) return error(res, 'VALIDATION_ERROR', 'driver_id and rule_type required', 422);
+    if (!['whitelist', 'blacklist'].includes(rule_type)) {
+      return error(res, 'VALIDATION_ERROR', 'rule_type must be whitelist or blacklist', 422);
+    }
+    const [rule] = await CustomerDriverRule.upsert({ customer_id: customerId, driver_id, rule_type });
+    if (req.auditLog) await req.auditLog('CUSTOMER_DRIVER_RULE_SET', { customer_id: customerId, driver_id, rule_type, by: req.user.id });
+    return success(res, { rule });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// DELETE /api/v1/admin/customers/:customerId/driver-rule/:driverId
+exports.deleteDriverRule = async (req, res) => {
+  try {
+    const { customerId, driverId } = req.params;
+    const deleted = await CustomerDriverRule.destroy({ where: { customer_id: customerId, driver_id: driverId } });
+    if (req.auditLog) await req.auditLog('CUSTOMER_DRIVER_RULE_DELETED', { customer_id: customerId, driver_id: driverId, by: req.user.id });
+    return success(res, { deleted: Boolean(deleted) });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -773,8 +867,69 @@ exports.driverReport = async (req, res) => {
 
 exports.exportReport = async (req, res) => {
   try {
-    // Phase 2 — PDF/CSV export
-    return success(res, { message: 'Export feature coming in Phase 2' });
+    const { from, to, format = 'csv', limit = 50000 } = req.query;
+    const where = {};
+    if (from && to) where.created_at = { [Op.between]: [new Date(from), new Date(to)] };
+
+    const bookings = await Booking.findAll({
+      where,
+      attributes: ['reference', 'status', 'customer_rate', 'hire_rate', 'profit', 'pickup_address', 'delivery_address', 'created_at'],
+      include: [{ model: User, as: 'customer', attributes: ['full_name', 'email', 'phone'] }],
+      order: [['created_at', 'DESC']],
+      limit: Math.min(Number(limit) || 50000, 1048576), // Excel row limit ~1,048,576
+    });
+
+    if (format === 'json') {
+      return res.json({ success: true, data: bookings });
+    }
+
+    const header = ['reference','status','customer_rate','hire_rate','profit','customer_name','customer_email','customer_phone','pickup','delivery','created_at'];
+
+    if (format === 'xlsx') {
+      const Excel = require('exceljs');
+      const wb = new Excel.Workbook();
+      const ws = wb.addWorksheet('Bookings');
+      ws.addRow(header);
+      bookings.forEach(b => {
+        ws.addRow([
+          b.reference,
+          b.status,
+          b.customer_rate ?? '',
+          b.hire_rate ?? '',
+          b.profit ?? '',
+          b.customer?.full_name ?? '',
+          b.customer?.email ?? '',
+          b.customer?.phone ?? '',
+          (b.pickup_address || '').replace(/\r?\n/g, ' '),
+          (b.delivery_address || '').replace(/\r?\n/g, ' '),
+          b.created_at?.toISOString() ?? '',
+        ]);
+      });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="bookings-${Date.now()}.xlsx"`);
+      await wb.xlsx.write(res);
+      return res.end();
+    }
+
+    // default CSV
+    const rows = bookings.map(b => ([
+      b.reference,
+      b.status,
+      b.customer_rate ?? '',
+      b.hire_rate ?? '',
+      b.profit ?? '',
+      b.customer?.full_name ?? '',
+      b.customer?.email ?? '',
+      b.customer?.phone ?? '',
+      (b.pickup_address || '').replace(/\r?\n/g, ' '),
+      (b.delivery_address || '').replace(/\r?\n/g, ' '),
+      b.created_at?.toISOString() ?? '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')));
+
+    const csv = [header.join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="bookings-${Date.now()}.csv"`);
+    return res.send(csv);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

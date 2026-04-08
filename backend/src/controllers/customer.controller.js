@@ -9,6 +9,7 @@ const { Op }     = require('sequelize');
 const { User, Driver, Vehicle, Booking, Contract, ContractRate } = require('../models');
 const { success, error }   = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { autoAssignIfNeeded } = require('../services/assignment.service');
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
@@ -91,18 +92,11 @@ exports.getBookingById = async (req, res) => {
 
 exports.createBooking = async (req, res) => {
   try {
-    const ref = 'ZT' + Date.now().toString(36).toUpperCase();
-    const booking = await Booking.create({
-      ...req.body,
-      reference:       ref,
-      customer_id:     req.user.id,
-      created_by_role: req.user.role,
-      created_by_id:   req.user.id,
-      handled_by:      'admin',
-      status:          'pending',
-    });
-    if (req.auditLog) await req.auditLog('BOOKING_CREATED', { booking_id: booking.id });
-    return success(res, { booking }, 201);
+    // Delegate to booking controller so pricing/surcharges are applied consistently
+    req.scope = { customer_id: req.user.id };
+    req.body.customer_id = req.user.id;
+    req.user.role = req.user.role || 'customer';
+    return require('./booking.controller').createBooking(req, res);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -160,38 +154,9 @@ exports.rateBooking = async (req, res) => {
 // ── Price Estimate ─────────────────────────────────────────────────────────
 // PRD §7 — Pricing Engine
 exports.getPriceEstimate = async (req, res) => {
-  try {
-    const { vehicle_type, distance_km, cargo_weight_kg, is_night, is_holiday, is_heavy } = req.query;
-
-    // PRD §7 — Default Vehicle Pricing
-    const rates = {
-      motorcycle:  { base: 200,  per_km: 15  },
-      pickup:      { base: 1000, per_km: 50  },
-      van:         { base: 1500, per_km: 60  },
-      truck:       { base: 3000, per_km: 80  },
-      articulated: { base: 8000, per_km: 150 },
-    };
-
-    const rate = rates[vehicle_type] || rates.pickup;
-    const dist = parseFloat(distance_km) || 0;
-    let price  = rate.base + (dist * rate.per_km);
-
-    // PRD §7 — Surcharges
-    if (is_heavy   === 'true') price *= 1.20;
-    if (is_night   === 'true') price *= 1.15;
-    if (is_holiday === 'true') price *= 1.10;
-
-    return success(res, {
-      vehicle_type,
-      distance_km:    dist,
-      base_rate:      rate.base,
-      per_km_rate:    rate.per_km,
-      estimated_fare: Math.round(price),
-      currency:       'KES',
-    });
-  } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
-  }
+  // Delegate to shared pricing in booking.controller (uses surcharges/contracts)
+  req.scope = { customer_id: req.user.id };
+  return require('./booking.controller').getPriceEstimate(req, res);
 };
 
 // ── Tracking ───────────────────────────────────────────────────────────────

@@ -59,6 +59,9 @@ router.get('/documents', controller.getDocuments);
 // POST /api/v1/driver/documents
 router.post('/documents', controller.uploadDocument);
 
+// Alias for testing doc: POST /driver/compliance
+router.post('/compliance', controller.uploadDocument);
+
 // ── Earnings ──────────────────────────────────────────────────────────────
 // PRD §5.3 — Driver salary/earnings overview (admin-managed, no self-tracking)
 // PRD — drivers on salary, paid directly, no profit tracking
@@ -69,6 +72,16 @@ router.get('/earnings', controller.getEarnings);
 // PRD §18.5 — GPS tracking during trips
 // PATCH /api/v1/driver/location
 router.patch('/location', requireCompliance, controller.updateLocation);
+
+// Location interest (PRD §7.10)
+router.post('/location-interest', controller.setLocationInterest);
+router.get('/location-interest', controller.getLocationInterest);
+
+// Backhaul (PRD §7.11)
+router.post('/backhaul', controller.requestBackhaul);
+
+// Open loads / marketplace browse (PRD §5.8)
+router.get('/open-loads', controller.getOpenLoads);
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
 // GET /api/v1/driver/dashboard

@@ -1,6 +1,10 @@
 {
-  "name": "vg-backend-new",
+  "name": "zito-backend",
   "version": "1.0.0",
+  "description": "ZITO Logistics Super-App — Backend API · VG Global Logistics",
+  "author": "VG Global Logistics",
+  "license": "ISC",
+  "type": "commonjs",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,18 +16,16 @@
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.0",
     "helmet": "^8.1.0",
-    "joi": "^18.0.2",
+    "joi": "^18.1.2",
     "jsonwebtoken": "^9.0.3",
-    "leaflet": "^1.9.4",
     "morgan": "^1.10.1",
-    "node-fetch": "^3.3.2",
     "nodemailer": "^8.0.3",
     "pg": "^8.20.0",
     "pg-hstore": "^2.3.4",
-    "react-leaflet": "^5.0.0",
     "sequelize": "^6.37.7",
     "socket.io": "^4.8.3",
     "uuid": "^13.0.0"
@@ -31,17 +33,13 @@
   "devDependencies": {
     "nodemon": "^3.1.14"
   },
-  "description": "",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vishal31121987-rgb/vg-logistics-backend.git"
+    "url": "git+https://github.com/vishal31987-rgb/zito-backend.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "keywords": ["logistics", "zito", "kenya", "freight", "api"],
   "bugs": {
-    "url": "https://github.com/vishal31121987-rgb/vg-logistics-backend/issues"
+    "url": "https://github.com/vishal31987-rgb/zito-backend/issues"
   },
-  "homepage": "https://github.com/vishal31121987-rgb/vg-logistics-backend#readme"
+  "homepage": "https://github.com/vishal31987-rgb/zito-backend#readme"
 }

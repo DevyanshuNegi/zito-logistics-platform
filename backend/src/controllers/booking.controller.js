@@ -7,20 +7,54 @@
 // PRD §25.2 — Booking Ownership Model
 
 const { User, Driver, Vehicle, Booking } = require('../models');
+const { autoAssignIfNeeded } = require('../services/assignment.service');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { quoteFare } = require('../services/pricing.service');
+const { sendBookingNotification } = require('../services/notification.service');
+const { broadcastNewLoad } = require('../services/broadcast.service');
 
 // ── Create Booking ─────────────────────────────────────────────────────────
 exports.createBooking = async (req, res) => {
   try {
     const ref = 'ZT' + Date.now().toString(36).toUpperCase();
+    const pricing = await quoteFare({
+      vehicle_type: req.body.vehicle_type,
+      distance_km:  req.body.distance_km,
+      customer_id:  req.scope?.customer_id || req.body.customer_id,
+      is_heavy:     req.body.is_heavy,
+      is_night:     req.body.is_night,
+      is_holiday:   req.body.is_holiday,
+      extra_stops:  req.body.extra_stops,
+      waiting_minutes: req.body.waiting_minutes,
+    });
+
     const booking = await Booking.create({
       ...req.body,
-      reference: ref,
-      status:    'pending',
+      reference:     ref,
+      status:        'pending',
+      base_rate:     pricing.base_rate,
+      per_km_rate:   pricing.per_km_rate,
+      customer_rate: pricing.customer_rate,
+      hire_rate:     pricing.hire_rate,
+      profit:        pricing.profit,
+      surcharges:    pricing.surcharges,
+      estimated_fare: pricing.customer_rate,
+      final_fare:     pricing.customer_rate,
+      distance_km:    pricing.distance_km,
     });
     if (req.auditLog) await req.auditLog('BOOKING_CREATED', { booking_id: booking.id, by: req.user.id });
-    return success(res, { booking }, 201);
+
+    const autoResult = await autoAssignIfNeeded(booking, req.auditLog);
+    // If not auto-assigned, broadcast to interested drivers
+    if (!autoResult.assigned) {
+      broadcastNewLoad(booking).catch(console.error);
+    }
+
+    const customer = booking.customer_id ? await User.findByPk(booking.customer_id) : null;
+    sendBookingNotification({ booking, customer, event: 'created' }).catch(console.error);
+
+    return success(res, { booking, auto_assignment: autoResult }, 201);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -95,6 +129,9 @@ exports.cancelBooking = async (req, res) => {
 
     await booking.update({ status: 'cancelled', cancellation_reason: reason, cancelled_at: new Date() });
     if (req.auditLog) await req.auditLog('BOOKING_CANCELLED', { booking_id: booking.id, reason, by: req.user.id });
+
+    const customer = booking.customer_id ? await User.findByPk(booking.customer_id) : null;
+    sendBookingNotification({ booking, customer, event: 'cancelled' }).catch(console.error);
     return success(res, { message: 'Booking cancelled', booking });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -139,33 +176,20 @@ exports.rateBooking = async (req, res) => {
 // PRD §7 — Pricing Engine
 exports.getPriceEstimate = async (req, res) => {
   try {
-    const { vehicle_type, distance_km, is_night, is_holiday, is_heavy } = req.query;
-
-    const rates = {
-      motorcycle:  { base: 200,  per_km: 15  },
-      pickup:      { base: 1000, per_km: 50  },
-      van:         { base: 1500, per_km: 60  },
-      truck:       { base: 3000, per_km: 80  },
-      articulated: { base: 8000, per_km: 150 },
-    };
-
-    const rate = rates[vehicle_type] || rates.pickup;
-    const dist = parseFloat(distance_km) || 0;
-    let price  = rate.base + (dist * rate.per_km);
-
-    const surcharges = {};
-    if (is_heavy   === 'true') { price *= 1.20; surcharges.heavy_load   = '20%'; }
-    if (is_night   === 'true') { price *= 1.15; surcharges.night        = '15%'; }
-    if (is_holiday === 'true') { price *= 1.10; surcharges.holiday      = '10%'; }
+    const pricing = await quoteFare({
+      vehicle_type: req.query.vehicle_type,
+      distance_km:  req.query.distance_km,
+      customer_id:  req.scope?.customer_id || req.query.customer_id,
+      is_heavy:     req.query.is_heavy,
+      is_night:     req.query.is_night,
+      is_holiday:   req.query.is_holiday,
+      extra_stops:  req.query.extra_stops,
+      waiting_minutes: req.query.waiting_minutes,
+    });
 
     return success(res, {
-      vehicle_type,
-      distance_km:    dist,
-      base_rate:      rate.base,
-      per_km_rate:    rate.per_km,
-      surcharges,
-      estimated_fare: Math.round(price),
-      currency:       'KES',
+      ...pricing,
+      currency: 'KES',
     });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -196,6 +220,13 @@ exports.updateStatus = async (req, res) => {
     const booking = await Booking.findByPk(req.params.id);
     if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
 
+    if (status === 'completed') {
+      const paidStatuses = ['released', 'refunded'];
+      if (!paidStatuses.includes(booking.payment_status)) {
+        return error(res, 'PAYMENT_PENDING', 'Payment not confirmed; complete after payment or override via admin endpoint.', 400);
+      }
+    }
+
     const timestamps = {
       picked_up:  { picked_up_at:  new Date() },
       in_transit: { in_transit_at: new Date() },
@@ -205,6 +236,11 @@ exports.updateStatus = async (req, res) => {
 
     await booking.update({ status, ...timestamps[status] });
     if (req.auditLog) await req.auditLog('BOOKING_STATUS_UPDATED', { booking_id: booking.id, status, by: req.user.id });
+
+    if (['delivered', 'completed'].includes(status)) {
+      const customer = booking.customer_id ? await User.findByPk(booking.customer_id) : null;
+      sendBookingNotification({ booking, customer, event: 'status' }).catch(console.error);
+    }
     return success(res, { message: `Status updated to ${status}`, booking });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);

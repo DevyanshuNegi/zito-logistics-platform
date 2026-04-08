@@ -22,7 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const jwt  = require('jsonwebtoken');
-const User = require('../models/user');
+const { User, Driver, DriverCompliance } = require('../models');
 
 /* ============================================================
    ROLE CONSTANTS
@@ -261,7 +261,7 @@ const isFinanceOrSuper = (req, res, next) => {
      router.post('/trips/:id/accept', authenticate, requireCompliance, handler)
    ============================================================ */
 
-const requireCompliance = (req, res, next) => {
+const requireCompliance = async (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({
       success: false,
@@ -275,7 +275,39 @@ const requireCompliance = (req, res, next) => {
     return next();
   }
 
-  const status = req.user.compliance_status;
+  let status = req.user.compliance_status;
+
+  // Expiry auto-block check (drivers)
+  if (req.user.role === ROLES.DRIVER) {
+    try {
+      const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+      if (driver) {
+        const comp = await DriverCompliance.findOne({ where: { driver_id: driver.id } });
+        const now = new Date();
+        const expiredFields = [];
+        if (comp) {
+          if (comp.license_expiry && new Date(comp.license_expiry) < now) expiredFields.push('license_expiry');
+          if (comp.police_clearance_expiry && new Date(comp.police_clearance_expiry) < now) expiredFields.push('police_clearance_expiry');
+          if (comp.medical_expiry && new Date(comp.medical_expiry) < now) expiredFields.push('medical_expiry');
+        }
+        if (expiredFields.length) {
+          status = 'resubmission_required';
+          await Promise.all([
+            driver.update({ can_receive_assignments: false, is_available: false }),
+            comp?.update({
+              compliance_status: 'resubmission_required',
+              status_updated_at: now,
+              resubmission_comment: `Document expired: ${expiredFields.join(', ')}`,
+            }),
+            User.update({ compliance_status: 'resubmission_required' }, { where: { id: req.user.id } }),
+          ]);
+        }
+      }
+    } catch (e) {
+      console.error('compliance expiry check failed', e.message);
+    }
+  }
+
   if (status === 'approved') return next();
 
   const messages = {
@@ -585,6 +617,8 @@ module.exports = {
 
   // Audit
   auditLogger,
+  // Inline export for compliance routes convenience
+  requireCompliance,
 
   // Role constants — always import from here, never use magic strings
   ROLES,

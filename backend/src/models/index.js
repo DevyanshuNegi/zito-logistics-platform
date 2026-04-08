@@ -11,11 +11,15 @@ const Driver           = require('./driver')(sequelize);
 const Vehicle          = require('./vehicle')(sequelize);
 const Booking          = require('./booking')(sequelize);
 const BookingOffer     = require('./bookingoffer')(sequelize);
+const TripCharge       = require('./trip-charge')(sequelize);
+const Payment          = require('./payment')(sequelize);
+const Complaint        = require('./complaint')(sequelize);
 const Contract         = require('./contract')(sequelize);
 const ContractRate     = require('./contract-rate')(sequelize);
 const SystemSetting    = require('./system-setting')(sequelize);
 const AuditLog         = require('./auditLog')(sequelize);
 const DriverCompliance = require('./drivercompliance')(sequelize);
+const CustomerDriverRule = require('./customer-driver-rule')(sequelize);
 
 // ── Collect all models ─────────────────────────────────────────────────
 const models = {
@@ -24,11 +28,15 @@ const models = {
   Vehicle,
   Booking,
   BookingOffer,
+  TripCharge,
+  Payment,
+  Complaint,
   Contract,
   ContractRate,
   SystemSetting,
   AuditLog,
   DriverCompliance,
+  CustomerDriverRule,
 };
 
 // ── Run associations ───────────────────────────────────────────────────

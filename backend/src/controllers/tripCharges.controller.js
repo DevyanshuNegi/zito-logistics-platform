@@ -1,6 +1,6 @@
 // src/controllers/tripCharges.controller.js
-const { sequelize } = require('../config/database');
-const { QueryTypes } = require('sequelize');
+const { TripCharge, Booking, Driver } = require('../models');
+const { calculateProfit } = require('../utils/helpers');
 
 /* -------------------------------------------------------------------------- */
 /* ADD TRIP CHARGE                                                            */
@@ -17,7 +17,9 @@ const addCharge = async (req, res, next) => {
       driver_id,
     } = req.body;
 
-    if (!trip_id || !charge_type || !amount) {
+    const resolvedTripId = trip_id || req.body.booking_id;
+
+    if (!resolvedTripId || !charge_type || !amount) {
       return res.status(400).json({
         success: false,
         error: {
@@ -27,27 +29,16 @@ const addCharge = async (req, res, next) => {
       });
     }
 
-    const result = await sequelize.query(
-      `
-      INSERT INTO trip_charges
-        (trip_id, charge_type, amount, description, driver_id)
-      VALUES
-        (:trip_id, :charge_type, :amount, :description, :driver_id)
-      RETURNING *;
-      `,
-      {
-        replacements: {
-          trip_id,
-          charge_type,
-          amount,
-          description: description || null,
-          driver_id: driver_id || null,
-        },
-        type: QueryTypes.INSERT,
-      }
-    );
+    const inserted = await TripCharge.create({
+      trip_id: resolvedTripId,
+      charge_type,
+      amount,
+      description: description || null,
+      driver_id: driver_id || null,
+    });
 
-    const inserted = result[0][0];
+    // Recalculate totals on booking
+    await recalcTotals(resolvedTripId);
 
     return res.status(201).json({
       success: true,
@@ -68,18 +59,10 @@ const getTripCharges = async (req, res, next) => {
 
     const { tripId } = req.params;
 
-    const charges = await sequelize.query(
-      `
-      SELECT *
-      FROM trip_charges
-      WHERE trip_id = :tripId
-      ORDER BY created_at ASC;
-      `,
-      {
-        replacements: { tripId },
-        type: QueryTypes.SELECT,
-      }
-    );
+    const charges = await TripCharge.findAll({
+      where: { trip_id: tripId },
+      order: [['created_at', 'ASC']],
+    });
 
     return res.json({
       success: true,
@@ -100,18 +83,10 @@ const getDriverExpenses = async (req, res, next) => {
 
     const { driverId } = req.params;
 
-    const expenses = await sequelize.query(
-      `
-      SELECT *
-      FROM trip_charges
-      WHERE driver_id = :driverId
-      ORDER BY created_at ASC;
-      `,
-      {
-        replacements: { driverId },
-        type: QueryTypes.SELECT,
-      }
-    );
+    const expenses = await TripCharge.findAll({
+      where: { driver_id: driverId },
+      order: [['created_at', 'ASC']],
+    });
 
     return res.json({
       success: true,
@@ -132,28 +107,25 @@ const getTripFinancials = async (req, res, next) => {
 
     const { tripId } = req.params;
 
-    const result = await sequelize.query(
-      `
-      SELECT 
-        b.id AS trip_id,
-        b.customer_rate,
-        b.hire_rate,
-        COALESCE(SUM(tc.amount),0) AS total_expenses,
-        (b.customer_rate - b.hire_rate - COALESCE(SUM(tc.amount),0)) AS profit
-      FROM bookings b
-      LEFT JOIN trip_charges tc ON tc.trip_id = b.id
-      WHERE b.id = :tripId
-      GROUP BY b.id;
-      `,
-      {
-        replacements: { tripId },
-        type: QueryTypes.SELECT,
-      }
-    );
+    const booking = await Booking.findByPk(tripId, {
+      include: [{ model: TripCharge, as: 'charges' }],
+    });
+    if (!booking) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+
+    const totalExpenses = booking.charges?.reduce((sum, c) => sum + Number(c.amount || 0), 0) || 0;
+    const profit = calculateProfit(booking.customer_rate || booking.final_fare || 0, booking.hire_rate || 0, totalExpenses);
 
     return res.json({
       success: true,
-      data: result[0] || null,
+      data: {
+        trip_id: booking.id,
+        customer_rate: booking.customer_rate,
+        hire_rate: booking.hire_rate,
+        total_expenses: totalExpenses,
+        profit,
+      },
     });
 
   } catch (err) {
@@ -161,9 +133,58 @@ const getTripFinancials = async (req, res, next) => {
   }
 };
 
+/* -------------------------------------------------------------------------- */
+/* APPROVAL FLOWS                                                             */
+/* -------------------------------------------------------------------------- */
+
+const approveCharge = async (req, res, next) => {
+  try {
+    const charge = await TripCharge.findByPk(req.params.id);
+    if (!charge) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Charge not found' } });
+
+    await charge.update({ status: 'approved', approved_by: req.user.id, approved_at: new Date() });
+    await recalcTotals(charge.trip_id);
+
+    return res.json({ success: true, data: charge });
+  } catch (err) { next(err); }
+};
+
+const rejectCharge = async (req, res, next) => {
+  try {
+    const charge = await TripCharge.findByPk(req.params.id);
+    if (!charge) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Charge not found' } });
+
+    await charge.update({ status: 'rejected', approved_by: req.user.id, approved_at: new Date() });
+    await recalcTotals(charge.trip_id);
+
+    return res.json({ success: true, data: charge });
+  } catch (err) { next(err); }
+};
+
+/* -------------------------------------------------------------------------- */
+/* INTERNAL: RECALC TOTAL EXPENSES & PROFIT                                   */
+/* -------------------------------------------------------------------------- */
+
+const recalcTotals = async (tripId) => {
+  const charges = await TripCharge.findAll({
+    where: { trip_id: tripId, status: 'approved' },
+    attributes: ['amount', 'charge_type', 'driver_id'],
+  });
+
+  const totalExpenses = charges.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+  const booking = await Booking.findByPk(tripId);
+  if (!booking) return;
+
+  const profit = calculateProfit(booking.customer_rate || booking.final_fare || 0, booking.hire_rate || 0, totalExpenses);
+  await booking.update({ total_expenses: totalExpenses, profit });
+
+};
+
 module.exports = {
   addCharge,
   getTripCharges,
   getDriverExpenses,
-  getTripFinancials
+  getTripFinancials,
+  approveCharge,
+  rejectCharge
 };

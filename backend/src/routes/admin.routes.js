@@ -80,6 +80,19 @@ router.patch('/system-settings/:key',isSuperAdmin, controller.updateSystemSettin
 // PRD §4 — Admin switches Manual / Semi-Auto / Full Auto
 router.patch('/assignment-mode', isSuperAdmin, controller.setAssignmentMode);
 
+// Semi-auto driver suggestions
+router.get('/assignment/suggest/:bookingId',
+  controller.suggestDrivers
+);
+
+// Customer-specific whitelist/blacklist
+router.post('/customers/:customerId/driver-rule',
+  controller.upsertDriverRule
+);
+router.delete('/customers/:customerId/driver-rule/:driverId',
+  controller.deleteDriverRule
+);
+
 // ── View As ───────────────────────────────────────────────────────────────
 // PRD §3.1 — Super Admin impersonates any user for support/QA
 router.get('/view-as/:userId', isSuperAdmin, controller.viewAsUser);
@@ -94,5 +107,6 @@ router.get('/reports/bookings',  controller.bookingReport);
 router.get('/reports/financial', controller.financialReport);
 router.get('/reports/drivers',   controller.driverReport);
 router.get('/reports/export',    controller.exportReport);
+router.get('/live/drivers',      controller.liveDrivers);
 
 module.exports = router;

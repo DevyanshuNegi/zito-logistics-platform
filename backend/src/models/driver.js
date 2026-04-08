@@ -129,6 +129,20 @@ module.exports = (sequelize) => {
       type:         DataTypes.INTEGER,
       defaultValue: 0,
     },
+
+    wallet_balance: {
+      type:         DataTypes.DECIMAL(12, 2),
+      defaultValue: 0,
+    },
+
+    pending_payout: {
+      type:         DataTypes.DECIMAL(12, 2),
+      defaultValue: 0,
+    },
+
+    last_payout_at: {
+      type: DataTypes.DATE,
+    },
     total_ratings: {
       type:         DataTypes.INTEGER,
       defaultValue: 0,
@@ -139,6 +153,24 @@ module.exports = (sequelize) => {
       type: DataTypes.DECIMAL(10, 8),
     },
     current_lng: {
+      type: DataTypes.DECIMAL(11, 8),
+    },
+
+    // Route preference / location interest (PRD §7.10)
+    location_interest: {
+      type: DataTypes.JSONB,
+      defaultValue: null, // { lat, lng, radius_km, note }
+    },
+
+    // Backhaul request flag (PRD §7.11)
+    wants_backhaul: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    last_drop_lat: {
+      type: DataTypes.DECIMAL(10, 8),
+    },
+    last_drop_lng: {
       type: DataTypes.DECIMAL(11, 8),
     },
     location_updated: {

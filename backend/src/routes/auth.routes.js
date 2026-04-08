@@ -4,10 +4,9 @@ const express = require('express');
 const router  = express.Router();
 const jwt     = require('jsonwebtoken');
 const Joi     = require('joi');
-const User    = require('../models/user');
+const { User, Driver } = require('../models');
 const { sequelize } = require('../config/database');
 const { QueryTypes } = require('sequelize');
-const { Driver } = require('../models');
 
 // ─── Token generator ──────────────────────────────────────────────────────────
 

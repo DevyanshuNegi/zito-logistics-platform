@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { User }   = require('../models');
 const { success, error } = require('../utils/response');
+const { sendSms } = require('../services/sms.service');
 
 // ── OTP Store (DB table: login_otps) ──────────────────────────────────────
 // Using sequelize model if available, fallback to in-memory for Phase 1
@@ -31,11 +32,11 @@ const sendOtpEmail = async (email, otp) => {
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     await resend.emails.send({
-      from:    process.env.EMAIL_FROM || 'noreply@vglogistics.com',
+      from:    process.env.EMAIL_FROM || 'noreply@vggloballogistics.com',
       to:      email,
-      subject: 'VG Global Logistics — Your OTP Code',
+      subject: 'ZITO (VG Global Logistics) — Your OTP Code',
       html:    `
-        <h2>VG Global Logistics</h2>
+        <h2>ZITO (VG Global Logistics)</h2>
         <p>Your OTP verification code is:</p>
         <h1 style="letter-spacing:8px; color:#1A3A5C;">${otp}</h1>
         <p>This code expires in ${OTP_EXPIRY_MINS} minutes.</p>
@@ -57,19 +58,24 @@ const sendOtpEmail = async (email, otp) => {
 
 exports.sendOtp = async (req, res) => {
   try {
-    const { email, user_id, type = 'login' } = req.body;
+    const { email, contact, user_id, type = 'login' } = req.body;
     // type: 'login' | 'reset_password' | 'verify_email'
 
-    if (!email && !user_id) {
-      return error(res, 'VALIDATION_ERROR', 'email or user_id required', 422);
+    if (!email && !contact && !user_id) {
+      return error(res, 'VALIDATION_ERROR', 'email, contact or user_id required', 422);
     }
 
-    // Find user
+    // Find user (email > contact > user_id)
     let user;
     if (user_id) {
       user = await User.findByPk(user_id);
-    } else {
+    } else if (email) {
       user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
+    } else if (contact) {
+      const lookup = contact.includes('@')
+        ? { email: contact.toLowerCase().trim() }
+        : { phone: contact.trim() };
+      user = await User.findOne({ where: lookup });
     }
 
     if (!user) {
@@ -86,6 +92,14 @@ exports.sendOtp = async (req, res) => {
 
     // Send email
     await sendOtpEmail(user.email, otp);
+
+    // Optional SMS (free/dry-run friendly)
+    const smsTarget = contact && !contact.includes('@') ? contact.trim() : user.phone;
+    if (process.env.SMS_SEND_OTP === 'true' && smsTarget) {
+      sendSms({ to: smsTarget, message: `ZITO OTP: ${otp} (expires in ${OTP_EXPIRY_MINS} mins)` })
+        .then(() => console.log(`[OTP SMS] sent to ${user.phone}`))
+        .catch((err) => console.error('[OTP SMS] failed', err.message));
+    }
 
     return success(res, {
       message: `OTP sent to ${user.email}`,
@@ -105,7 +119,7 @@ exports.sendOtp = async (req, res) => {
 
 exports.verifyOtp = async (req, res) => {
   try {
-    const { user_id, otp, type = 'login', temp_token } = req.body;
+    const { user_id, contact, otp, type = 'login', temp_token } = req.body;
 
     if (!otp) {
       return error(res, 'VALIDATION_ERROR', 'OTP required', 422);
@@ -113,6 +127,18 @@ exports.verifyOtp = async (req, res) => {
 
     // Resolve user_id from temp_token if not provided directly
     let resolvedUserId = user_id;
+    let resolvedUser   = null;
+
+    // Resolve from contact (email/phone)
+    if (!resolvedUserId && contact) {
+      const lookup = contact.includes('@')
+        ? { email: contact.toLowerCase().trim() }
+        : { phone: contact.trim() };
+      resolvedUser = await User.findOne({ where: lookup });
+      resolvedUserId = resolvedUser?.id;
+    }
+
+    // Resolve from temp token
     if (!resolvedUserId && temp_token) {
       try {
         const decoded = jwt.verify(temp_token, process.env.JWT_SECRET);
@@ -123,7 +149,7 @@ exports.verifyOtp = async (req, res) => {
     }
 
     if (!resolvedUserId) {
-      return error(res, 'VALIDATION_ERROR', 'user_id or temp_token required', 422);
+      return error(res, 'VALIDATION_ERROR', 'user_id, contact or temp_token required', 422);
     }
 
     const key    = `${resolvedUserId}:${type}`;
@@ -155,7 +181,7 @@ exports.verifyOtp = async (req, res) => {
     otpStore.delete(key);
 
     // Load user
-    const user = await User.findByPk(resolvedUserId);
+    const user = resolvedUser || await User.findByPk(resolvedUserId);
     if (!user) {
       return error(res, 'NOT_FOUND', 'User not found', 404);
     }

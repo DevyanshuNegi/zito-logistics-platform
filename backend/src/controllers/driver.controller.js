@@ -7,6 +7,8 @@
 const { User, Driver, Vehicle, Booking } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { BOOKING_STATUS } = require('../constants/bookingStatus');
+const { getIO } = require('../services/notification.service');
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
@@ -176,6 +178,13 @@ exports.updateTripStatus = async (req, res) => {
       return error(res, 'INVALID_STATUS', `Cannot transition from ${booking.status} to ${status}`, 400);
     }
 
+    if (status === 'completed') {
+      const paidStatuses = ['released', 'refunded'];
+      if (!paidStatuses.includes(booking.payment_status)) {
+        return error(res, 'PAYMENT_PENDING', 'Payment not confirmed yet; finance/admin must mark paid.', 400);
+      }
+    }
+
     const timestamps = {
       picked_up:  { picked_up_at:  new Date() },
       in_transit: { in_transit_at: new Date() },
@@ -210,8 +219,40 @@ exports.getDocuments = async (req, res) => {
 
 exports.uploadDocument = async (req, res) => {
   try {
-    // Phase 2 — file upload via cloud storage
-    return success(res, { message: 'Document upload coming in Phase 2' });
+    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+
+    // Accept both current and testing-doc field names
+    const payload = ((body) => ({
+      national_id_url:       body.national_id_url,
+      license_url:           body.license_url || body.license_doc_url,
+      license_expiry:        body.license_expiry || body.license_doc_expiry,
+      kra_pin_doc_url:       body.kra_pin_doc_url,
+      police_clearance_url:  body.police_clearance_url,
+      police_clearance_expiry: body.police_clearance_expiry,
+      medical_cert_url:      body.medical_cert_url,
+      medical_expiry:        body.medical_cert_expiry,
+      contract_signed:       body.contract_signed,
+      oath_signed:           body.oath_signed,
+      sop_signed:            body.sop_signed,
+    }))(req.body);
+
+    let compliance = await DriverCompliance.findOne({ where: { driver_id: driver.id } });
+    if (!compliance) {
+      compliance = await DriverCompliance.create({ driver_id: driver.id });
+    }
+
+    await compliance.update({
+      ...payload,
+      compliance_status: 'pending',
+      status_updated_at: new Date(),
+      status_updated_by: req.user.id,
+    });
+
+    await driver.update({ can_receive_assignments: false, is_available: false });
+    await User.update({ compliance_status: 'pending', data_locked: false }, { where: { id: req.user.id } });
+
+    return success(res, { message: 'Documents submitted. Awaiting admin review.', compliance });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -244,7 +285,102 @@ exports.updateLocation = async (req, res) => {
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
     await driver.update({ current_lat: lat, current_lng: lng, location_updated: new Date() });
+
+    // Broadcast over socket to admins and booking participants
+    const io = getIO && getIO();
+    if (io) {
+      const payload = { driver_id: driver.id, user_id: driver.user_id, lat, lng, updated_at: new Date() };
+      io.to('global:admin').emit('driver:location', payload);
+      io.to(`driver:${driver.id}`).emit('driver:location', payload);
+      io.to(`user:${driver.user_id}`).emit('driver:location', payload);
+
+      // Also push to any active booking room
+      const activeBooking = await Booking.findOne({
+        where: { assigned_driver_id: driver.id, status: ['assigned','accepted','picked_up','in_transit','delivered'] },
+        attributes: ['id', 'customer_id', 'reference']
+      });
+      if (activeBooking) {
+        io.to(`booking:${activeBooking.id}`).emit('driver:location', { ...payload, booking_id: activeBooking.id, reference: activeBooking.reference });
+        if (activeBooking.customer_id) {
+          io.to(`user:${activeBooking.customer_id}`).emit('driver:location', { ...payload, booking_id: activeBooking.id, reference: activeBooking.reference });
+        }
+      }
+    }
+
     return success(res, { message: 'Location updated' });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Location Interest (PRD §7.10) ───────────────────────────────────────────
+exports.setLocationInterest = async (req, res) => {
+  try {
+    const { lat, lng, radius_km = 25, note } = req.body;
+    if (lat === undefined || lng === undefined) {
+      return error(res, 'VALIDATION_ERROR', 'lat and lng required', 422);
+    }
+    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+
+    await driver.update({ location_interest: { lat: Number(lat), lng: Number(lng), radius_km: Number(radius_km), note } });
+    return success(res, { message: 'Location interest saved', location_interest: driver.location_interest });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+exports.getLocationInterest = async (req, res) => {
+  try {
+    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+    return success(res, { location_interest: driver.location_interest });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Backhaul request (PRD §7.11) ────────────────────────────────────────────
+exports.requestBackhaul = async (req, res) => {
+  try {
+    const { wants_backhaul = true, last_drop_lat, last_drop_lng } = req.body;
+    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+
+    await driver.update({
+      wants_backhaul: wants_backhaul === true || wants_backhaul === 'true',
+      last_drop_lat: last_drop_lat || driver.last_drop_lat,
+      last_drop_lng: last_drop_lng || driver.last_drop_lng,
+    });
+    return success(res, { message: 'Backhaul preference updated', wants_backhaul: driver.wants_backhaul });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Open Loads / Marketplace browse (PRD §5.8, §7.9) ────────────────────────
+exports.getOpenLoads = async (req, res) => {
+  try {
+    const driver = await Driver.findOne({ where: { user_id: req.user.id }, include: [{ model: Vehicle, as: 'current_vehicle' }] });
+    if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+
+    const where = {
+      status: [BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED],
+    };
+    if (driver.current_vehicle?.vehicle_type) {
+      where.vehicle_type = driver.current_vehicle.vehicle_type;
+    }
+
+    const { page, limit, offset } = paginate(req.query);
+    const { count, rows } = await Booking.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [['created_at', 'DESC']],
+      attributes: ['id', 'reference', 'pickup_address', 'delivery_address', 'vehicle_type', 'customer_rate', 'hire_rate', 'status', 'created_at'],
+    });
+
+    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

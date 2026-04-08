@@ -5,6 +5,7 @@
 const { User, Driver, Vehicle, Booking, Contract, ContractRate } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { autoAssignIfNeeded } = require('../services/assignment.service');
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
@@ -252,7 +253,8 @@ exports.createBooking = async (req, res) => {
       handled_by:      'transporter',
       status:          'pending',
     });
-    return success(res, { booking }, 201);
+    const autoResult = await autoAssignIfNeeded(booking, req.auditLog);
+    return success(res, { booking, auto_assignment: autoResult }, 201);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

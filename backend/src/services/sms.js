@@ -2,7 +2,7 @@ const axios = require('axios');
 
 const AT_USERNAME = process.env.AT_USERNAME || 'sandbox';
 const AT_API_KEY = process.env.AT_API_KEY || 'atsk_test_key';
-const AT_SENDER_ID = process.env.AT_SENDER_ID || 'VGLogistics';
+const AT_SENDER_ID = process.env.AT_SENDER_ID || 'ZITO';
 const AT_BASE_URL = 'https://api.sandbox.africastalking.com/version1';
 
 const sendSMS = async ({ phone, message }) => {

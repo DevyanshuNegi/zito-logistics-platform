@@ -5,6 +5,7 @@
 const { User, Booking } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { autoAssignIfNeeded } = require('../services/assignment.service');
 
 exports.getDashboard = async (req, res) => {
   try {
@@ -91,8 +92,18 @@ exports.getBookings = async (req, res) => {
 exports.createBooking = async (req, res) => {
   try {
     const ref = 'ZT' + Date.now().toString(36).toUpperCase();
-    const booking = await Booking.create({ ...req.body, reference: ref, agent_id: req.user.id, created_by_role: req.user.role, created_by_id: req.user.id, status: 'pending' });
-    return success(res, { booking }, 201);
+    const booking = await Booking.create({
+      ...req.body,
+      reference: ref,
+      agent_id: req.user.id,
+      created_by_role: req.user.role,
+      created_by_id: req.user.id,
+      status: 'pending'
+    });
+
+    const autoResult = await autoAssignIfNeeded(booking, req.auditLog);
+
+    return success(res, { booking, auto_assignment: autoResult }, 201);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

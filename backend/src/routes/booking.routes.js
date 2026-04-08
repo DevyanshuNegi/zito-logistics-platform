@@ -6,6 +6,9 @@
 const express    = require('express');
 const router     = express.Router();
 const controller = require('../controllers/booking.controller');
+const driverController = require('../controllers/driver.controller');
+const adminController = require('../controllers/admin.controller');
+const offerController = require('../controllers/bookingOffer.controller');
 const {
   authenticate,
   authorize,
@@ -17,8 +20,7 @@ const {
 
 router.use(authenticate, auditLogger, applyScope);
 
-// ── Create Booking ────────────────────────────────────────────────────────
-// PRD §5.2 — Customer Portal, §5.4 — Transporter, §5.5 — Agent
+// Create Booking
 // POST /api/v1/booking
 router.post('/',
   authorize(ROLES.CUSTOMER, ROLES.AGENT, ROLES.TRANSPORTER, ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN),
@@ -26,50 +28,92 @@ router.post('/',
   controller.createBooking
 );
 
-// ── List Bookings ─────────────────────────────────────────────────────────
-// PRD §25.1 — filtered by req.scope per role
-// GET /api/v1/booking
+// Alias for testing doc: POST /customer/bookings
+router.post('/customer',
+  authorize(ROLES.CUSTOMER),
+  injectBookingOwnership,
+  controller.createBooking
+);
+
+// List Bookings (scoped by role)
 router.get('/', controller.getBookings);
 
-// ── Get Booking Detail ────────────────────────────────────────────────────
-// GET /api/v1/booking/:id
-router.get('/:id', controller.getBookingById);
-
-// ── Cancel Booking ────────────────────────────────────────────────────────
-// PRD §23 — Cancellation Policy
-// POST /api/v1/booking/:id/cancel
-router.post('/:id/cancel',
-  authorize(ROLES.CUSTOMER, ROLES.AGENT, ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN),
-  controller.cancelBooking
-);
-
-// ── Rate Booking ──────────────────────────────────────────────────────────
-// PRD §21.1 — Rating System (48hr window after completion)
-// POST /api/v1/booking/:id/rate
-router.post('/:id/rate',
-  authorize(ROLES.CUSTOMER, ROLES.DRIVER),
-  controller.rateBooking
-);
-
-// ── Price Estimate ────────────────────────────────────────────────────────
-// PRD §7 — Pricing Engine
-// GET /api/v1/booking/price-estimate
+// Price Estimate
 router.get('/price-estimate',
   authorize(ROLES.CUSTOMER, ROLES.AGENT, ROLES.TRANSPORTER, ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN),
   controller.getPriceEstimate
 );
 
-// ── Upload Proof of Delivery ──────────────────────────────────────────────
-// PRD §5.3 — Driver uploads POD photo
-// POST /api/v1/booking/:id/pod
+// Alias: GET /customer/price-estimate
+router.get('/customer/price-estimate',
+  authorize(ROLES.CUSTOMER),
+  controller.getPriceEstimate
+);
+
+// Compatibility: POST /bookings/calculate-price (body -> query)
+router.post('/calculate-price',
+  authorize(ROLES.CUSTOMER, ROLES.AGENT, ROLES.TRANSPORTER, ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN),
+  (req, res, next) => {
+    // map body to query for existing handler
+    req.query = { ...req.body };
+    return controller.getPriceEstimate(req, res, next);
+  }
+);
+
+// Marketplace Offers
+router.get('/:id/offers',
+  authorize(ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN, ROLES.CUSTOMER, ROLES.AGENT, ROLES.TRANSPORTER),
+  offerController.listOffers
+);
+
+router.post('/:id/offers',
+  authorize(ROLES.DRIVER, ROLES.TRANSPORTER, ROLES.AGENT),
+  offerController.createOffer
+);
+
+router.patch('/:id/offers/:offerId',
+  authorize(ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN),
+  offerController.respondToOffer
+);
+
+// Get Booking Detail
+router.get('/:id', controller.getBookingById);
+
+// Cancel Booking
+router.post('/:id/cancel',
+  authorize(ROLES.CUSTOMER, ROLES.AGENT, ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN),
+  controller.cancelBooking
+);
+
+// Rate Booking
+router.post('/:id/rate',
+  authorize(ROLES.CUSTOMER, ROLES.DRIVER),
+  controller.rateBooking
+);
+
+// Driver accept/reject aliases (compat for older frontend)
+router.post('/:id/driver-accept',
+  authorize(ROLES.DRIVER),
+  driverController.acceptTrip
+);
+router.post('/:id/driver-reject',
+  authorize(ROLES.DRIVER),
+  driverController.rejectTrip
+);
+
+// Admin assign alias
+router.patch('/:id/assign',
+  authorize(ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN),
+  adminController.assignDriver
+);
+
+// Proof of Delivery upload
 router.post('/:id/pod',
   authorize(ROLES.DRIVER),
   controller.uploadPOD
 );
 
-// ── Status Update ─────────────────────────────────────────────────────────
-// PRD §6 — Driver updates trip status
-// PATCH /api/v1/booking/:id/status
+// Status Update
 router.patch('/:id/status',
   authorize(ROLES.DRIVER, ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN),
   controller.updateStatus

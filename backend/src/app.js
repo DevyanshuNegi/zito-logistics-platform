@@ -7,17 +7,14 @@
 //   §22  — On-Trip Help & SOS System
 //   §24  — Notification System
 //   §25  — Technical Architecture (scalability, response standards)
-//   Gap 7 — Multi-tenant isolation
-//   Gap 10 — Pagination, background jobs, API response standards
 
 require('dotenv').config();
 
 /* -------------------------------------------------------------------------- */
 /* MODELS — load ONCE, destructure sequelize from the same require            */
-/* Fix: Issue 1 — was loaded twice (require + destructure separately)         */
 /* -------------------------------------------------------------------------- */
 
-const { sequelize } = require('./models'); // loads all models + associations
+const { sequelize } = require('./models');
 
 const express   = require('express');
 const helmet    = require('helmet');
@@ -25,37 +22,47 @@ const cors      = require('cors');
 const rateLimit = require('express-rate-limit');
 
 /* -------------------------------------------------------------------------- */
+/* LOGGER — our custom structured logger (replaces raw console.log)          */
+/* -------------------------------------------------------------------------- */
+
+const logger = require('./utils/logger');
+
+/* -------------------------------------------------------------------------- */
 /* ROUTE IMPORTS                                                               */
-/* PRD §12, §20 — all role portals and shared resources                       */
 /* -------------------------------------------------------------------------- */
 
 const authRoutes        = require('./routes/auth.routes');
 const otpRoutes         = require('./routes/otp.routes');
-const adminRoutes       = require('./routes/admin.routes');        // PRD §5.1, §12, §25.4
-const customerRoutes    = require('./routes/customer.routes');     // PRD §5.2, §12
-const driverRoutes      = require('./routes/driver.routes');       // PRD §5.3, §12
-const transporterRoutes = require('./routes/transporter.routes'); // PRD §5.4, §12
-const agentRoutes       = require('./routes/agent.routes');        // PRD §5.5, §20
-const agencyRoutes      = require('./routes/agency.routes');       // PRD §5.6, §20
-const bookingRoutes     = require('./routes/booking.routes');      // PRD §6, §12
-const vehicleRoutes     = require('./routes/vehicle.routes');      // PRD §8, §12
-const paymentRoutes     = require('./routes/payment.routes');      // PRD §25.6
+const adminRoutes       = require('./routes/admin.routes');
+const customerRoutes    = require('./routes/customer.routes');
+const driverRoutes      = require('./routes/driver.routes');
+const transporterRoutes = require('./routes/transporter.routes');
+const agentRoutes       = require('./routes/agent.routes');
+const agencyRoutes      = require('./routes/agency.routes');
+const bookingRoutes     = require('./routes/booking.routes');
+const vehicleRoutes     = require('./routes/vehicle.routes');
+const paymentRoutes     = require('./routes/payment.routes');
 const tripChargesRoutes = require('./routes/tripCharges.routes');
 const userRoutes        = require('./routes/user.routes');
 const contractRoutes    = require('./routes/contract.routes');
+const complaintRoutes   = require('./routes/complaint.routes');
+const mapRoutes         = require('./routes/map.routes');
+const complianceRoutes  = require('./routes/compliance.routes');
+const paymentExportRoutes = require('./routes/paymentExport.routes');
+const tripChargeExportRoutes = require('./routes/tripChargeExport.routes');
 
 const app = express();
 
 /* -------------------------------------------------------------------------- */
-/* SECURITY HEADERS                                                           */
-/* PRD §11 — HTTPS enforced, security headers required                       */
+/* SECURITY HEADERS                                                            */
+/* PRD §11 — HTTPS enforced, security headers required                        */
 /* -------------------------------------------------------------------------- */
 
 app.use(helmet());
 
 /* -------------------------------------------------------------------------- */
-/* CORS                                                                       */
-/* PRD §11 — production must restrict origins via env var                    */
+/* CORS                                                                        */
+/* PRD §11 — production must restrict origins via env var                     */
 /* -------------------------------------------------------------------------- */
 
 app.use(cors({
@@ -66,43 +73,45 @@ app.use(cors({
 }));
 
 /* -------------------------------------------------------------------------- */
-/* BODY PARSER                                                                */
-/* Must come before all routes so req.body is parsed everywhere              */
+/* BODY PARSER                                                                 */
+/* Must come before all routes so req.body is parsed everywhere               */
 /* -------------------------------------------------------------------------- */
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 /* -------------------------------------------------------------------------- */
-/* REQUEST LOGGER (development only)                                          */
+/* REQUEST LOGGER                                                              */
+/* ✅ CHANGED: replaced the old manual console.log block with our logger.    */
+/* Works in both dev (colourised) and production (clean JSON for Railway).   */
+/* Shows: method, url, status code, response time, user_id, user_role        */
 /* -------------------------------------------------------------------------- */
 
-if (process.env.NODE_ENV !== 'production') {
-  app.use((req, _res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    next();
-  });
-}
+app.use(logger.requestMiddleware);
 
 /* -------------------------------------------------------------------------- */
-/* RATE LIMITERS                                                              */
-/* PRD §11 — brute-force and OTP abuse prevention                            */
-/*                                                                            */
-/* Two tiers:                                                                 */
-/*   authLimiter    — /auth  : 20 req / 15 min  (OTP brute-force)           */
-/*   generalLimiter — /api/  : 300 req / 15 min (normal usage)              */
+/* RATE LIMITERS                                                               */
+/* PRD §11 — brute-force and OTP abuse prevention                             */
+/*                                                                             */
+/* Two tiers:                                                                  */
+/*   authLimiter    — /auth  : 20 req / 15 min  (OTP brute-force)            */
+/*   generalLimiter — /api/  : 300 req / 15 min (normal usage)               */
 /* -------------------------------------------------------------------------- */
+
+const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: isDev ? 1000 : 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
     error: {
       code: 'RATE_LIMITED',
-      message: 'Too many attempts. Please try again in 15 minutes.'
+      message: isDev
+        ? 'Too many attempts in dev — wait a moment or restart.'
+        : 'Too many attempts. Please try again in 15 minutes.'
     }
   }
 });
@@ -122,48 +131,48 @@ const generalLimiter = rateLimit({
 });
 
 app.use('/api/', generalLimiter);
-app.use('/api/v1/auth', authLimiter); // stricter on auth endpoints
+app.use('/api/v1/auth', authLimiter);
 
 /* -------------------------------------------------------------------------- */
-/* ROUTES                                                                     */
-/*                                                                            */
-/* Fix: Issue 3 — ALL routes now use consistent singular naming:             */
-/*   /api/v1/driver    (not /drivers)                                        */
-/*   /api/v1/vehicle   (not /vehicles)                                       */
-/*   /api/v1/booking   (not /bookings)                                       */
-/*   /api/v1/payment   (not /payments)                                       */
-/*   /api/v1/user      (not /users)                                          */
-/*   /api/v1/contract  (not /contracts)                                      */
-/*                                                                            */
-/* This matches PRD §12 endpoint definitions and prevents                   */
-/* frontend confusion from mixed singular/plural route naming.               */
+/* ROUTES                                                                      */
+/* All use consistent singular naming to match PRD §12                        */
 /* -------------------------------------------------------------------------- */
 
 // Authentication & OTP — PRD §12 /api/v1/auth/
 app.use('/api/v1/auth',         authRoutes);
 app.use('/api/v1/auth',         otpRoutes);
 
-// Admin portal — PRD §5.1, §12, §25.4
+// Admin portal — PRD §5.1
 app.use('/api/v1/admin',        adminRoutes);
 
-// Role-specific portals — PRD §5.2–5.6, §12, §20
+// Role portals — PRD §5.2–5.6
 app.use('/api/v1/customer',     customerRoutes);
 app.use('/api/v1/driver',       driverRoutes);
 app.use('/api/v1/transporter',  transporterRoutes);
 app.use('/api/v1/agent',        agentRoutes);
 app.use('/api/v1/agency',       agencyRoutes);
 
-// Shared resource routes — consistent singular naming
+// Shared resource routes
 app.use('/api/v1/booking',      bookingRoutes);
+app.use('/api/v1/bookings',     bookingRoutes); // alias for legacy frontend
 app.use('/api/v1/vehicle',      vehicleRoutes);
 app.use('/api/v1/payment',      paymentRoutes);
 app.use('/api/v1/trip-charge',  tripChargesRoutes);
+app.use('/api/v1/trip-charges', tripChargesRoutes); // alias for legacy frontend
 app.use('/api/v1/user',         userRoutes);
+app.use('/api/v1/users',        userRoutes); // alias for legacy frontend
 app.use('/api/v1/contract',     contractRoutes);
+app.use('/api/v1/complaints',   complaintRoutes);
+app.use('/api/v1/map',          mapRoutes);
+app.use('/api/v1/compliance',   complianceRoutes);
+app.use('/api/v1/export',       paymentExportRoutes);
+app.use('/api/v1/export',       tripChargeExportRoutes);
+
+// Expose getter for socket.io (set in server.js)
+app.set('getIO', () => app.get('io'));
 
 /* -------------------------------------------------------------------------- */
-/* HEALTH CHECK                                                               */
-/* Returns DB connectivity status — returns 503 if DB is unreachable        */
+/* HEALTH CHECK                                                                */
 /* -------------------------------------------------------------------------- */
 
 app.get('/health', async (req, res) => {
@@ -176,11 +185,11 @@ app.get('/health', async (req, res) => {
 
   const httpStatus = dbStatus === 'ok' ? 200 : 503;
   res.status(httpStatus).json({
-    success: dbStatus === 'ok',
-    message: 'VG Logistics API',
-    version: process.env.npm_package_version || '1.0.0',
+    success:     dbStatus === 'ok',
+    message:     'ZITO API',
+    version:     process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString(),
+    timestamp:   new Date().toISOString(),
     services: {
       api:      'ok',
       database: dbStatus
@@ -189,28 +198,7 @@ app.get('/health', async (req, res) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* SOCKET.IO — Issue 4 NOTE                                                  */
-/*                                                                            */
-/* Socket.io is intentionally NOT initialised here.                          */
-/* It is attached to the HTTP server in server.js, NOT in app.js.           */
-/*                                                                            */
-/* Reason: app.js exports an Express app (for testing + modularity).        */
-/* Socket requires the raw http.Server instance which only exists in         */
-/* server.js after: const server = http.createServer(app)                   */
-/*                                                                            */
-/* PRD §22 — On-Trip Help & SOS real-time events use socket.                */
-/* PRD §24 — In-app push notifications use socket.                          */
-/*                                                                            */
-/* In server.js:                                                             */
-/*   const { createServer } = require('http');                               */
-/*   const { initSocket }   = require('./socket');                           */
-/*   const server = createServer(app);                                       */
-/*   initSocket(server);                                                     */
-/*   server.listen(PORT);                                                    */
-/* -------------------------------------------------------------------------- */
-
-/* -------------------------------------------------------------------------- */
-/* 404 HANDLER                                                                */
+/* 404 HANDLER                                                                 */
 /* -------------------------------------------------------------------------- */
 
 app.use((req, res) => {
@@ -224,20 +212,13 @@ app.use((req, res) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* GLOBAL ERROR HANDLER                                                       */
-/* PRD §25.10 — standard error response envelope                             */
+/* GLOBAL ERROR HANDLER                                                        */
+/* PRD §25.10 — standard error response envelope                              */
 /* -------------------------------------------------------------------------- */
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error('❌ ERROR:', {
-    message:   err.message,
-    code:      err.code,
-    stack:     err.stack,
-    url:       req.url,
-    method:    req.method,
-    timestamp: new Date().toISOString()
-  });
+  logger.error(`${req.method} ${req.url} — unhandled error`, err);
 
   const statusCode = err.status || err.statusCode || 500;
   const errorCode  = err.code   || 'SERVER_ERROR';

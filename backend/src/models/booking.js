@@ -131,6 +131,13 @@ module.exports = (sequelize) => {
     final_fare: {
       type: DataTypes.DECIMAL(12, 2),
     },
+    // PRD §7.1 — Two-rate system
+    customer_rate: {
+      type: DataTypes.DECIMAL(12, 2),
+    },
+    hire_rate: {
+      type: DataTypes.DECIMAL(12, 2),
+    },
     distance_km: {
       type: DataTypes.DECIMAL(10, 2),
     },
@@ -143,6 +150,13 @@ module.exports = (sequelize) => {
     surcharges: {
       type:         DataTypes.JSONB,
       defaultValue: {},
+    },
+    total_expenses: {
+      type:         DataTypes.DECIMAL(12, 2),
+      defaultValue: 0,
+    },
+    profit: {
+      type: DataTypes.DECIMAL(12, 2),
     },
 
     // PRD §25.6 — Payment lifecycle
@@ -227,6 +241,12 @@ module.exports = (sequelize) => {
       Booking.hasMany(models.Payment, {
         foreignKey: 'booking_id',
         as:         'payments',
+      });
+    }
+    if (models.TripCharge) {
+      Booking.hasMany(models.TripCharge, {
+        foreignKey: 'trip_id',
+        as:         'charges',
       });
     }
     if (models.BookingOffer) {
