@@ -68,9 +68,7 @@ app.use(helmet());
 /* -------------------------------------------------------------------------- */
 
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-    : '*',
+  origin: 'http://localhost:5173',
   credentials: true
 }));
 
