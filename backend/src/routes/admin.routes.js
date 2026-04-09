@@ -109,4 +109,8 @@ router.get('/reports/drivers',   controller.driverReport);
 router.get('/reports/export',    controller.exportReport);
 router.get('/live/drivers',      controller.liveDrivers);
 
+// ── Maintenance (Danger Zone) ──
+router.post('/maintenance/export-all',       isSuperAdmin, controller.exportAllData);
+router.post('/maintenance/clear-test-data',  isSuperAdmin, controller.clearTestData);
+
 module.exports = router;

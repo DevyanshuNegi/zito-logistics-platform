@@ -50,7 +50,15 @@ exports.changePassword = async (req, res) => {
 
 exports.uploadPhoto = async (req, res) => {
   try {
-    return success(res, { message: 'Photo upload coming in Phase 2' });
+    const { photo_url, photo_base64 } = req.body;
+    if (!photo_url && !photo_base64) {
+      return error(res, 'VALIDATION_ERROR', 'photo_url or photo_base64 required', 422);
+    }
+    const user = await User.findByPk(req.user.id);
+    const payload = photo_url || photo_base64;
+    await user.update({ profile_photo: payload });
+    if (req.auditLog) await req.auditLog('PHOTO_UPLOADED', { user_id: user.id });
+    return success(res, { message: 'Photo updated', profile_photo: payload });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -58,8 +66,12 @@ exports.uploadPhoto = async (req, res) => {
 
 exports.getNotificationPreferences = async (req, res) => {
   try {
-    // PRD §24.3 — Phase 2
-    return success(res, { email: true, sms: true, in_app: true });
+    const user = await User.findByPk(req.user.id);
+    return success(res, {
+      email: user.notify_email,
+      sms: user.notify_sms,
+      in_app: user.notify_in_app,
+    });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -67,7 +79,15 @@ exports.getNotificationPreferences = async (req, res) => {
 
 exports.updateNotificationPreferences = async (req, res) => {
   try {
-    return success(res, { message: 'Notification preferences coming in Phase 2' });
+    const { email, sms, in_app } = req.body;
+    const user = await User.findByPk(req.user.id);
+    const updates = {};
+    if (email !== undefined) updates.notify_email = !!email;
+    if (sms !== undefined) updates.notify_sms = !!sms;
+    if (in_app !== undefined) updates.notify_in_app = !!in_app;
+    await user.update(updates);
+    if (req.auditLog) await req.auditLog('NOTIFICATION_PREFS_UPDATED', { user_id: user.id, ...updates });
+    return success(res, { message: 'Notification preferences updated', preferences: updates });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

@@ -4,7 +4,7 @@
 // PRD §25.8 — Audit Log
 // PRD §25.10 — Pagination
 
-const { Op }     = require('sequelize');
+const { Op, QueryTypes }     = require('sequelize');
 const { sequelize, User, Driver, Vehicle, Booking, Contract, AuditLog, DriverCompliance, SystemSetting } = require('../models');
 const { success, error }   = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
@@ -930,6 +930,107 @@ exports.exportReport = async (req, res) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="bookings-${Date.now()}.csv"`);
     return res.send(csv);
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Maintenance: export a compact JSON snapshot of key tables (dev/support) ──
+// POST /api/v1/admin/maintenance/export-all
+exports.exportAllData = async (req, res) => {
+  try {
+    const limit  = Math.min(Number(req.body?.limit || req.query.limit) || 500, 2000);
+    const format = String(req.body?.format || req.query.format || 'json').toLowerCase();
+    const tables = [
+      'users',
+      'drivers',
+      'vehicles',
+      'bookings',
+      'payments',
+      'complaints',
+      'trip_charges',
+      'login_otps',
+    ];
+
+    const snapshot = {};
+    for (const table of tables) {
+      try {
+        const rows = await sequelize.query(
+          `SELECT * FROM "${table}" ORDER BY created_at DESC NULLS LAST LIMIT :limit`,
+          { replacements: { limit }, type: QueryTypes.SELECT }
+        );
+        snapshot[table] = { count: rows.length, rows };
+      } catch (err) {
+        snapshot[table] = { error: err.message };
+      }
+    }
+
+    const payload = { generated_at: new Date().toISOString(), limit, snapshot };
+
+    if (format === 'csv') {
+      const header = ['table', 'data_json'];
+      const rows = [];
+      Object.entries(snapshot).forEach(([table, val]) => {
+        if (val?.rows?.length) {
+          val.rows.forEach(r => {
+            const json = JSON.stringify(r).replace(/"/g, '""');
+            rows.push(`"${table}","${json}"`);
+          });
+        } else {
+          rows.push(`"${table}","${(val?.error || '0 rows')}"`);
+        }
+      });
+      const csv = [header.join(','), ...rows].join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="zito-export-${Date.now()}.csv"`);
+      return res.send(csv);
+    }
+
+    return success(res, payload);
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Maintenance: clear test data (dev only, requires confirm) ──
+// POST /api/v1/admin/maintenance/clear-test-data?confirm=1
+exports.clearTestData = async (req, res) => {
+  try {
+    const isProd = (process.env.NODE_ENV || 'development') === 'production';
+    if (isProd) return error(res, 'FORBIDDEN', 'Disabled in production', 403);
+
+    const confirmed = req.query.confirm === '1' || req.body?.confirm === true;
+    const tables = [
+      'login_otps',
+      'audit_logs',
+      'trip_charges',
+      'payments',
+      'complaints',
+      'bookings',
+      'booking_offers',
+    ];
+
+    if (!confirmed) {
+      return success(res, {
+        message: 'Dry run only. Append ?confirm=1 or body {confirm:true} to actually truncate.',
+        tables,
+      });
+    }
+
+    const cleared = [];
+    const failed  = [];
+
+    for (const table of tables) {
+      try {
+        await sequelize.query(`TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE`);
+        cleared.push(table);
+      } catch (err) {
+        failed.push({ table, error: err.message });
+      }
+    }
+
+    if (req.auditLog) await req.auditLog('CLEAR_TEST_DATA', { cleared, failed });
+    return success(res, { cleared, failed, environment: process.env.NODE_ENV || 'development' });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

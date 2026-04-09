@@ -20,6 +20,7 @@ const SystemSetting    = require('./system-setting')(sequelize);
 const AuditLog         = require('./auditLog')(sequelize);
 const DriverCompliance = require('./drivercompliance')(sequelize);
 const CustomerDriverRule = require('./customer-driver-rule')(sequelize);
+const LoginOtp = require('./login-otp')(sequelize);
 
 // ── Collect all models ─────────────────────────────────────────────────
 const models = {
@@ -37,6 +38,7 @@ const models = {
   AuditLog,
   DriverCompliance,
   CustomerDriverRule,
+  LoginOtp,
 };
 
 // ── Run associations ───────────────────────────────────────────────────

@@ -185,8 +185,22 @@ exports.getInvoice = async (req, res) => {
       include: [{ model: Vehicle, as: 'vehicle', attributes: ['plate_number','vehicle_type'] }],
     });
     if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
-    // PRD Phase 2 — PDF generation
-    return success(res, { message: 'PDF invoice generation coming in Phase 2', booking });
+    const html = `
+      <html><body style="font-family:Arial,sans-serif;padding:24px;">
+        <h2>ZITO Invoice</h2>
+        <p><strong>Reference:</strong> ${booking.reference}</p>
+        <p><strong>Status:</strong> ${booking.status}</p>
+        <p><strong>Payment:</strong> ${booking.payment_status}</p>
+        <p><strong>Pickup:</strong> ${booking.pickup_address}</p>
+        <p><strong>Delivery:</strong> ${booking.delivery_address}</p>
+        <p><strong>Vehicle:</strong> ${booking.vehicle?.vehicle_type || 'N/A'} ${booking.vehicle?.plate_number ? `(${booking.vehicle.plate_number})` : ''}</p>
+        <hr/>
+        <p><strong>Customer Rate:</strong> KES ${booking.customer_rate || booking.final_fare || 0}</p>
+        <p><strong>Issued:</strong> ${new Date().toISOString()}</p>
+      </body></html>
+    `;
+    res.setHeader('Content-Type', 'text/html');
+    return res.send(html);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

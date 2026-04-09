@@ -13,6 +13,7 @@ const { paginate, paginatedResponse } = require('../utils/helpers');
 const { quoteFare } = require('../services/pricing.service');
 const { sendBookingNotification } = require('../services/notification.service');
 const { broadcastNewLoad } = require('../services/broadcast.service');
+const SOS_MARKER = '[SOS_FROZEN]';
 
 // ── Create Booking ─────────────────────────────────────────────────────────
 exports.createBooking = async (req, res) => {
@@ -219,6 +220,9 @@ exports.updateStatus = async (req, res) => {
     const { status } = req.body;
     const booking = await Booking.findByPk(req.params.id);
     if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
+    if ((booking.special_instructions || '').includes(SOS_MARKER)) {
+      return error(res, 'BOOKING_FROZEN', 'Booking is frozen due to SOS. Admin must unfreeze first.', 409);
+    }
 
     if (status === 'completed') {
       const paidStatuses = ['released', 'refunded'];

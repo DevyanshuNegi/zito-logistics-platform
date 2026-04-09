@@ -58,4 +58,10 @@ router.post('/:id/documents',
   controller.uploadDocument
 );
 
+// Expiring documents
+router.get('/expiring/list',
+  authorize(ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN, ROLES.FINANCE_ADMIN),
+  controller.getExpiringDocuments
+);
+
 module.exports = router;

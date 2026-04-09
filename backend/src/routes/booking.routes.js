@@ -60,6 +60,12 @@ router.post('/calculate-price',
   }
 );
 
+// My offers (bids)
+router.get('/offers/mine',
+  authorize(ROLES.DRIVER, ROLES.TRANSPORTER, ROLES.AGENT),
+  offerController.listMyOffers
+);
+
 // Marketplace Offers
 router.get('/:id/offers',
   authorize(ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN, ROLES.CUSTOMER, ROLES.AGENT, ROLES.TRANSPORTER),

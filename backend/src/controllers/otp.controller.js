@@ -6,13 +6,9 @@
 const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { User }   = require('../models');
+const { User, LoginOtp } = require('../models');
 const { success, error } = require('../utils/response');
 const { sendSms } = require('../services/sms.service');
-
-// ── OTP Store (DB table: login_otps) ──────────────────────────────────────
-// Using sequelize model if available, fallback to in-memory for Phase 1
-// In production use the login_otps table defined in PRD §8
 
 const generateOtp = () => {
   // PRD §12 — 6-digit OTP
@@ -20,9 +16,6 @@ const generateOtp = () => {
 };
 
 const OTP_EXPIRY_MINS = parseInt(process.env.OTP_EXPIRY_MINS || '10', 10);
-
-// In-memory OTP store for Phase 1 (replace with DB in Phase 2)
-const otpStore = new Map();
 
 const sendOtpEmail = async (email, otp) => {
   // PRD §9 — Email via Resend.com
@@ -83,12 +76,29 @@ exports.sendOtp = async (req, res) => {
       return success(res, { message: 'OTP sent if account exists.' });
     }
 
-    const otp     = generateOtp();
-    const key     = `${user.id}:${type}`;
-    const expires = Date.now() + OTP_EXPIRY_MINS * 60 * 1000;
+    const otp = generateOtp();
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINS * 60 * 1000);
 
-    // Store OTP
-    otpStore.set(key, { otp, expires, attempts: 0 });
+    // Invalidate old unconsumed OTP rows for this user+type
+    await LoginOtp.update(
+      { consumed_at: new Date() },
+      {
+        where: {
+          user_id: user.id,
+          type,
+          consumed_at: null,
+        },
+      }
+    );
+
+    await LoginOtp.create({
+      user_id: user.id,
+      contact: user.email,
+      otp,
+      type,
+      expires_at: expiresAt,
+      attempts: 0,
+    });
 
     // Send email
     await sendOtpEmail(user.email, otp);
@@ -152,33 +162,40 @@ exports.verifyOtp = async (req, res) => {
       return error(res, 'VALIDATION_ERROR', 'user_id, contact or temp_token required', 422);
     }
 
-    const key    = `${resolvedUserId}:${type}`;
-    const stored = otpStore.get(key);
+    const stored = await LoginOtp.findOne({
+      where: {
+        user_id: resolvedUserId,
+        type,
+        consumed_at: null,
+      },
+      order: [['created_at', 'DESC']],
+    });
 
     if (!stored) {
       return error(res, 'OTP_NOT_FOUND', 'OTP not found or already used. Request a new one.', 400);
     }
 
     // Check expiry
-    if (Date.now() > stored.expires) {
-      otpStore.delete(key);
+    if (Date.now() > new Date(stored.expires_at).getTime()) {
+      await stored.update({ consumed_at: new Date() });
       return error(res, 'OTP_EXPIRED', 'OTP has expired. Please request a new one.', 400);
     }
 
     // Max 5 attempts
     if (stored.attempts >= 5) {
-      otpStore.delete(key);
+      await stored.update({ consumed_at: new Date() });
       return error(res, 'OTP_MAX_ATTEMPTS', 'Too many failed attempts. Request a new OTP.', 429);
     }
 
     // Verify OTP
     if (stored.otp !== otp.trim()) {
-      stored.attempts += 1;
-      return error(res, 'INVALID_OTP', `Invalid OTP. ${5 - stored.attempts} attempts remaining.`, 400);
+      const nextAttempts = Number(stored.attempts || 0) + 1;
+      await stored.update({ attempts: nextAttempts });
+      return error(res, 'INVALID_OTP', `Invalid OTP. ${Math.max(0, 5 - nextAttempts)} attempts remaining.`, 400);
     }
 
-    // OTP valid — remove from store
-    otpStore.delete(key);
+    // OTP valid — mark consumed
+    await stored.update({ consumed_at: new Date() });
 
     // Load user
     const user = resolvedUser || await User.findByPk(resolvedUserId);

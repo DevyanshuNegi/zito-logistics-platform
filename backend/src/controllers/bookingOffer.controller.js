@@ -27,6 +27,34 @@ exports.listOffers = async (req, res) => {
   }
 };
 
+// GET /api/v1/offers/mine
+// PRD §7.9 — Drivers/Transporters/Agents view their submitted bids
+exports.listMyOffers = async (req, res) => {
+  try {
+    const { page, limit, offset } = require('../utils/helpers').paginate(req.query);
+    const where = { user_id: req.user.id };
+    if (req.query.status) where.status = req.query.status;
+
+    const { count, rows } = await BookingOffer.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [['created_at', 'DESC']],
+      include: [
+        {
+          model: Booking,
+          as: 'booking',
+          attributes: ['id', 'reference', 'pickup_address', 'delivery_address', 'vehicle_type', 'customer_rate', 'status'],
+        },
+      ],
+    });
+
+    return success(res, rows, 200, require('../utils/helpers').paginatedResponse(rows, count, page, limit).meta);
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
 exports.createOffer = async (req, res) => {
   try {
     const booking = await ensureBookingExists(req.params.id);

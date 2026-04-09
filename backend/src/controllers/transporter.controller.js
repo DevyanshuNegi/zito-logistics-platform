@@ -302,7 +302,29 @@ exports.cancelBooking = async (req, res) => {
 // ── Finance ────────────────────────────────────────────────────────────────
 exports.getFinanceSummary = async (req, res) => {
   try {
-    return success(res, { message: 'Finance summary coming in Phase 2' });
+    const bookings = await Booking.findAll({
+      where: { transporter_id: req.user.id, status: 'completed' },
+      attributes: ['id', 'customer_rate', 'hire_rate', 'total_expenses', 'profit', 'completed_at'],
+      order: [['completed_at', 'DESC']],
+    });
+
+    const totals = bookings.reduce(
+      (acc, b) => {
+        acc.total_customer_rate += Number(b.customer_rate || 0);
+        acc.total_hire_rate += Number(b.hire_rate || 0);
+        acc.total_expenses += Number(b.total_expenses || 0);
+        acc.total_profit += Number(b.profit || 0);
+        return acc;
+      },
+      { total_customer_rate: 0, total_hire_rate: 0, total_expenses: 0, total_profit: 0 }
+    );
+
+    return success(res, {
+      summary: {
+        completed_bookings: bookings.length,
+        ...totals,
+      },
+    });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -310,7 +332,28 @@ exports.getFinanceSummary = async (req, res) => {
 
 exports.getInvoices = async (req, res) => {
   try {
-    return success(res, { message: 'Invoices coming in Phase 2' });
+    const bookings = await Booking.findAll({
+      where: { transporter_id: req.user.id, status: 'completed' },
+      include: [{ model: User, as: 'customer', attributes: ['id', 'full_name', 'email'] }],
+      attributes: ['id', 'reference', 'customer_rate', 'hire_rate', 'total_expenses', 'profit', 'completed_at'],
+      order: [['completed_at', 'DESC']],
+      limit: Number(req.query.limit) || 200,
+    });
+
+    const invoices = bookings.map((b) => ({
+      invoice_number: `TRN-${String(b.reference || b.id).slice(-8).toUpperCase()}`,
+      booking_id: b.id,
+      booking_reference: b.reference,
+      customer: b.customer ? { id: b.customer.id, full_name: b.customer.full_name, email: b.customer.email } : null,
+      customer_rate: Number(b.customer_rate || 0),
+      hire_rate: Number(b.hire_rate || 0),
+      expenses: Number(b.total_expenses || 0),
+      transporter_profit: Number(b.profit || 0),
+      issued_at: b.completed_at || b.updated_at,
+      status: 'issued',
+    }));
+
+    return success(res, { invoices });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

@@ -6,6 +6,7 @@
 const { Vehicle, Driver, User } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { Op } = require('sequelize');
 
 exports.getVehicles = async (req, res) => {
   try {
@@ -78,7 +79,76 @@ exports.retireVehicle = async (req, res) => {
 
 exports.uploadDocument = async (req, res) => {
   try {
-    return success(res, { message: 'Document upload coming in Phase 2' });
+    const vehicle = await Vehicle.findByPk(req.params.id);
+    if (!vehicle) return error(res, 'NOT_FOUND', 'Vehicle not found', 404);
+
+    const updates = {};
+    const allowed = [
+      'insurance_cert',
+      'insurance_expiry',
+      'ntsa_cert_url',
+      'ntsa_expiry',
+      'inspection_cert_url',
+      'inspection_expiry',
+      'logbook_url',
+      'is_assignment_blocked',
+      'block_reason',
+    ];
+    allowed.forEach((f) => {
+      if (req.body[f] !== undefined) updates[f] = req.body[f];
+    });
+
+    // Any document change reverts verification until reviewed.
+    updates.insurance_verified = false;
+    updates.ntsa_verified = false;
+    updates.inspection_verified = false;
+    updates.logbook_verified = false;
+    updates.is_verified = false;
+    updates.is_assignment_blocked = true;
+    updates.block_reason = 'Awaiting document verification';
+
+    await vehicle.update(updates);
+    if (req.auditLog) {
+      await req.auditLog('VEHICLE_DOCUMENTS_UPLOADED', {
+        vehicle_id: vehicle.id,
+        by: req.user.id,
+        fields: Object.keys(updates),
+      });
+    }
+    return success(res, { message: 'Vehicle documents submitted for verification', vehicle });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Expiring documents (admin/ops view) ──
+// GET /api/v1/vehicle/expiring?days=30
+exports.getExpiringDocuments = async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days || '30', 10), 90);
+    const now = new Date();
+    const cutoff = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+    const where = {
+      [Op.or]: [
+        { insurance_expiry:  { [Op.and]: [{ [Op.ne]: null }, { [Op.lte]: cutoff }] } },
+        { ntsa_expiry:       { [Op.and]: [{ [Op.ne]: null }, { [Op.lte]: cutoff }] } },
+        { inspection_expiry: { [Op.and]: [{ [Op.ne]: null }, { [Op.lte]: cutoff }] } },
+      ],
+    };
+
+    const vehicles = await Vehicle.findAll({
+      where,
+      order: [['insurance_expiry', 'ASC']],
+      attributes: [
+        'id','plate_number','vehicle_type','transporter_id',
+        'insurance_expiry','ntsa_expiry','inspection_expiry',
+        'insurance_verified','ntsa_verified','inspection_verified',
+        'is_assignment_blocked','block_reason'
+      ],
+    });
+
+    return success(res, { now, cutoff, vehicles });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

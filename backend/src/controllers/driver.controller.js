@@ -9,6 +9,7 @@ const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { BOOKING_STATUS } = require('../constants/bookingStatus');
 const { getIO } = require('../services/notification.service');
+const SOS_MARKER = '[SOS_FROZEN]';
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
@@ -130,6 +131,9 @@ exports.acceptTrip = async (req, res) => {
 
     const booking = await Booking.findOne({ where: { id: req.params.id, assigned_driver_id: driver.id, status: 'assigned' } });
     if (!booking) return error(res, 'NOT_FOUND', 'Trip not found or not in assigned status', 404);
+    if ((booking.special_instructions || '').includes(SOS_MARKER)) {
+      return error(res, 'BOOKING_FROZEN', 'Trip is frozen due to SOS. Wait for admin.', 409);
+    }
 
     await booking.update({ status: 'accepted', accepted_at: new Date() });
     if (req.auditLog) await req.auditLog('TRIP_ACCEPTED', { booking_id: booking.id, driver_id: driver.id });
@@ -147,6 +151,9 @@ exports.rejectTrip = async (req, res) => {
 
     const booking = await Booking.findOne({ where: { id: req.params.id, assigned_driver_id: driver.id, status: 'assigned' } });
     if (!booking) return error(res, 'NOT_FOUND', 'Trip not found or not in assigned status', 404);
+    if ((booking.special_instructions || '').includes(SOS_MARKER)) {
+      return error(res, 'BOOKING_FROZEN', 'Trip is frozen due to SOS. Wait for admin.', 409);
+    }
 
     await booking.update({ status: 'pending', assigned_driver_id: null, rejection_reason: reason });
     if (req.auditLog) await req.auditLog('TRIP_REJECTED', { booking_id: booking.id, driver_id: driver.id, reason });
@@ -165,6 +172,9 @@ exports.updateTripStatus = async (req, res) => {
 
     const booking = await Booking.findOne({ where: { id: req.params.id, assigned_driver_id: driver.id } });
     if (!booking) return error(res, 'NOT_FOUND', 'Trip not found', 404);
+    if ((booking.special_instructions || '').includes(SOS_MARKER)) {
+      return error(res, 'BOOKING_FROZEN', 'Trip is frozen due to SOS. Wait for admin.', 409);
+    }
 
     // PRD §6 — valid transitions
     const transitions = {

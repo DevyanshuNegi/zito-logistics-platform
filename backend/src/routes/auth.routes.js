@@ -4,9 +4,8 @@ const express = require('express');
 const router  = express.Router();
 const jwt     = require('jsonwebtoken');
 const Joi     = require('joi');
-const { User, Driver } = require('../models');
+const { User, Driver, LoginOtp } = require('../models');
 const { sequelize } = require('../config/database');
-const { QueryTypes } = require('sequelize');
 
 // ─── Token generator ──────────────────────────────────────────────────────────
 
@@ -223,14 +222,20 @@ router.post('/login', async (req, res) => {
     const otp     = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = new Date(Date.now() + 10 * 60 * 1000);
 
-    await sequelize.query(
-      `DELETE FROM login_otps WHERE contact = :contact`,
-      { replacements: { contact }, type: QueryTypes.DELETE }
+    // clear old OTPs for this user/type
+    await LoginOtp.update(
+      { consumed_at: new Date() },
+      { where: { user_id: user.id, type: 'login', consumed_at: null } }
     );
-    await sequelize.query(
-      `INSERT INTO login_otps (contact, otp, expires_at) VALUES (:contact, :otp, :expires)`,
-      { replacements: { contact, otp, expires }, type: QueryTypes.INSERT }
-    );
+
+    await LoginOtp.create({
+      user_id: user.id,
+      contact,
+      otp,
+      type: 'login',
+      expires_at: expires,
+      attempts: 0,
+    });
 
     // ✅ Send LOGIN OTP email (NOT reset password email)
     if (value.email) {
@@ -273,14 +278,18 @@ router.post('/forgot-password', async (req, res) => {
     const otp     = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = new Date(Date.now() + 10 * 60 * 1000);
 
-    await sequelize.query(
-      `DELETE FROM login_otps WHERE contact = :email`,
-      { replacements: { email: email.trim() }, type: QueryTypes.DELETE }
+    await LoginOtp.update(
+      { consumed_at: new Date() },
+      { where: { user_id: user.id, type: 'reset_password', consumed_at: null } }
     );
-    await sequelize.query(
-      `INSERT INTO login_otps (contact, otp, expires_at) VALUES (:email, :otp, :expires)`,
-      { replacements: { email: email.trim(), otp, expires }, type: QueryTypes.INSERT }
-    );
+    await LoginOtp.create({
+      user_id: user.id,
+      contact: email.trim(),
+      otp,
+      type: 'reset_password',
+      expires_at: expires,
+      attempts: 0,
+    });
 
     res.json({ success: true, message: 'If that email exists, an OTP has been sent.' });
 
@@ -307,21 +316,37 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
 
-    const rows = await sequelize.query(
-      `SELECT * FROM login_otps WHERE contact = :email AND otp = :otp ORDER BY created_at DESC LIMIT 1`,
-      { replacements: { email: email.trim(), otp }, type: QueryTypes.SELECT }
-    );
+    const otpRow = await LoginOtp.findOne({
+      where: {
+        contact: email.trim(),
+        type: 'reset_password',
+        consumed_at: null,
+      },
+      order: [['created_at', 'DESC']],
+    });
 
-    if (!rows.length) {
+    if (!otpRow) {
       return res.status(400).json({ success: false, message: 'Invalid OTP. Please try again.' });
     }
 
-    if (new Date(rows[0].expires_at) < new Date()) {
-      await sequelize.query(`DELETE FROM login_otps WHERE id = :id`, { replacements: { id: rows[0].id }, type: QueryTypes.DELETE });
+    // expiry check
+    if (new Date(otpRow.expires_at) < new Date()) {
+      await otpRow.update({ consumed_at: new Date() });
       return res.status(400).json({ success: false, message: 'OTP expired. Please request a new one.' });
     }
 
-    await sequelize.query(`DELETE FROM login_otps WHERE id = :id`, { replacements: { id: rows[0].id }, type: QueryTypes.DELETE });
+    // attempt check
+    if (otpRow.attempts >= 5) {
+      await otpRow.update({ consumed_at: new Date() });
+      return res.status(400).json({ success: false, message: 'Too many attempts. Request a new OTP.' });
+    }
+
+    if (otpRow.otp !== otp.trim()) {
+      await otpRow.update({ attempts: (otpRow.attempts || 0) + 1 });
+      return res.status(400).json({ success: false, message: 'Invalid OTP. Please try again.' });
+    }
+
+    await otpRow.update({ consumed_at: new Date() });
 
     const user = await User.findOne({ where: { email: email.trim() } });
     if (!user) {

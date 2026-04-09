@@ -56,7 +56,10 @@ exports.getPaymentById = async (req, res) => {
 // Initiate a generic payment intent (bank/MPesa) â€” creates a client-side payload for testing.
 exports.initiatePayment = async (req, res) => {
   try {
-    const { booking_id } = req.body;
+    const { booking_id, method } = req.body;
+    if (method === 'cash') {
+      return error(res, 'VALIDATION_ERROR', 'Cash payments are disabled in this phase', 422);
+    }
     const booking = await ensureBooking(booking_id);
     const paymentRequestId = `PAY-${uuid().split('-')[0]}`;
 
@@ -193,24 +196,49 @@ exports.generateInvoice = async (req, res) => {
   try {
     const booking = await ensureBooking(req.params.id);
     const customer = await loadCustomer(booking);
-    const html = `
-      <html><body style="font-family:Arial,sans-serif;padding:24px;">
-        <h2>ZITO Invoice</h2>
-        <p><strong>Reference:</strong> ${booking.reference}</p>
-        <p><strong>Status:</strong> ${booking.payment_status}</p>
-        <p><strong>Customer:</strong> ${customer?.full_name || 'N/A'} (${customer?.email || ''})</p>
-        <p><strong>Pickup:</strong> ${booking.pickup_address}</p>
-        <p><strong>Delivery:</strong> ${booking.delivery_address}</p>
-        <hr/>
-        <p><strong>Customer Rate:</strong> KES ${booking.customer_rate || 0}</p>
-        <p><strong>Hire Rate:</strong> KES ${booking.hire_rate || 0}</p>
-        <p><strong>Total Expenses:</strong> KES ${booking.total_expenses || 0}</p>
-        <p><strong>Profit:</strong> KES ${booking.profit || 0}</p>
-        <p><small>Generated at ${new Date().toISOString()}</small></p>
-      </body></html>
-    `;
-    res.setHeader('Content-Type', 'text/html');
-    return res.send(html);
+    try {
+      const PDFDocument = require('pdfkit');
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="invoice-${booking.reference}.pdf"`);
+      const doc = new PDFDocument({ margin: 36 });
+      doc.pipe(res);
+      doc.fontSize(18).text('ZITO Invoice', { align: 'left' });
+      doc.moveDown();
+      doc.fontSize(12);
+      doc.text(`Reference: ${booking.reference}`);
+      doc.text(`Status: ${booking.payment_status}`);
+      doc.text(`Customer: ${customer?.full_name || 'N/A'} (${customer?.email || ''})`);
+      doc.text(`Pickup: ${booking.pickup_address}`);
+      doc.text(`Delivery: ${booking.delivery_address}`);
+      doc.moveDown();
+      doc.text(`Customer Rate: KES ${booking.customer_rate || 0}`);
+      doc.text(`Hire Rate: KES ${booking.hire_rate || 0}`);
+      doc.text(`Total Expenses: KES ${booking.total_expenses || 0}`);
+      doc.text(`Profit: KES ${booking.profit || 0}`);
+      doc.moveDown();
+      doc.text(`Generated: ${new Date().toISOString()}`);
+      doc.end();
+      return;
+    } catch (pdfErr) {
+      const html = `
+        <html><body style="font-family:Arial,sans-serif;padding:24px;">
+          <h2>ZITO Invoice</h2>
+          <p><strong>Reference:</strong> ${booking.reference}</p>
+          <p><strong>Status:</strong> ${booking.payment_status}</p>
+          <p><strong>Customer:</strong> ${customer?.full_name || 'N/A'} (${customer?.email || ''})</p>
+          <p><strong>Pickup:</strong> ${booking.pickup_address}</p>
+          <p><strong>Delivery:</strong> ${booking.delivery_address}</p>
+          <hr/>
+          <p><strong>Customer Rate:</strong> KES ${booking.customer_rate || 0}</p>
+          <p><strong>Hire Rate:</strong> KES ${booking.hire_rate || 0}</p>
+          <p><strong>Total Expenses:</strong> KES ${booking.total_expenses || 0}</p>
+          <p><strong>Profit:</strong> KES ${booking.profit || 0}</p>
+          <p><small>Generated at ${new Date().toISOString()}</small></p>
+        </body></html>
+      `;
+      res.setHeader('Content-Type', 'text/html');
+      return res.send(html);
+    }
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

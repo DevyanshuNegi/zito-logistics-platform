@@ -119,6 +119,19 @@ module.exports = (sequelize) => {
       type:         DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    // PRD §24.3 — Notification preferences
+    notify_email: {
+      type:         DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+    notify_sms: {
+      type:         DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+    notify_in_app: {
+      type:         DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
     last_login_at: {
       type: DataTypes.DATE,
     },

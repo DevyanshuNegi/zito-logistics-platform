@@ -46,10 +46,12 @@ const tripChargesRoutes = require('./routes/tripCharges.routes');
 const userRoutes        = require('./routes/user.routes');
 const contractRoutes    = require('./routes/contract.routes');
 const complaintRoutes   = require('./routes/complaint.routes');
+const helpRoutes        = require('./routes/help.routes');
 const mapRoutes         = require('./routes/map.routes');
 const complianceRoutes  = require('./routes/compliance.routes');
 const paymentExportRoutes = require('./routes/paymentExport.routes');
 const tripChargeExportRoutes = require('./routes/tripChargeExport.routes');
+const profileRoutes     = require('./routes/profile.routes');
 
 const app = express();
 
@@ -163,10 +165,12 @@ app.use('/api/v1/user',         userRoutes);
 app.use('/api/v1/users',        userRoutes); // alias for legacy frontend
 app.use('/api/v1/contract',     contractRoutes);
 app.use('/api/v1/complaints',   complaintRoutes);
+app.use('/api/v1/help',         helpRoutes);
 app.use('/api/v1/map',          mapRoutes);
 app.use('/api/v1/compliance',   complianceRoutes);
 app.use('/api/v1/export',       paymentExportRoutes);
 app.use('/api/v1/export',       tripChargeExportRoutes);
+app.use('/api/v1/profile',      profileRoutes);
 
 // Expose getter for socket.io (set in server.js)
 app.set('getIO', () => app.get('io'));
