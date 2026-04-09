@@ -36,12 +36,16 @@ const sendOtpEmail = async (email, otp) => {
         <p>Do not share this code with anyone.</p>
       `,
     });
+    return true;
   } catch (err) {
-    // Log but don't crash — fall through so OTP is still returned in dev
+    // In dev, allow fallback so local testing can continue with _dev_otp.
+    // In production, surface delivery failure so UI can prompt retry.
     console.error('Email send error:', err.message);
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[DEV] OTP for ${email}: ${otp}`);
+      return true;
     }
+    return false;
   }
 };
 
@@ -101,7 +105,10 @@ exports.sendOtp = async (req, res) => {
     });
 
     // Send email
-    await sendOtpEmail(user.email, otp);
+    const delivered = await sendOtpEmail(user.email, otp);
+    if (!delivered) {
+      return error(res, 'OTP_DELIVERY_FAILED', 'Could not deliver OTP email. Please try again.', 502);
+    }
 
     // Optional SMS (free/dry-run friendly)
     const smsTarget = contact && !contact.includes('@') ? contact.trim() : user.phone;
@@ -162,14 +169,14 @@ exports.verifyOtp = async (req, res) => {
       return error(res, 'VALIDATION_ERROR', 'user_id, contact or temp_token required', 422);
     }
 
-    const stored = await LoginOtp.findOne({
-      where: {
-        user_id: resolvedUserId,
-        type,
-        consumed_at: null,
-      },
-      order: [['created_at', 'DESC']],
-    });
+        const stored = await LoginOtp.findOne({
+          where: {
+            user_id: resolvedUserId,
+            type,
+            consumed_at: null,
+          },
+          order: [['created_at', 'DESC']],
+        });
 
     if (!stored) {
       return error(res, 'OTP_NOT_FOUND', 'OTP not found or already used. Request a new one.', 400);
@@ -188,7 +195,7 @@ exports.verifyOtp = async (req, res) => {
     }
 
     // Verify OTP
-    if (stored.otp !== otp.trim()) {
+    if (stored.otp !== String(otp).trim()) {
       const nextAttempts = Number(stored.attempts || 0) + 1;
       await stored.update({ attempts: nextAttempts });
       return error(res, 'INVALID_OTP', `Invalid OTP. ${Math.max(0, 5 - nextAttempts)} attempts remaining.`, 400);
@@ -224,6 +231,7 @@ exports.verifyOtp = async (req, res) => {
     return success(res, {
       message: 'OTP verified successfully.',
       token,
+      accessToken: token,
       user: {
         id:                user.id,
         email:             user.email,

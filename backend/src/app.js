@@ -54,6 +54,7 @@ const tripChargeExportRoutes = require('./routes/tripChargeExport.routes');
 const profileRoutes     = require('./routes/profile.routes');
 
 const app = express();
+const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
 /* -------------------------------------------------------------------------- */
 /* SECURITY HEADERS                                                            */
@@ -67,9 +68,27 @@ app.use(helmet());
 /* PRD §11 — production must restrict origins via env var                     */
 /* -------------------------------------------------------------------------- */
 
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((v) => v.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
+  origin(origin, callback) {
+    // Allow non-browser tools (curl/postman) and same-origin server calls
+    if (!origin) return callback(null, true);
+
+    // Allow configured origins
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+
+    // In development, allow localhost/127.0.0.1 with any port to avoid CORS pain
+    if (isDev && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
 }));
 
 /* -------------------------------------------------------------------------- */
@@ -97,8 +116,6 @@ app.use(logger.requestMiddleware);
 /*   authLimiter    — /auth  : 20 req / 15 min  (OTP brute-force)            */
 /*   generalLimiter — /api/  : 300 req / 15 min (normal usage)               */
 /* -------------------------------------------------------------------------- */
-
-const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

@@ -217,32 +217,45 @@ router.post('/login', async (req, res) => {
       }
     }
 
-    // ✅ Generate and store login OTP
-    const contact = value.email ? value.email.trim() : value.mobile.trim();
-    const otp     = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = new Date(Date.now() + 10 * 60 * 1000);
+    // ✅ Login OTP policy:
+    // Reuse the latest unconsumed/unexpired login OTP to avoid invalidation
+    // when user clicks login multiple times. Rotate only on explicit resend.
+    const contact = user.email.trim();
+    let otp;
 
-    // clear old OTPs for this user/type
-    await LoginOtp.update(
-      { consumed_at: new Date() },
-      { where: { user_id: user.id, type: 'login', consumed_at: null } }
-    );
-
-    await LoginOtp.create({
-      user_id: user.id,
-      contact,
-      otp,
-      type: 'login',
-      expires_at: expires,
-      attempts: 0,
+    const activeOtp = await LoginOtp.findOne({
+      where: {
+        user_id: user.id,
+        type: 'login',
+        consumed_at: null,
+      },
+      order: [['created_at', 'DESC']],
     });
 
-    // ✅ Send LOGIN OTP email (NOT reset password email)
-    if (value.email) {
-      sendLoginOTPEmail(contact, otp)
-        .then(() => console.log(`[LOGIN OTP] sent to ${contact}`))
-        .catch(err => console.error(`[LOGIN OTP ERROR] ${err.message} — OTP=${otp}`));
+    if (activeOtp && new Date(activeOtp.expires_at).getTime() > Date.now()) {
+      otp = activeOtp.otp;
+    } else {
+      if (activeOtp) {
+        await activeOtp.update({ consumed_at: new Date() });
+      }
+
+      otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expires = new Date(Date.now() + 10 * 60 * 1000);
+
+      await LoginOtp.create({
+        user_id: user.id,
+        contact,
+        otp,
+        type: 'login',
+        expires_at: expires,
+        attempts: 0,
+      });
     }
+
+    // ✅ Send LOGIN OTP email (NOT reset password email)
+    sendLoginOTPEmail(user.email, otp)
+      .then(() => console.log(`[LOGIN OTP] sent to ${user.email}`))
+      .catch(err => console.error(`[LOGIN OTP ERROR] ${err.message} — OTP=${otp}`));
 
     return res.json({
       success: true,

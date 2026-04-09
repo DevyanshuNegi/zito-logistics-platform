@@ -13,31 +13,26 @@ require('./src/models');
 const app = require('./src/app');
 
 const PORT = process.env.PORT || 5000;
+const shouldTruncateOtpOnBoot = process.env.OTP_TRUNCATE_ON_BOOT === 'true';
+const shouldAlterSchemaOnBoot = process.env.DB_SYNC_ALTER === 'true';
 
 const startServer = async () => {
   try {
     await connectDB();
 
-    // Clean legacy OTP rows that miss user linkage (prevents NOT NULL constraint errors)
-    try {
-      if (process.env.NODE_ENV !== 'production') {
-        // Dev: safest reset to keep PRD constraint intact
+    // Optional one-time maintenance only when explicitly enabled.
+    // Never truncate OTP rows by default because it breaks active login sessions.
+    if (shouldTruncateOtpOnBoot) {
+      try {
         await sequelize.query('TRUNCATE TABLE "login_otps" CASCADE;');
-        console.log('🧹 Truncated login_otps (dev) to clear NULL user_id rows');
-      } else {
-        // Prod: fail fast to avoid silent data loss
-        const [remaining] = await sequelize.query('SELECT COUNT(*) FROM "login_otps" WHERE "user_id" IS NULL;');
-        const remainingCount = Number(remaining?.[0]?.count || 0);
-        if (remainingCount > 0) {
-          throw new Error(`login_otps has ${remainingCount} NULL user_id rows; clean DB before boot.`);
-        }
+        console.log('🧹 Truncated login_otps (OTP_TRUNCATE_ON_BOOT=true)');
+      } catch (cleanupErr) {
+        console.warn('⚠️ Could not truncate login_otps:', cleanupErr.message);
       }
-    } catch (cleanupErr) {
-      console.warn('⚠️ Could not clean null login_otps rows:', cleanupErr.message);
     }
 
-    // ✅ alter:true — safely updates tables without dropping data
-    await sequelize.sync({ alter: true });
+    // Keep startup stable by default. Enable alter only when intentionally migrating.
+    await sequelize.sync({ alter: shouldAlterSchemaOnBoot });
 
     console.log('✅ Database tables synced');
 
