@@ -21,8 +21,8 @@
 // Run migration: UPDATE users SET role='operations_admin' WHERE role='admin';
 // ─────────────────────────────────────────────────────────────────────────────
 
-const jwt  = require('jsonwebtoken');
 const { User, Driver, DriverCompliance } = require('../models');
+const { verifyJwt } = require('../utils/jwt');
 
 /* ============================================================
    ROLE CONSTANTS
@@ -74,7 +74,7 @@ const authenticate = async (req, res, next) => {
     // Verify signature and expiry
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = verifyJwt(token);
     } catch (jwtErr) {
       const code = jwtErr.name === 'TokenExpiredError'
         ? 'TOKEN_EXPIRED'

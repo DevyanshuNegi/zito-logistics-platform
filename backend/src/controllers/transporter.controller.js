@@ -5,6 +5,7 @@
 const { User, Driver, Vehicle, Booking, Contract, ContractRate } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { generateUuidReference } = require('../utils/id');
 const { autoAssignIfNeeded } = require('../services/assignment.service');
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -244,7 +245,7 @@ exports.getBookings = async (req, res) => {
 
 exports.createBooking = async (req, res) => {
   try {
-    const ref = 'ZT' + Date.now().toString(36).toUpperCase();
+    const ref = generateUuidReference('ZT');
     const booking = await Booking.create({
       ...req.body, reference: ref,
       transporter_id:  req.user.id,

@@ -4,7 +4,7 @@
 // PRD §18.1 — Assignment Validation
 // PRD §18.5 — GPS Tracking
 
-const { User, Driver, Vehicle, Booking } = require('../models');
+const { User, Driver, Vehicle, Booking, DriverCompliance } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { BOOKING_STATUS } = require('../constants/bookingStatus');

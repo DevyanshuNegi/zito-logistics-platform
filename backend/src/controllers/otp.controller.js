@@ -3,12 +3,12 @@
 // PRD §11 — Mandatory email OTP 2FA, Resend.com provider
 // PRD §25.8 — Audit log on OTP events
 
-const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { User, LoginOtp } = require('../models');
 const { success, error } = require('../utils/response');
 const { sendSms } = require('../services/sms.service');
+const { signJwt, verifyJwt } = require('../utils/jwt');
 
 const generateOtp = () => {
   // PRD §12 — 6-digit OTP
@@ -80,29 +80,46 @@ exports.sendOtp = async (req, res) => {
       return success(res, { message: 'OTP sent if account exists.' });
     }
 
-    const otp = generateOtp();
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINS * 60 * 1000);
+    let otp;
 
-    // Invalidate old unconsumed OTP rows for this user+type
-    await LoginOtp.update(
-      { consumed_at: new Date() },
-      {
-        where: {
-          user_id: user.id,
-          type,
-          consumed_at: null,
-        },
-      }
-    );
-
-    await LoginOtp.create({
-      user_id: user.id,
-      contact: user.email,
-      otp,
-      type,
-      expires_at: expiresAt,
-      attempts: 0,
+    // For login flow, reuse active OTP instead of rotating.
+    // This prevents invalid-OTP when user receives delayed/duplicated emails.
+    const activeOtp = await LoginOtp.findOne({
+      where: {
+        user_id: user.id,
+        type,
+        consumed_at: null,
+      },
+      order: [['created_at', 'DESC']],
     });
+
+    if (type === 'login' && activeOtp && new Date(activeOtp.expires_at).getTime() > Date.now()) {
+      otp = activeOtp.otp;
+    } else {
+      otp = generateOtp();
+      const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINS * 60 * 1000);
+
+      // Invalidate old unconsumed OTP rows for this user+type before creating new one
+      await LoginOtp.update(
+        { consumed_at: new Date() },
+        {
+          where: {
+            user_id: user.id,
+            type,
+            consumed_at: null,
+          },
+        }
+      );
+
+      await LoginOtp.create({
+        user_id: user.id,
+        contact: user.email,
+        otp,
+        type,
+        expires_at: expiresAt,
+        attempts: 0,
+      });
+    }
 
     // Send email
     const delivered = await sendOtpEmail(user.email, otp);
@@ -158,7 +175,7 @@ exports.verifyOtp = async (req, res) => {
     // Resolve from temp token
     if (!resolvedUserId && temp_token) {
       try {
-        const decoded = jwt.verify(temp_token, process.env.JWT_SECRET);
+        const decoded = verifyJwt(temp_token);
         resolvedUserId = decoded.id;
       } catch {
         return error(res, 'INVALID_TOKEN', 'Invalid or expired session. Please log in again.', 401);
@@ -217,11 +234,7 @@ exports.verifyOtp = async (req, res) => {
     });
 
     // Issue full JWT — PRD §11
-    const token = jwt.sign(
-      { id: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
-    );
+    const token = signJwt({ id: user.id, role: user.role });
 
     // Audit log — PRD §25.8
     if (req.auditLog) {

@@ -11,10 +11,11 @@ const {
   applyScope,
   auditLogger,
   checkDataLock,
+  viewAs,
   ROLES,
 } = require('../middleware/auth');
 
-router.use(authenticate, auditLogger, authorize(ROLES.CUSTOMER), applyScope);
+router.use(authenticate, auditLogger, viewAs, authorize(ROLES.CUSTOMER), applyScope);
 
 // ── Profile ───────────────────────────────────────────────────────────────
 // GET /api/v1/customer/profile

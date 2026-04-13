@@ -8,6 +8,7 @@ const { Op, QueryTypes }     = require('sequelize');
 const { sequelize, User, Driver, Vehicle, Booking, Contract, AuditLog, DriverCompliance, SystemSetting } = require('../models');
 const { success, error }   = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { generateUuidReference } = require('../utils/id');
 const { ROLES, ADMIN_ROLES } = require('../middleware/auth');
 const { autoAssignIfNeeded } = require('../services/assignment.service');
 const { suggestDriversForBooking } = require('../services/assignment.service');
@@ -548,7 +549,7 @@ exports.getBookingById = async (req, res) => {
 
 exports.createBooking = async (req, res) => {
   try {
-    const ref = 'VG' + Date.now().toString(36).toUpperCase();
+    const ref = generateUuidReference('VG');
     const booking = await Booking.create({ ...req.body, reference: ref });
     if (req.auditLog) await req.auditLog('BOOKING_CREATED', { booking_id: booking.id, by: req.user.id });
     const autoResult = await autoAssignIfNeeded(booking, req.auditLog);

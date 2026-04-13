@@ -12,10 +12,11 @@ const {
   requireCompliance,
   applyScope,
   auditLogger,
+  viewAs,
   ROLES,
 } = require('../middleware/auth');
 
-router.use(authenticate, auditLogger, authorize(ROLES.TRANSPORTER), requireCompliance, applyScope);
+router.use(authenticate, auditLogger, viewAs, authorize(ROLES.TRANSPORTER), requireCompliance, applyScope);
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
 // PRD §5.4 — Fleet KPI dashboard

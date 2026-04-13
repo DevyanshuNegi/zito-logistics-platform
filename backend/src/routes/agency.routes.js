@@ -10,10 +10,11 @@ const {
   authorize,
   applyScope,
   auditLogger,
+  viewAs,
   ROLES,
 } = require('../middleware/auth');
 
-router.use(authenticate, auditLogger, authorize(ROLES.AGENCY), applyScope);
+router.use(authenticate, auditLogger, viewAs, authorize(ROLES.AGENCY), applyScope);
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
 // PRD §20 — Consolidated Agency KPI dashboard

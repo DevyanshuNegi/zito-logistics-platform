@@ -11,10 +11,11 @@ const {
   applyScope,
   auditLogger,
   injectBookingOwnership,
+  viewAs,
   ROLES,
 } = require('../middleware/auth');
 
-router.use(authenticate, auditLogger, authorize(ROLES.AGENT), applyScope);
+router.use(authenticate, auditLogger, viewAs, authorize(ROLES.AGENT), applyScope);
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
 // PRD §20 — Agent KPI dashboard

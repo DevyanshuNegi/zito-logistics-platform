@@ -1,6 +1,6 @@
 // src/config/socket.js
 
-const jwt = require('jsonwebtoken');
+const { verifyJwt } = require('../utils/jwt');
 
 module.exports = (io) => {
 
@@ -14,7 +14,7 @@ module.exports = (io) => {
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = verifyJwt(token);
 
       socket.data.user = decoded;
 
@@ -66,6 +66,8 @@ module.exports = (io) => {
         break;
 
       case 'admin':
+      case 'operations_admin':
+      case 'finance_admin':
         socket.join('admins');
         socket.join('global:admin');
         break;

@@ -6,13 +6,14 @@ const jwt     = require('jsonwebtoken');
 const Joi     = require('joi');
 const { User, Driver, LoginOtp } = require('../models');
 const { sequelize } = require('../config/database');
+const { getJwtExpiresIn, getJwtSecret } = require('../utils/jwt');
 
 // ─── Token generator ──────────────────────────────────────────────────────────
 
 const generateTokens = (user) => {
   const payload = { id: user.id, role: user.role, email: user.email };
-  const secret  = 'vglogistics_access_secret_key_2026_make_this_very_long_and_random';
-  const opts    = { expiresIn: '30d' };
+  const secret  = getJwtSecret();
+  const opts    = { expiresIn: getJwtExpiresIn() };
 
   return {
     accessToken:  jwt.sign(payload,       secret, opts),
@@ -111,7 +112,17 @@ router.post('/register', async (req, res) => {
       email:     Joi.string().email().required(),
       phone:     Joi.string().min(10).required(),
       password:  Joi.string().min(6).required(),
-      role:      Joi.string().valid('super_admin', 'admin', 'customer', 'agent', 'driver', 'transporter').default('customer'),
+      role:      Joi.string().valid(
+        'super_admin',
+        'operations_admin',
+        'finance_admin',
+        'customer',
+        'agent',
+        'driver',
+        'transporter',
+        'agency',
+        'admin'
+      ).default('customer'),
     }).options({ allowUnknown: true });
 
     const { error, value } = schema.validate(req.body);
@@ -135,7 +146,7 @@ router.post('/register', async (req, res) => {
       email:         value.email,
       phone:         value.phone,
       password_hash: value.password,
-      role:          value.role,
+      role:          value.role === 'admin' ? 'operations_admin' : value.role,
     });
 
     const { accessToken, refreshToken } = generateTokens(user);

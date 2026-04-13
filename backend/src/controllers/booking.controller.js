@@ -10,6 +10,7 @@ const { User, Driver, Vehicle, Booking } = require('../models');
 const { autoAssignIfNeeded } = require('../services/assignment.service');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
+const { generateUuidReference } = require('../utils/id');
 const { quoteFare } = require('../services/pricing.service');
 const { sendBookingNotification } = require('../services/notification.service');
 const { broadcastNewLoad } = require('../services/broadcast.service');
@@ -18,7 +19,7 @@ const SOS_MARKER = '[SOS_FROZEN]';
 // ── Create Booking ─────────────────────────────────────────────────────────
 exports.createBooking = async (req, res) => {
   try {
-    const ref = 'ZT' + Date.now().toString(36).toUpperCase();
+    const ref = generateUuidReference('ZT');
     const pricing = await quoteFare({
       vehicle_type: req.body.vehicle_type,
       distance_km:  req.body.distance_km,
