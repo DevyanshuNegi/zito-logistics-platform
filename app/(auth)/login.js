@@ -118,7 +118,7 @@ export default function LoginScreen() {
         {/* Logo */}
         <View style={s.logoWrap}>
           <View style={s.logoBox}><Text style={s.logoText}>ZITO</Text></View>
-          <Text style={s.logoSub}>VG GLOBAL LOGISTICS</Text>
+          
           <Text style={s.tagline}>Move Heavy. Move Smart.</Text>
         </View>
 

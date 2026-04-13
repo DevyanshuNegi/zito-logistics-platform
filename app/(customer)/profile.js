@@ -37,7 +37,7 @@ export default function ProfileScreen() {
         </View>
         <View style={s.infoCard}>
           <Text style={s.sectionTitle}>About ZITO</Text>
-          <Text style={s.about}>ZITO is VG Global Logistics' next-generation platform for Kenya and East Africa — connecting customers, drivers, and transporters in one smart ecosystem.</Text>
+          <Text style={s.about}>ZITO is Kenya's next-generation logistics platform — connecting customers, drivers and transporters in one smart ecosystem.</Text>
         </View>
         <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
           <Text style={s.logoutText}>Logout</Text>

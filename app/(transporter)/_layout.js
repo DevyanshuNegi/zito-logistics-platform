@@ -19,6 +19,7 @@ export default function TransporterLayout() {
       <Tabs.Screen name="drivers"   options={{ title: 'Drivers',   tabBarIcon: ({ focused }) => <Ico e="👤" focused={focused} /> }} />
       <Tabs.Screen name="bookings"  options={{ title: 'Bookings',  tabBarIcon: ({ focused }) => <Ico e="📋" focused={focused} /> }} />
       <Tabs.Screen name="finance"   options={{ title: 'Finance',   tabBarIcon: ({ focused }) => <Ico e="💰" focused={focused} /> }} />
+      <Tabs.Screen name="profile"  options={{ title: 'Profile',   tabBarIcon: ({ focused }) => <Ico e="👤" focused={focused} /> }} />
     </Tabs>
   );
 }

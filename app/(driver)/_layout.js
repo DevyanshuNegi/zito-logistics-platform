@@ -16,10 +16,11 @@ export default function DriverLayout() {
       tabBarInactiveTintColor: colors.textFaint,
       tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
     }}>
-      <Tabs.Screen name="trips"    options={{ title: 'My Trips',  tabBarIcon: ({ focused }) => <Ico e="📋" focused={focused} /> }} />
-      <Tabs.Screen name="earnings" options={{ title: 'Earnings',  tabBarIcon: ({ focused }) => <Ico e="💰" focused={focused} /> }} />
-      <Tabs.Screen name="sos"      options={{ title: 'SOS',       tabBarIcon: ({ focused }) => <Ico e="🆘" focused={focused} />, tabBarActiveTintColor: colors.danger }} />
-      <Tabs.Screen name="profile"  options={{ title: 'Profile',   tabBarIcon: ({ focused }) => <Ico e="👤" focused={focused} /> }} />
+      <Tabs.Screen name="trips"       options={{ title: 'My Trips',    tabBarIcon: ({ focused }) => <Ico e="📋" focused={focused} /> }} />
+      <Tabs.Screen name="marketplace" options={{ title: 'Loads',       tabBarIcon: ({ focused }) => <Ico e="🛲" focused={focused} /> }} />
+      <Tabs.Screen name="earnings"    options={{ title: 'Earnings',    tabBarIcon: ({ focused }) => <Ico e="💰" focused={focused} /> }} />
+      <Tabs.Screen name="sos"         options={{ title: 'SOS',         tabBarIcon: ({ focused }) => <Ico e="🆘" focused={focused} />, tabBarActiveTintColor: colors.danger }} />
+      <Tabs.Screen name="profile"     options={{ title: 'Profile',     tabBarIcon: ({ focused }) => <Ico e="👤" focused={focused} /> }} />
     </Tabs>
   );
 }
