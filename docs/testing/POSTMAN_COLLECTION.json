@@ -1,0 +1,283 @@
+{
+  "info": {
+    "name": "ZITO API - PRD v6 Testing",
+    "description": "Postman collection for ZITO API testing based on PRD v6 and Testing Addendum",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Health & Auth",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/health"
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/login"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "var jsonData = pm.response.json();",
+                "pm.environment.set('auth_token', jsonData.data?.token || jsonData.token);"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "name": "2. Admin - Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Stats (PRD §5.1)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{auth_token}}"}],
+            "url": "{{base_url}}/api/v1/admin/stats"
+          }
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{auth_token}}"}],
+            "url": "{{base_url}}/api/v1/admin/users"
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{auth_token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Test Driver\",\n  \"email\": \"testdriver@zito.com\",\n  \"phone\": \"+254700000001\",\n  \"role\": \"driver\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/admin/users"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Role Access Control",
+      "item": [
+        {
+          "name": "Finance Admin - Try Access Bookings (Should Fail)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{finance_token}}"}],
+            "url": "{{base_url}}/api/v1/bookings"
+          }
+        },
+        {
+          "name": "Finance Admin - Access Reports (Should Pass)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{finance_token}}"}],
+            "url": "{{base_url}}/api/v1/admin/reports/bookings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Booking Lifecycle",
+      "item": [
+        {
+          "name": "Create Booking (Customer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{customer_token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickup_address\": \"Nairobi CBD\",\n  \"delivery_address\": \"Westlands\",\n  \"cargo_type\": \"Documents\",\n  \"distance_km\": 5,\n  \"vehicle_type\": \"motorcycle\",\n  \"cargo_weight_kg\": 1\n}"
+            },
+            "url": "{{base_url}}/api/v1/customer/bookings"
+          }
+        },
+        {
+          "name": "List Bookings",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{auth_token}}"}],
+            "url": "{{base_url}}/api/v1/bookings"
+          }
+        },
+        {
+          "name": "Assign Driver",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{auth_token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driver_id\": \"{{driver_id}}\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/admin/bookings/{{booking_id}}/assign"
+          }
+        },
+        {
+          "name": "Driver Accept",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Authorization", "value": "Bearer {{driver_token}}"}],
+            "url": "{{base_url}}/api/v1/bookings/{{booking_id}}/driver-accept"
+          }
+        },
+        {
+          "name": "Update Status - Picked Up",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{driver_token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"picked_up\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/bookings/{{booking_id}}/status"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Agent Portal",
+      "item": [
+        {
+          "name": "Agent Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{agent_token}}"}],
+            "url": "{{base_url}}/api/v1/agent/dashboard"
+          }
+        },
+        {
+          "name": "Agent Customers",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{agent_token}}"}],
+            "url": "{{base_url}}/api/v1/agent/customers"
+          }
+        },
+        {
+          "name": "Create Booking for Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{agent_token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"pickup_address\": \"Nairobi\",\n  \"delivery_address\": \"Mombasa\",\n  \"cargo_type\": \"Electronics\",\n  \"distance_km\": 500,\n  \"vehicle_type\": \"truck_7t\",\n  \"cargo_weight_kg\": 1000\n}"
+            },
+            "url": "{{base_url}}/api/v1/agent/bookings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. View As (Super Admin)",
+      "item": [
+        {
+          "name": "Preview Customer Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{super_admin_token}}"},
+              {"key": "X-View-As-User", "value": "{{customer_id}}"}
+            ],
+            "url": "{{base_url}}/api/v1/customer/dashboard"
+          }
+        },
+        {
+          "name": "Preview Driver Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{super_admin_token}}"},
+              {"key": "X-View-As-User", "value": "{{driver_id}}"}
+            ],
+            "url": "{{base_url}}/api/v1/driver/dashboard"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Reports",
+      "item": [
+        {
+          "name": "Booking Report",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{finance_token}}"}],
+            "url": "{{base_url}}/api/v1/admin/reports/bookings"
+          }
+        },
+        {
+          "name": "Financial Report",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{finance_token}}"}],
+            "url": "{{base_url}}/api/v1/admin/reports/financial"
+          }
+        },
+        {
+          "name": "Export CSV",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{finance_token}}"}],
+            "url": "{{base_url}}/api/v1/admin/reports/export?format=csv"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Audit Log",
+      "item": [
+        {
+          "name": "View Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{super_admin_token}}"}],
+            "url": "{{base_url}}/api/v1/admin/audit-logs"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {"key": "base_url", "value": "http://localhost:5000"},
+    {"key": "auth_token", "value": ""},
+    {"key": "super_admin_token", "value": ""},
+    {"key": "finance_token", "value": ""},
+    {"key": "customer_token", "value": ""},
+    {"key": "driver_token", "value": ""},
+    {"key": "agent_token", "value": ""},
+    {"key": "booking_id", "value": ""},
+    {"key": "customer_id", "value": ""},
+    {"key": "driver_id", "value": ""}
+  ]
+}

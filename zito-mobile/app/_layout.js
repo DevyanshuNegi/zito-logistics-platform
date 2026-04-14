@@ -30,7 +30,7 @@ function RootGuard() {
         default:             router.replace('/(customer)/home');      break;
       }
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments,router]);
 
   if (loading) {
     return (
