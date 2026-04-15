@@ -1,6 +1,8 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
 
-const { LoginOtp, User, sequelize } = require('../src/models');
+// NOTE: This script uses pure API calls — no direct DB access.
+// OTP is retrieved via the /auth/otp-test-peek endpoint (dev only).
+// In production, OTP would be delivered via SMS/email.
 
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:5000/api/v1';
 
@@ -8,33 +10,33 @@ const TEST_USERS = [
   {
     key: 'super_admin',
     full_name: 'Vishal Admin',
-    email: 'superadmin@zito.co.ke',
-    phone: '0712000001',
-    password: 'Admin@1234',
+    email: process.env.TEST_SUPERADMIN_EMAIL || 'superadmin@zito.co.ke',
+    phone: process.env.TEST_SUPERADMIN_PHONE || '0712000001',
+    password: process.env.TEST_SUPERADMIN_PASSWORD || 'TestAdmin@1234',
     role: 'super_admin',
   },
   {
     key: 'operations_admin',
     full_name: 'Ops Admin',
-    email: 'ops@zito.co.ke',
-    phone: '0712000002',
-    password: 'Admin@1234',
+    email: process.env.TEST_OPS_EMAIL || 'ops@zito.co.ke',
+    phone: process.env.TEST_OPS_PHONE || '0712000002',
+    password: process.env.TEST_OPS_PASSWORD || 'TestOps@1234',
     role: 'operations_admin',
   },
   {
     key: 'finance_admin',
     full_name: 'Finance Admin',
-    email: 'finance@zito.co.ke',
-    phone: '0712000003',
-    password: 'Admin@1234',
+    email: process.env.TEST_FINANCE_EMAIL || 'finance@zito.co.ke',
+    phone: process.env.TEST_FINANCE_PHONE || '0712000003',
+    password: process.env.TEST_FINANCE_PASSWORD || 'TestFinance@1234',
     role: 'finance_admin',
   },
   {
     key: 'customer',
     full_name: 'John Kamau',
-    email: 'john@customer.co.ke',
-    phone: '0712111001',
-    password: 'Customer@1234',
+    email: process.env.TEST_CUSTOMER_EMAIL || 'john@customer.co.ke',
+    phone: process.env.TEST_CUSTOMER_PHONE || '0712111001',
+    password: process.env.TEST_CUSTOMER_PASSWORD || 'TestCustomer@1234',
     role: 'customer',
   },
 ];
@@ -66,19 +68,18 @@ const request = async (path, options = {}) => {
 };
 
 const ensureUser = async (user) => {
-  const existing = await User.findOne({ where: { email: user.email } });
-  if (existing) return existing;
-
   const response = await request('/auth/register', {
     method: 'POST',
     body: JSON.stringify(user),
   });
 
-  if (response.status !== 201) {
+  // 201 = created, 409 = already exists — both acceptable
+  if (response.status !== 201 && response.status !== 409) {
     throw new Error(`Registration failed for ${user.role}: ${JSON.stringify(response.body)}`);
   }
 
-  return User.findOne({ where: { email: user.email } });
+  const userId = response.body?.data?.user?.id || response.body?.data?.id || null;
+  return { email: user.email, role: user.role, id: userId };
 };
 
 const loginAndVerify = async (user) => {
@@ -91,21 +92,19 @@ const loginAndVerify = async (user) => {
     throw new Error(`Login failed for ${user.role}: ${JSON.stringify(loginResponse.body)}`);
   }
 
-  const otpRow = await LoginOtp.findOne({
-    where: { type: 'login' },
-    include: [{ model: User, as: 'user', required: true, where: { email: user.email } }],
-    order: [['created_at', 'DESC']],
-  });
+  // Dev-only: peek at OTP via test endpoint (not available in production)
+  // In production, OTP is delivered via SMS/email — this script would need manual input
+  const otpPeek = await request(`/auth/otp-test-peek?contact=${encodeURIComponent(user.email)}&type=login`);
 
-  if (!otpRow) {
-    throw new Error(`No OTP row found for ${user.email}`);
+  if (otpPeek.status !== 200 || !otpPeek.body?.data?.otp) {
+    throw new Error(`OTP peek failed for ${user.email}: ${JSON.stringify(otpPeek.body)}`);
   }
 
   const verifyResponse = await request('/auth/verify-otp', {
     method: 'POST',
     body: JSON.stringify({
       contact: user.email,
-      otp: otpRow.otp,
+      otp: otpPeek.body.data.otp,
       type: 'login',
     }),
   });
@@ -120,6 +119,14 @@ const loginAndVerify = async (user) => {
   }
 
   return token;
+};
+
+const getUserIdFromToken = async (token) => {
+  const meResponse = await request('/auth/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (meResponse.status !== 200) return null;
+  return meResponse.body?.data?.id || meResponse.body?.data?.user?.id || null;
 };
 
 const run = async () => {
@@ -192,11 +199,17 @@ const run = async () => {
     });
     record('finance_admin:system-settings-denied', financeSettings.status === 403, `status=${financeSettings.status}`);
 
-    const customer = createdUsers.customer;
+    // Login customer to get their user ID for View-As (PRD expects UUID)
+    const customerToken = await loginAndVerify(TEST_USERS[3]);
+    const customerId = await getUserIdFromToken(customerToken);
+    if (!customerId) {
+      throw new Error('Could not resolve customer user ID for View-As test');
+    }
+
     const superViewAs = await request('/customer/bookings', {
       headers: {
         Authorization: `Bearer ${tokens.super_admin}`,
-        'X-View-As-User': customer.id,
+        'X-View-As-User': customerId,
       },
     });
     record('super_admin:view-as-customer', superViewAs.status === 200, `status=${superViewAs.status}`);
@@ -204,7 +217,7 @@ const run = async () => {
     const opsViewAs = await request('/customer/bookings', {
       headers: {
         Authorization: `Bearer ${tokens.operations_admin}`,
-        'X-View-As-User': customer.id,
+        'X-View-As-User': customerId,
       },
     });
     record('operations_admin:view-as-denied', opsViewAs.status === 403, `status=${opsViewAs.status}`);
@@ -214,7 +227,7 @@ const run = async () => {
     console.error(error);
     process.exitCode = 1;
   } finally {
-    await sequelize.close();
+    // No DB connection to close — pure API testing
   }
 };
 

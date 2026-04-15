@@ -5,8 +5,8 @@ const router  = express.Router();
 const jwt     = require('jsonwebtoken');
 const Joi     = require('joi');
 const { User, Driver, LoginOtp } = require('../models');
-const { sequelize } = require('../config/database');
 const { getJwtExpiresIn, getJwtSecret } = require('../utils/jwt');
+const bcrypt = require('bcryptjs');
 
 // ─── Token generator ──────────────────────────────────────────────────────────
 
@@ -141,15 +141,17 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    const hashedPassword = await bcrypt.hash(value.password, 12);
+
     const user = await User.create({
       full_name:     value.full_name,
       email:         value.email,
       phone:         value.phone,
-      password_hash: value.password,
+      password_hash: hashedPassword,
       role:          value.role === 'admin' ? 'operations_admin' : value.role,
     });
 
-    const { accessToken, refreshToken } = generateTokens(user);
+    
 
     let driverProfile = null;
 
@@ -163,10 +165,13 @@ router.post('/register', async (req, res) => {
     return res.status(201).json({
       success: true,
       data: {
-        user: { id: user.id, full_name: user.full_name, email: user.email, role: user.role },
-        driver: driverProfile,
-        accessToken,
-        refreshToken,
+        user: {
+          id: user.id,
+          full_name: user.full_name,
+          email: user.email,
+          role: user.role
+        },
+        driver: driverProfile
       },
     });
 
@@ -218,7 +223,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const { accessToken, refreshToken } = generateTokens(user);
+    
 
     let driverProfile = null;
     if (user.role === 'driver') {
@@ -377,13 +382,87 @@ router.post('/reset-password', async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    user.password_hash = new_password;
+    const hashedPassword = await bcrypt.hash(new_password, 12);
+    user.password_hash = hashedPassword;
     await user.save();
 
     return res.json({ success: true, message: 'Password reset successfully. You can now login.' });
 
   } catch (err) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+  }
+});
+
+// ─── GET /api/v1/auth/otp-test-peek ──────────────────────────────────────────
+// DEV ONLY — Returns the latest OTP for a contact.
+// ❌ MUST NOT EXIST IN PRODUCTION (PRD §11 — OTP via email/SMS only)
+// Gated by NODE_ENV check — returns 404 in production.
+
+router.get('/otp-test-peek', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'This endpoint does not exist in production.' },
+    });
+  }
+
+  try {
+    const { contact, type = 'login' } = req.query;
+
+    if (!contact) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'contact query param is required' },
+      });
+    }
+
+    const user = await User.findOne({
+      where: {
+        [require('sequelize').Op.or]: [
+          { email: contact.trim() },
+          { phone: contact.trim() },
+        ],
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'No user found for this contact' },
+      });
+    }
+
+    const otpRow = await LoginOtp.findOne({
+      where: {
+        user_id: user.id,
+        type,
+        consumed_at: null,
+      },
+      order: [['created_at', 'DESC']],
+    });
+
+    if (!otpRow || new Date(otpRow.expires_at) < new Date()) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'No active OTP found' },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        otp: otpRow.otp,
+        type: otpRow.type,
+        expires_at: otpRow.expires_at,
+        attempts: otpRow.attempts,
+      },
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'SERVER_ERROR', message: err.message },
+    });
   }
 });
 

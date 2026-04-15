@@ -8,6 +8,7 @@
 
 require('dotenv').config();
 const { Sequelize } = require('sequelize');
+const pg = require('pg'); // dialect module for debugging
 
 /* -------------------------------------------------------------------------- */
 /* ENVIRONMENT FLAGS                                                           */
@@ -72,24 +73,27 @@ if (process.env.DATABASE_URL) {
   // PRD §11 — DB access restricted to app server; SSL required
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
-    logging:         isProd ? queryLogger : queryLogger, // always use logger
+    dialectModule: pg, // specify dialect module
+    logging:         queryLogger, // always use logger
     benchmark:       true,   // enables timing arg in queryLogger
     pool:            poolConfig,
     dialectOptions: {
       ssl: {
         require:            true,
-        rejectUnauthorized: false, // Railway uses self-signed certs
+        rejectUnauthorized: process.env.DB_SSL_REJECT !== 'false', // Railway uses self-signed certs
       },
       // PRD §25.10 — statement timeout prevents runaway queries
       statement_timeout:       parseInt(process.env.DB_STATEMENT_TIMEOUT || '30000', 10),
       idle_in_transaction_session_timeout: 60000,
     },
+    timezone: '+00:00',     // UTC for consistency across environments
     define: {
       // PRD §25.9 — Soft delete: paranoid mode adds deletedAt to all models
       // Records are never permanently deleted — is_deleted + deleted_at pattern
       paranoid:    true,
       underscored: true,      // snake_case column names (matches DB schema)
       timestamps:  true,      // createdAt, updatedAt on all models
+      freezeTableName: true,  // Prevent Sequelize from pluralizing table names
     },
   });
 
@@ -103,16 +107,22 @@ if (process.env.DATABASE_URL) {
       host:    process.env.DB_HOST || 'localhost',
       port:    parseInt(process.env.DB_PORT || '5432', 10),
       dialect: 'postgres',
+      dialectModule: pg, // specify dialect module
       logging:   queryLogger,
       benchmark: true,
       pool:      poolConfig,
       dialectOptions: {
+        ssl: isProd ? {
+          require: true,
+          rejectUnauthorized: process.env.DB_SSL_REJECT !== 'false',
+        } : false,
         statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT || '30000', 10),
       },
       define: {
         paranoid:    true,   // PRD §25.9 — soft delete globally
         underscored: true,
         timestamps:  true,
+        freezeTableName: true,  // Prevent Sequelize from pluralizing table names
       },
     }
   );
@@ -151,7 +161,7 @@ const connectDB = async () => {
 
     } catch (err) {
       lastError = err;
-      console.error(`❌ DB connection attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`);
+      (isProd ? console.error : console.warn)(`❌ DB connection attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`);
 
       if (attempt < MAX_RETRIES) {
         console.log(`   Retrying in ${RETRY_DELAY / 1000}s...`);

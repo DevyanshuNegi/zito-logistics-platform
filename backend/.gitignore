@@ -1,10 +1,13 @@
 # ─────────────────────────────────────────────────────────────
-#  ZITO — .gitignore
-#  Root-level. Covers both /backend and /frontend folders.
-#  VG Global Logistics · 2026
+
+# ZITO — .gitignore (FINAL)
+
+# Covers backend + frontend + mobile (Expo)
+
 # ─────────────────────────────────────────────────────────────
 
-# ── Environment variables — NEVER commit these ───────────────
+# ── Environment variables — NEVER commit ─────────────────────
+
 .env
 .env.local
 .env.development
@@ -13,11 +16,14 @@
 .env.*
 
 # ── Dependencies ─────────────────────────────────────────────
+
 node_modules/
 backend/node_modules/
 frontend/node_modules/
+zito-mobile/node_modules/
 
 # ── Logs ─────────────────────────────────────────────────────
+
 logs/
 *.log
 npm-debug.log*
@@ -26,18 +32,21 @@ yarn-error.log*
 pnpm-debug.log*
 
 # ── Runtime / Process ────────────────────────────────────────
+
 pids/
 *.pid
 *.seed
 *.pid.lock
 
 # ── Build output ─────────────────────────────────────────────
+
 dist/
 build/
 frontend/dist/
 backend/dist/
 
 # ── OS files ─────────────────────────────────────────────────
+
 .DS_Store
 .DS_Store?
 ._*
@@ -46,7 +55,8 @@ ehthumbs.db
 Desktop.ini
 
 # ── Editor / IDE ─────────────────────────────────────────────
-.vscode/settings.json
+
+.vscode/
 .idea/
 *.suo
 *.ntvs*
@@ -54,14 +64,32 @@ Desktop.ini
 *.sln
 *.sw?
 
-# ── Coverage & Testing ────────────────────────────────────────
+# ── Coverage & Testing ───────────────────────────────────────
+
 coverage/
 .nyc_output/
 
 # ── Uploads / user-generated files ───────────────────────────
+
 uploads/
 backend/uploads/
 
-# ── Optional: lock files (keep these — do NOT ignore) ────────
-# package-lock.json  ← keep
-# yarn.lock          ← keep
+# ── Expo / React Native (IMPORTANT) ──────────────────────────
+
+.expo/
+.expo-shared/
+
+# ── Cache / Temp ─────────────────────────────────────────────
+
+.tmp/
+.cache/
+
+# ── Render / Deployment ──────────────────────────────────────
+
+.render/
+
+# ── Keep lock files (IMPORTANT — DO NOT IGNORE) ──────────────
+
+# package-lock.json
+
+# yarn.lock

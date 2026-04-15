@@ -82,6 +82,11 @@ const ERRORS = {
     message: 'OTP verification is required to complete this action.',
     httpStatus: 403,
   },
+  AUTH_REQUIRED: {
+    code: 'AUTH_REQUIRED',
+    message: 'Authentication token is required.',
+    httpStatus: 401,
+  },
 
   // ── Authorisation / RBAC ───────────────────────────────────
   FORBIDDEN: {
@@ -107,6 +112,16 @@ const ERRORS = {
   DATA_LOCKED: {
     code: 'DATA_LOCKED',
     message: 'This field is locked after compliance approval and cannot be changed.',
+    httpStatus: 403,
+  },
+  DATA_NOT_ACCESSIBLE: {
+    code: 'DATA_NOT_ACCESSIBLE',
+    message: 'You cannot access this data.',
+    httpStatus: 403,
+  },
+  ACCESS_SCOPE_VIOLATION: {
+    code: 'ACCESS_SCOPE_VIOLATION',
+    message: 'Access outside your permitted data scope is not allowed.',
     httpStatus: 403,
   },
 
@@ -162,6 +177,11 @@ const ERRORS = {
     code: 'DRIVER_DOCUMENTS_EXPIRED',
     message: 'One or more driver compliance documents have expired.',
     httpStatus: 403,
+  },
+  INVALID_ASSIGNMENT: {
+    code: 'INVALID_ASSIGNMENT',
+    message: 'Driver or vehicle does not meet assignment requirements.',
+    httpStatus: 409,
   },
 
   // ── Vehicle ────────────────────────────────────────────────
@@ -237,6 +257,11 @@ const ERRORS = {
     message: 'This booking has already been rated.',
     httpStatus: 409,
   },
+  SOS_ACTIVE: {
+    code: 'SOS_ACTIVE',
+    message: 'This booking is under SOS and cannot be modified.',
+    httpStatus: 423,
+  },
 
   // ── Compliance ─────────────────────────────────────────────
   COMPLIANCE_PENDING: {
@@ -275,6 +300,11 @@ const ERRORS = {
     code: 'CREDIT_LIMIT_EXCEEDED',
     message: 'Credit limit exceeded. Settle outstanding balance to continue.',
     httpStatus: 402,
+  },
+  PAYMENT_NOT_ALLOWED: {
+    code: 'PAYMENT_NOT_ALLOWED',
+    message: 'This payment method is not allowed.',
+    httpStatus: 400,
   },
 
   // ── Contract ───────────────────────────────────────────────
