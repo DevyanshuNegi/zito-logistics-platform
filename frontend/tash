@@ -1,0 +1,38 @@
+[33m83997f3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m driver-view.jsx: PRD 5.4 — trips, earnings wallet, profile, compliance docs, assignment control, expenses
+[33m39ab852[m frontend update
+[33m974913b[m Fix OTP login flow and Railway frontend deployment.
+[33mca1160c[m Add agency role navigation after OTP login
+[33m1491300[m Update frontend - Zito platform
+[33mda597c9[m initial backend push
+[33mde1d898[m frontend backup before PRD upgrade
+[33m42a3df4[m feat: Enhance driver dashboard with earnings, stats, and real-time updates
+[33m4d3dc81[m feat: Add connection status indicator to layout topbar
+[33m6a30d3b[m fix: Correct Socket.io server port from 5002 to 5000
+[33m57fb78e[m feat: Add Socket.io real-time updates to frontend
+[33m63af81a[m Add real-time socket integration to notifications component
+[33m52c9bcc[m feat: Add trip status management (start/complete) + connect trip charges
+[33m4d55c40[m fix: Update trip navigation to include booking ID in URL path
+[33m4ffeb99[m feat: Connect bookings list to trip details page with state navigation
+[33m71c3c09[m feat: Add forgot password, terms/privacy pages, trip details, and map/location components + fix trip redirect
+[33mcffdee7[m fix: add missing notification util
+[33m52550cf[m update booking UI
+[33m1096497[m fix: correct API baseURL
+[33m33a2423[m Updated booking UI with price calculator and contract pricing
+[33mbe16980[m feat: price calculator in booking modal, distance + urgent fields
+[33m70d6c81[m fix: merge app files, add terms + privacy routes
+[33m4e06065[m feat: forgot-password, terms, privacy pages + routes
+[33m723931a[m feat: forgot password page, fix App.jsx routes, fix login link
+[33m9b61728[m feat: add register, forgot-password, pending-approval routes + fix login link
+[33m5d93979[m fix: show correct OTP error messages
+[33md64ea21[m feat: 16 vehicle types, assign driver, cancel booking, toast notifications
+[33ma7f90dd[m feat: T&C + emergency contact in register, enhanced verification queue
+[33m7fcae4f[m feat: country list, Kenya counties, KRA PIN, NTSA licence fields
+[33m447bc2b[m feat: register page, pending approval, all pages, components, layout updates
+[33mdc379ab[m feat: add register page, pending approval screen, create account link
+[33m55670e7[m Fix contracts filename
+[33m4270fcb[m Add Transporters to sidebar navigation
+[33m95a60b2[m Add Transporters page
+[33mc612391[m Add contracts page
+[33mc6659a1[m Fix case sensitivity on page imports for Linux deployment
+[33mcd970c5[m Add all pages: assignments, customers, verification, payments, reports, bookings modal, dashboard live data, driver/vehicle assignment
+[33m0b45761[m Frontend - Phase 1 complete with dark theme
