@@ -17,8 +17,9 @@ const {
 
 router.use(authenticate, auditLogger, applyScope);
 
-// Payments list/detail (stub)
+// Payments list/detail
 router.get('/',    isFinanceOrSuper, controller.getPayments);
+router.post('/',   isFinanceOrSuper, controller.createPayment);
 router.get('/:id', isFinanceOrSuper, controller.getPaymentById);
 
 // Initiate payment intent

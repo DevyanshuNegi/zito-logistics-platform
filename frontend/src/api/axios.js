@@ -43,6 +43,20 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
+    // Add View As header if in View As mode
+    const adminUser = localStorage.getItem('adminUser');
+    const user = localStorage.getItem('user');
+    if (adminUser && user) {
+      try {
+        const userData = JSON.parse(user);
+        if (userData?.id) {
+          config.headers['X-View-As-User'] = userData.id;
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+
     return config;
 
   },

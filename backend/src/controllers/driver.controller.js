@@ -4,7 +4,7 @@
 // PRD §18.1 — Assignment Validation
 // PRD §18.5 — GPS Tracking
 
-const { User, Driver, Vehicle, Booking, DriverCompliance } = require('../models');
+const { User, Driver, Vehicle, Booking, DriverCompliance, TripCharge } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { BOOKING_STATUS } = require('../constants/bookingStatus');
@@ -269,15 +269,34 @@ exports.uploadDocument = async (req, res) => {
 };
 
 // ── Earnings ───────────────────────────────────────────────────────────────
-// PRD — drivers on salary, paid directly, no self-tracked earnings
+// PRD — drivers are salary-backed, but the portal still exposes wallet visibility
 exports.getEarnings = async (req, res) => {
   try {
     const driver = await Driver.findOne({ where: { user_id: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+
+    const approvedExpenses = await TripCharge.findAll({
+      where: {
+        driver_id: driver.id,
+        charge_type: 'driver_expense',
+        status: 'approved',
+      },
+      attributes: ['amount'],
+    });
+
+    const totalExpenses = approvedExpenses.reduce(
+      (sum, charge) => sum + Number(charge.amount || 0),
+      0,
+    );
+
     return success(res, {
-      message: 'Driver earnings are managed by Admin. Contact your manager for salary details.',
+      message: 'Wallet visibility is available here. Final payouts are still approved by Admin.',
       total_trips: driver.total_trips,
       avg_rating:  driver.avg_rating,
+      total_earnings: Number(driver.wallet_balance || 0),
+      total_expenses: totalExpenses,
+      pending_payout: Number(driver.pending_payout || 0),
+      last_payout_at: driver.last_payout_at,
     });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);

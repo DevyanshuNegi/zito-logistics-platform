@@ -16,12 +16,14 @@ const normalizeUser = (userData) => {
 export const AuthProvider = ({ children }) => {
 
   const [user, setUser] = useState(null);
+  const [adminUser, setAdminUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
 
     const savedUser  = localStorage.getItem('user');
     const savedToken = localStorage.getItem('accessToken');
+    const savedAdminUser = localStorage.getItem('adminUser');
 
     if (savedUser && savedToken) {
       try {
@@ -30,6 +32,10 @@ export const AuthProvider = ({ children }) => {
 
         if (parsedUser?.role) {
           localStorage.setItem('userRole', parsedUser.role);
+        }
+
+        if (savedAdminUser) {
+          setAdminUser(normalizeUser(JSON.parse(savedAdminUser)));
         }
       } catch {
         setUser(null);
@@ -52,7 +58,34 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('adminScope', normalizedUser.admin_scope);
     }
 
+    setAdminUser(null);
     setUser(normalizedUser);
+  };
+
+
+  const startViewAs = (targetUser) => {
+    if (!user) return false;
+
+    const normalizedTarget = normalizeUser(targetUser);
+    localStorage.setItem('adminUser', JSON.stringify(user));
+    localStorage.setItem('user', JSON.stringify(normalizedTarget));
+    localStorage.setItem('userRole', normalizedTarget?.role || 'customer');
+
+    setAdminUser(user);
+    setUser(normalizedTarget);
+    return true;
+  };
+
+  const endViewAs = () => {
+    if (!adminUser) return false;
+
+    localStorage.removeItem('adminUser');
+    localStorage.setItem('user', JSON.stringify(adminUser));
+    localStorage.setItem('userRole', adminUser?.role || 'customer');
+
+    setUser(adminUser);
+    setAdminUser(null);
+    return true;
   };
 
 
@@ -74,8 +107,10 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('user');
       localStorage.removeItem('userRole');
       localStorage.removeItem('adminScope');
+      localStorage.removeItem('adminUser');
 
       setUser(null);
+      setAdminUser(null);
 
     }
   };
@@ -101,10 +136,14 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         user,
+        adminUser,
         loading,
         login,
         logout,
-        hasRole
+        hasRole,
+        startViewAs,
+        endViewAs,
+        isViewingAs: !!adminUser,
       }}
     >
       {children}

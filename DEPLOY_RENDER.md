@@ -78,9 +78,9 @@ npm run create:admin
 - **DB connection**: Check DB credentials in service env vars
 - **Build fails**: Check Node version (requires Node 18+)
 
-## Migration from Railway
+## Migration from Legacy Hosts
 
-1. Export Railway PostgreSQL data
-2. Import to Render PostgreSQL
-3. Update DNS/domain settings
-4. Delete Railway services after verification
+1. Export your existing PostgreSQL data
+2. Import it into Render PostgreSQL
+3. Update your API/frontend environment variables to Render service URLs
+4. Cut traffic over only after frontend and API health checks pass

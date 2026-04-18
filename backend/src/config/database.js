@@ -1,7 +1,7 @@
 // src/config/database.js
 //
 // PRD References:
-//   §9    — Technology Stack (PostgreSQL 16, Sequelize v6, Railway.app)
+//   §9    — Technology Stack (PostgreSQL 16, Sequelize v6, Render-hosted services)
 //   §11   — Security (DB access restricted to app server IP in production)
 //   §25.9 — Soft delete (Sequelize paranoid mode enabled globally)
 //   §25.10 — Performance & Scalability (connection pooling, indexing)
@@ -46,8 +46,8 @@ const queryLogger = (sql, timing) => {
 /*   acquire: ms to wait for a connection before throwing                    */
 /*   idle: ms a connection can sit unused before being released              */
 /*                                                                            */
-/* Railway free tier: keep max low (5) to stay within connection limits      */
-/* Railway Pro / production: increase max to 20-50 based on DB plan          */
+/* Render starter plans: keep max low until workload grows                    */
+/* Higher production plans: increase max to 20-50 based on DB sizing          */
 /* -------------------------------------------------------------------------- */
 
 const poolConfig = {
@@ -61,15 +61,15 @@ const poolConfig = {
 /* SEQUELIZE INSTANCE                                                         */
 /*                                                                            */
 /* Two modes:                                                                 */
-/*   DATABASE_URL — Railway / production (includes SSL)                      */
+/*   DATABASE_URL — managed production Postgres connection (includes SSL)    */
 /*   Individual vars — local development                                     */
 /* -------------------------------------------------------------------------- */
 
 let sequelize;
 
 if (process.env.DATABASE_URL) {
-  // ── Production / Railway ──────────────────────────────────────────────────
-  // PRD §9 — Hosting on Railway.app with SSL termination
+  // ── Production / Render or other managed Postgres ────────────────────────
+  // PRD §9 — Managed cloud hosting with SSL termination
   // PRD §11 — DB access restricted to app server; SSL required
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
@@ -80,7 +80,7 @@ if (process.env.DATABASE_URL) {
     dialectOptions: {
       ssl: {
         require:            true,
-        rejectUnauthorized: process.env.DB_SSL_REJECT !== 'false', // Railway uses self-signed certs
+        rejectUnauthorized: process.env.DB_SSL_REJECT !== 'false', // configurable for managed providers
       },
       // PRD §25.10 — statement timeout prevents runaway queries
       statement_timeout:       parseInt(process.env.DB_STATEMENT_TIMEOUT || '30000', 10),
@@ -130,7 +130,7 @@ if (process.env.DATABASE_URL) {
 
 /* -------------------------------------------------------------------------- */
 /* CONNECT WITH RETRY                                                         */
-/* Railway cold starts and container restarts can cause brief DB              */
+/* Managed platform cold starts and restarts can cause brief DB               */
 /* unavailability. Retry up to MAX_RETRIES before giving up.                 */
 /* -------------------------------------------------------------------------- */
 
@@ -170,7 +170,7 @@ const connectDB = async () => {
     }
   }
 
-  // All retries exhausted — crash the process so Railway restarts the container
+  // All retries exhausted — crash the process so the platform restarts the container
   console.error('❌ Could not connect to PostgreSQL after all retries. Exiting.');
   throw lastError;
 };

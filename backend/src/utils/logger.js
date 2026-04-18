@@ -1,7 +1,7 @@
 // src/utils/logger.js
 //
 // Lightweight structured logger for ZITO backend.
-// Outputs clean JSON in production (Railway log aggregation),
+// Outputs clean JSON in production (Render or other platform log aggregation),
 // and colourised human-readable text in development.
 //
 // Usage anywhere in the codebase:
@@ -38,7 +38,7 @@ const log = (level, message, meta = null) => {
   const ts = new Date().toISOString();
 
   if (isProd) {
-    // JSON format — Railway, Datadog, Papertrail can parse structured logs
+    // JSON format — Render, Datadog, and Papertrail can parse structured logs
     const entry = {
       ts,
       level,

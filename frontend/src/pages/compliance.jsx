@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout';
 import api from '../api/axios';
@@ -20,95 +20,237 @@ const STATUS_LABELS = {
   not_submitted: 'Not Submitted',
 };
 
+const DOCUMENT_REQUIREMENTS = [
+  { key: 'national_id_url', label: 'National ID / Passport', expiryKey: null, required: true },
+  { key: 'license_url', label: 'Driving License', expiryKey: 'license_expiry', required: true },
+  { key: 'kra_pin_doc_url', label: 'KRA PIN Copy', expiryKey: null, required: true },
+  { key: 'police_clearance_url', label: 'Police Clearance', expiryKey: 'police_clearance_expiry', required: true },
+  { key: 'medical_cert_url', label: 'Medical Certificate', expiryKey: 'medical_expiry', required: true },
+];
+
+const AGREEMENT_REQUIREMENTS = [
+  { key: 'contract_signed', label: 'Driver Contract' },
+  { key: 'oath_signed', label: 'Confidentiality Oath' },
+  { key: 'sop_signed', label: 'SOP Acceptance' },
+];
+
+const formatDate = (value) => {
+  if (!value) return 'Not set';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'Not set' : parsed.toLocaleString();
+};
+
 export default function Compliance() {
   const navigate = useNavigate();
-  const { authUser } = useAuth();
+  const { user } = useAuth();
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedDriver, setSelectedDriver] = useState(null);
+  const [selectedDrivers, setSelectedDrivers] = useState([]);
   const [complianceData, setComplianceData] = useState(null);
   const [complianceLoading, setComplianceLoading] = useState(false);
   const [complianceError, setComplianceError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [toast, setToast] = useState(null);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectError, setRejectError] = useState('');
+  const [showActionModal, setShowActionModal] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [actionReason, setActionReason] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [bulkMode, setBulkMode] = useState(false);
 
-  // Bulk selection state (Phase 2: API integration pending)
-  const [selectedDrivers, setSelectedDrivers] = useState([]);
-
-  // RBAC: Only admin can access
   useEffect(() => {
-    if (!authUser) return;
-    const role = authUser.role?.toLowerCase();
-    if (role !== 'admin' && role !== 'super_admin') {
+    if (!user) return;
+    const role = user.role?.toLowerCase();
+    if (role !== 'super_admin' && role !== 'operations_admin') {
       navigate('/unauthorized');
     }
-  }, [authUser, navigate]);
+  }, [navigate, user]);
 
   useEffect(() => {
-    if (authUser) fetchDrivers();
-  }, [authUser]);
+    if (user) {
+      fetchDrivers();
+    }
+  }, [user]);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    window.clearTimeout(showToast.timeoutId);
+    showToast.timeoutId = window.setTimeout(() => setToast(null), 3200);
+  };
 
   const fetchDrivers = async () => {
     try {
       setLoading(true);
       const res = await api.get('/api/v1/admin/drivers');
-      setDrivers(res.data?.data || []);
+      const nextDrivers = res.data?.data || [];
+      setDrivers(nextDrivers);
+      if (selectedDriver) {
+        const refreshed = nextDrivers.find(driver => driver.id === selectedDriver.id);
+        if (refreshed) {
+          setSelectedDriver(refreshed);
+        }
+      }
     } catch (err) {
-      showToast('Failed to load drivers', 'error');
+      showToast(err.response?.data?.error?.message || 'Failed to load drivers', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const fetchCompliance = async (driverId) => {
-    setComplianceLoading(true);
-    setComplianceError(null);
     try {
+      setComplianceLoading(true);
+      setComplianceError(null);
       const res = await api.get(`/api/v1/compliance/drivers/${driverId}`);
       setComplianceData(res.data?.data?.compliance || null);
     } catch (err) {
       setComplianceError(err.response?.data?.error?.message || 'Failed to load compliance data');
-      showToast('Failed to load compliance data', 'error');
+      setComplianceData(null);
     } finally {
       setComplianceLoading(false);
     }
   };
 
-  const showToast = (msg, type = 'success') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
   const filteredDrivers = useMemo(() => {
-    let result = drivers;
+    let nextDrivers = drivers;
+
     if (filter !== 'all') {
-      result = result.filter(d => {
-        const status = d.compliance_status || d.user?.compliance_status || 'not_submitted';
-        return status === filter;
-      });
+      nextDrivers = nextDrivers.filter(driver => getDriverStatus(driver) === filter);
     }
+
     if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(d =>
-        (d.full_name || '').toLowerCase().includes(q) ||
-        (d.license_number || '').toLowerCase().includes(q) ||
-        (d.user?.phone || '').toLowerCase().includes(q)
+      const query = search.trim().toLowerCase();
+      nextDrivers = nextDrivers.filter(driver =>
+        getDriverName(driver).toLowerCase().includes(query) ||
+        String(driver.license_number || '').toLowerCase().includes(query) ||
+        String(driver.user?.phone || driver.phone || '').toLowerCase().includes(query)
       );
     }
-    return result;
+
+    return nextDrivers;
   }, [drivers, filter, search]);
+
+  const selectedDetailStatus = getDriverStatus(selectedDriver);
+
+  const documentChecklist = useMemo(() => {
+    return DOCUMENT_REQUIREMENTS.map(doc => ({
+      ...doc,
+      present: Boolean(complianceData?.[doc.key]),
+      expiry: doc.expiryKey ? complianceData?.[doc.expiryKey] : null,
+      value: complianceData?.[doc.key],
+    }));
+  }, [complianceData]);
+
+  const agreementChecklist = useMemo(() => {
+    return AGREEMENT_REQUIREMENTS.map(item => ({
+      ...item,
+      present: Boolean(complianceData?.[item.key]),
+    }));
+  }, [complianceData]);
+
+  const isReadyForApproval = documentChecklist.every(item => item.present) && agreementChecklist.every(item => item.present);
+
+  const openActionModal = (status, useBulk = false) => {
+    setPendingAction(status);
+    setBulkMode(useBulk);
+    setActionReason('');
+    setActionError('');
+    setShowActionModal(true);
+  };
+
+  const closeActionModal = () => {
+    setShowActionModal(false);
+    setPendingAction(null);
+    setActionReason('');
+    setActionError('');
+    setBulkMode(false);
+  };
 
   const handleDriverClick = async (driver) => {
     setSelectedDriver(driver);
-    setComplianceData(null);
-    setComplianceError(null);
     await fetchCompliance(driver.id);
+  };
+
+  const toggleSelectedDriver = (driverId) => {
+    setSelectedDrivers(current =>
+      current.includes(driverId)
+        ? current.filter(id => id !== driverId)
+        : [...current, driverId]
+    );
+  };
+
+  const submitApproval = async (driverIds) => {
+    if (!driverIds.length) return;
+
+    setActionLoading(true);
+    try {
+      if (driverIds.length === 1) {
+        await api.patch(`/api/v1/compliance/drivers/${driverIds[0]}/status`, { status: 'approved' });
+      } else {
+        await api.patch('/api/v1/compliance/drivers/bulk-status', {
+          driver_ids: driverIds,
+          status: 'approved',
+        });
+      }
+
+      showToast(driverIds.length === 1 ? 'Driver approved successfully' : `${driverIds.length} drivers approved`);
+      setSelectedDrivers([]);
+      await fetchDrivers();
+      if (selectedDriver && driverIds.includes(selectedDriver.id)) {
+        await fetchCompliance(selectedDriver.id);
+      }
+    } catch (err) {
+      showToast(err.response?.data?.error?.message || 'Failed to approve drivers', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const submitActionWithReason = async () => {
+    if (!pendingAction) return;
+
+    if (!String(actionReason || '').trim()) {
+      setActionError('A reason is required for rejection or resubmission.');
+      return;
+    }
+
+    const driverIds = bulkMode ? selectedDrivers : selectedDriver ? [selectedDriver.id] : [];
+    if (!driverIds.length) return;
+
+    setActionLoading(true);
+    setActionError('');
+
+    try {
+      if (driverIds.length === 1) {
+        await api.patch(`/api/v1/compliance/drivers/${driverIds[0]}/status`, {
+          status: pendingAction,
+          comment: actionReason.trim(),
+        });
+      } else {
+        await api.patch('/api/v1/compliance/drivers/bulk-status', {
+          driver_ids: driverIds,
+          status: pendingAction,
+          comment: actionReason.trim(),
+        });
+      }
+
+      showToast(driverIds.length === 1
+        ? `Driver marked as ${STATUS_LABELS[pendingAction]}`
+        : `${driverIds.length} drivers updated`);
+
+      closeActionModal();
+      setSelectedDrivers([]);
+      await fetchDrivers();
+      if (!bulkMode && selectedDriver) {
+        await fetchCompliance(selectedDriver.id);
+      }
+    } catch (err) {
+      showToast(err.response?.data?.error?.message || 'Failed to update compliance status', 'error');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const getApprovedBy = (data) => {
@@ -116,107 +258,35 @@ export default function Compliance() {
     return data.approved_by_name || data.approved_by?.full_name || `Admin #${data.approved_by}`;
   };
 
-  const getStatusUpdatedBy = (data) => {
+  const getReviewedBy = (data) => {
     if (!data?.status_updated_by) return null;
     return data.status_updated_by_name || data.status_updated_by?.full_name || `Admin #${data.status_updated_by}`;
   };
-
-  // Document keys required for approval
-  const REQUIRED_DOCS = ['license', 'psv_badge', 'good_conduct', 'medical', 'ntsa_cert', 'insurance'];
-
-  const areAllDocsUploaded = (data) => {
-    if (!data) return false;
-    return REQUIRED_DOCS.every(key => data[key]);
-  };
-
-  const handleApprove = async () => {
-    if (!selectedDriver) return;
-    if (!areAllDocsUploaded(complianceData)) {
-      showToast('Cannot approve: missing required documents', 'error');
-      return;
-    }
-    setActionLoading(true);
-    try {
-      await api.put(`/api/v1/compliance/drivers/${selectedDriver.id}/status`, {
-        status: 'approved',
-      });
-      showToast('Driver approved successfully');
-      await fetchDrivers();
-      await fetchCompliance(selectedDriver.id);
-    } catch (err) {
-      showToast(err.response?.data?.error?.message || 'Failed to approve', 'error');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleRejectClick = () => {
-    setPendingAction('rejected');
-    setShowRejectModal(true);
-  };
-
-  const handleResubmitClick = () => {
-    setPendingAction('resubmission_required');
-    setShowRejectModal(true);
-  };
-
-  const handleConfirmAction = async () => {
-    if (!selectedDriver || !pendingAction) return;
-    if (!rejectReason.trim()) {
-      setRejectError('Reason is required for rejection/resubmission');
-      return;
-    }
-    setActionLoading(true);
-    setRejectError('');
-    try {
-      await api.put(`/api/v1/compliance/drivers/${selectedDriver.id}/status`, {
-        status: pendingAction,
-        comment: rejectReason.trim(),
-      });
-      showToast(`Driver marked as ${STATUS_LABELS[pendingAction]}`);
-      setShowRejectModal(false);
-      setRejectReason('');
-      setPendingAction(null);
-      await fetchDrivers();
-      await fetchCompliance(selectedDriver.id);
-    } catch (err) {
-      showToast(err.response?.data?.error?.message || 'Failed to update status', 'error');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Normalize driver data (handle inconsistent API structure)
-  const getDriverName = (driver) => driver.user?.full_name || driver.full_name || 'Unknown';
-  const getDriverPhone = (driver) => driver.user?.phone || driver.phone || 'No phone';
-  const getDriverStatus = (driver) => driver.user?.compliance_status || driver.compliance_status || 'not_submitted';
-
-  const getStatusStyle = (status) => STATUS_COLORS[status] || STATUS_COLORS.not_submitted;
 
   return (
     <Layout>
       <div style={styles.container}>
         <div style={styles.header}>
-          <h1 style={styles.title}>🛡️ Compliance Review</h1>
-          <p style={styles.subtitle}>Review and manage driver compliance documents</p>
+          <div>
+            <h1 style={styles.title}>Compliance Review</h1>
+            <p style={styles.subtitle}>Review driver documents, agreements, and approval readiness.</p>
+          </div>
         </div>
 
-        {/* Stats */}
         <div style={styles.statsGrid}>
           {[
             { label: 'Total Drivers', value: drivers.length, color: '#3b82f6' },
-            { label: 'Pending Review', value: drivers.filter(d => getDriverStatus(d) === 'pending').length, color: '#8b5cf6' },
-            { label: 'Approved', value: drivers.filter(d => getDriverStatus(d) === 'approved').length, color: '#22c55e' },
-            { label: 'Rejected/Resubmit', value: drivers.filter(d => ['rejected', 'resubmission_required'].includes(getDriverStatus(d))).length, color: '#ef4444' },
-          ].map(stat => (
-            <div key={stat.label} style={{ ...styles.statCard, borderColor: stat.color }}>
-              <div style={{ ...styles.statValue, color: stat.color }}>{stat.value}</div>
-              <div style={styles.statLabel}>{stat.label}</div>
+            { label: 'Pending Review', value: drivers.filter(driver => getDriverStatus(driver) === 'pending').length, color: '#8b5cf6' },
+            { label: 'Approved', value: drivers.filter(driver => getDriverStatus(driver) === 'approved').length, color: '#22c55e' },
+            { label: 'Rejected / Resubmit', value: drivers.filter(driver => ['rejected', 'resubmission_required'].includes(getDriverStatus(driver))).length, color: '#ef4444' },
+          ].map(card => (
+            <div key={card.label} style={{ ...styles.statCard, borderColor: card.color }}>
+              <div style={{ ...styles.statValue, color: card.color }}>{card.value}</div>
+              <div style={styles.statLabel}>{card.label}</div>
             </div>
           ))}
         </div>
 
-        {/* Filters */}
         <div style={styles.filterBar}>
           <div style={styles.tabs}>
             {[
@@ -225,50 +295,56 @@ export default function Compliance() {
               { key: 'approved', label: 'Approved' },
               { key: 'rejected', label: 'Rejected' },
               { key: 'resubmission_required', label: 'Resubmission' },
-            ].map(t => (
+            ].map(tab => (
               <button
-                key={t.key}
-                style={{ ...styles.tab, ...(filter === t.key ? styles.tabActive : {}) }}
-                onClick={() => setFilter(t.key)}
+                key={tab.key}
+                type="button"
+                style={{ ...styles.tab, ...(filter === tab.key ? styles.tabActive : {}) }}
+                onClick={() => setFilter(tab.key)}
               >
-                {t.label}
+                {tab.label}
               </button>
             ))}
           </div>
+
           <input
             style={styles.search}
-            placeholder="Search driver name, license..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={event => setSearch(event.target.value)}
+            placeholder="Search driver name, phone, or license"
           />
         </div>
 
-        {/* Bulk Action Bar - Phase 2: API integration pending */}
         {selectedDrivers.length > 0 && (
           <div style={styles.bulkBar}>
             <span style={styles.bulkCount}>{selectedDrivers.length} selected</span>
             <div style={styles.bulkActions}>
               <button
+                type="button"
                 style={{ ...styles.btn, ...styles.btnApprove, fontSize: 13, padding: '8px 16px' }}
-                onClick={() => {
-                  // TODO: Bulk approve - Phase 2
-                  // POST /api/v1/compliance/drivers/bulk-status
-                  // { driver_ids: selectedDrivers, status: 'approved' }
-                  showToast('Bulk actions coming in Phase 2', 'error');
-                }}
+                disabled={actionLoading}
+                onClick={() => submitApproval(selectedDrivers)}
               >
-                ✓ Approve Selected
+                Approve Selected
               </button>
               <button
+                type="button"
                 style={{ ...styles.btn, ...styles.btnReject, fontSize: 13, padding: '8px 16px' }}
-                onClick={() => {
-                  // TODO: Bulk reject - Phase 2
-                  showToast('Bulk actions coming in Phase 2', 'error');
-                }}
+                disabled={actionLoading}
+                onClick={() => openActionModal('rejected', true)}
               >
-                ✕ Reject Selected
+                Reject Selected
               </button>
               <button
+                type="button"
+                style={{ ...styles.btn, ...styles.btnResubmit, fontSize: 13, padding: '8px 16px' }}
+                disabled={actionLoading}
+                onClick={() => openActionModal('resubmission_required', true)}
+              >
+                Request Resubmission
+              </button>
+              <button
+                type="button"
                 style={{ ...styles.btn, ...styles.btnSecondary, fontSize: 13, padding: '8px 16px' }}
                 onClick={() => setSelectedDrivers([])}
               >
@@ -278,21 +354,22 @@ export default function Compliance() {
           </div>
         )}
 
-        {/* Driver List */}
         <div style={styles.contentGrid}>
           <div style={styles.listPanel}>
             {loading ? (
               <div style={styles.empty}>Loading drivers...</div>
             ) : filteredDrivers.length === 0 ? (
-              <div style={styles.empty}>No drivers found</div>
+              <div style={styles.empty}>No drivers found.</div>
             ) : (
               filteredDrivers.map(driver => {
                 const status = getDriverStatus(driver);
-                const style = getStatusStyle(status);
+                const style = STATUS_COLORS[status] || STATUS_COLORS.not_submitted;
                 const isSelected = selectedDrivers.includes(driver.id);
+
                 return (
-                  <div
+                  <button
                     key={driver.id}
+                    type="button"
                     style={{
                       ...styles.driverRow,
                       ...(selectedDriver?.id === driver.id ? styles.driverRowActive : {}),
@@ -304,104 +381,89 @@ export default function Compliance() {
                       type="checkbox"
                       style={styles.checkbox}
                       checked={isSelected}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        setSelectedDrivers(prev =>
-                          prev.includes(driver.id)
-                            ? prev.filter(id => id !== driver.id)
-                            : [...prev, driver.id]
-                        );
+                      onChange={(event) => {
+                        event.stopPropagation();
+                        toggleSelectedDriver(driver.id);
                       }}
+                      onClick={event => event.stopPropagation()}
                     />
                     <div style={styles.driverInfo}>
                       <div style={styles.driverName}>{getDriverName(driver)}</div>
                       <div style={styles.driverMeta}>
-                        License: {driver.license_number || 'N/A'} · {getDriverPhone(driver)}
+                        License: {driver.license_number || 'N/A'} | {driver.user?.phone || driver.phone || 'No phone'}
                       </div>
                     </div>
                     <span style={{ ...styles.statusBadge, background: style.bg, color: style.text, border: `1px solid ${style.border}` }}>
                       {STATUS_LABELS[status]}
                     </span>
-                  </div>
+                  </button>
                 );
               })
             )}
           </div>
 
-          {/* Detail Panel */}
           <div style={styles.detailPanel}>
             {!selectedDriver ? (
-              <div style={styles.empty}>Select a driver to review compliance</div>
+              <div style={styles.empty}>Select a driver to review compliance.</div>
+            ) : complianceLoading ? (
+              <div style={styles.empty}>Loading compliance details...</div>
+            ) : complianceError ? (
+              <div style={styles.errorBox}>
+                <div style={styles.errorTitle}>Could not load compliance details</div>
+                <div>{complianceError}</div>
+                <button type="button" style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 12 }} onClick={() => fetchCompliance(selectedDriver.id)}>
+                  Retry
+                </button>
+              </div>
             ) : (
               <>
-                {complianceLoading && (
-                  <div style={styles.loadingOverlay}>
-                    <div style={styles.spinner}>Loading compliance data...</div>
-                  </div>
-                )}
-                {complianceError && (
-                  <div style={styles.errorBox}>
-                    <div style={{ fontWeight: 600, marginBottom: 8 }}>⚠️ Error</div>
-                    <div>{complianceError}</div>
-                    <button style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 12 }} onClick={() => fetchCompliance(selectedDriver.id)}>
-                      Retry
-                    </button>
-                  </div>
-                )}
                 <div style={styles.detailHeader}>
                   <div>
                     <h3 style={styles.detailName}>{getDriverName(selectedDriver)}</h3>
                     <p style={styles.detailMeta}>License: {selectedDriver.license_number || 'N/A'}</p>
                   </div>
-                  {(() => {
-                    const status = getDriverStatus(selectedDriver);
-                    const style = getStatusStyle(status);
-                    return (
-                      <span style={{ ...styles.statusBadge, background: style.bg, color: style.text, border: `1px solid ${style.border}`, fontSize: 14, padding: '6px 12px' }}>
-                        {STATUS_LABELS[status]}
-                      </span>
-                    );
-                  })()}
+                  <span
+                    style={{
+                      ...styles.statusBadge,
+                      background: (STATUS_COLORS[selectedDetailStatus] || STATUS_COLORS.not_submitted).bg,
+                      color: (STATUS_COLORS[selectedDetailStatus] || STATUS_COLORS.not_submitted).text,
+                      border: `1px solid ${(STATUS_COLORS[selectedDetailStatus] || STATUS_COLORS.not_submitted).border}`,
+                      fontSize: 14,
+                      padding: '6px 12px',
+                    }}
+                  >
+                    {STATUS_LABELS[selectedDetailStatus]}
+                  </span>
                 </div>
 
-                {/* Documents Section */}
                 <div style={styles.section}>
-                  <h4 style={styles.sectionTitle}>
-                    📋 Documents
-                    {complianceData && (
-                      <span style={{ fontSize: 12, color: areAllDocsUploaded(complianceData) ? '#22c55e' : '#f59e0b', marginLeft: 12 }}>
-                        {areAllDocsUploaded(complianceData) ? '(✓ Complete)' : '(⚠ Incomplete)'}
-                      </span>
-                    )}
-                  </h4>
+                  <div style={styles.sectionTitleRow}>
+                    <h4 style={styles.sectionTitle}>Required Documents</h4>
+                    <span style={{ ...styles.readinessBadge, color: isReadyForApproval ? '#22c55e' : '#f59e0b' }}>
+                      {isReadyForApproval ? 'Ready for approval' : 'Missing required items'}
+                    </span>
+                  </div>
                   <div style={styles.docGrid}>
-                    {[
-                      { key: 'license', label: 'Driving License', icon: '🪪' },
-                      { key: 'psv_badge', label: 'PSV Badge', icon: '🎫' },
-                      { key: 'good_conduct', label: 'Good Conduct', icon: '📄' },
-                      { key: 'medical', label: 'Medical Certificate', icon: '🏥' },
-                      { key: 'ntsa_cert', label: 'NTSA Certificate', icon: '✅' },
-                      { key: 'insurance', label: 'Insurance Copy', icon: '🛡️' },
-                    ].map(doc => (
-                      <div key={doc.key} style={styles.docCard}>
-                        <div style={styles.docIcon}>{doc.icon}</div>
-                        <div style={styles.docLabel}>{doc.label}</div>
+                    {documentChecklist.map(item => (
+                      <div key={item.key} style={styles.docCard}>
+                        <div style={styles.docLabel}>{item.label}</div>
                         <div style={styles.docStatus}>
-                          {complianceData?.[doc.key] ? (
-                            <span style={{ color: '#22c55e' }}>✓ Uploaded</span>
-                          ) : (
-                            <span style={{ color: '#6b7280' }}>— Missing</span>
-                          )}
+                          <span style={{ color: item.present ? '#22c55e' : '#6b7280' }}>
+                            {item.present ? 'Uploaded' : 'Missing'}
+                          </span>
                         </div>
-                        {complianceData?.[doc.key] && (
+                        {item.expiryKey && (
+                          <div style={styles.docMeta}>Expiry: {formatDate(item.expiry)}</div>
+                        )}
+                        {item.present && (
                           <a
-                            href={complianceData[doc.key]}
+                            href={item.value}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ ...styles.btn, ...styles.btnView, marginTop: 8 }}
-                            onClick={e => e.stopPropagation()}
+                            onClick={event => event.stopPropagation()}
                           >
-                            👁 View
+                            View document
                           </a>
                         )}
                       </div>
@@ -409,74 +471,85 @@ export default function Compliance() {
                   </div>
                 </div>
 
-                {/* Compliance Info */}
-                {complianceData && (
-                  <div style={styles.section}>
-                    <h4 style={styles.sectionTitle}>ℹ️ Compliance Info</h4>
-                    <div style={styles.infoGrid}>
-                      <div style={styles.infoItem}>
-                        <span style={styles.infoLabel}>Submitted At</span>
-                        <span style={styles.infoValue}>
-                          {complianceData.submitted_at ? new Date(complianceData.submitted_at).toLocaleString() : 'N/A'}
-                        </span>
+                <div style={styles.section}>
+                  <h4 style={styles.sectionTitle}>Signed Agreements</h4>
+                  <div style={styles.docGrid}>
+                    {agreementChecklist.map(item => (
+                      <div key={item.key} style={styles.docCard}>
+                        <div style={styles.docLabel}>{item.label}</div>
+                        <div style={styles.docStatus}>
+                          <span style={{ color: item.present ? '#22c55e' : '#6b7280' }}>
+                            {item.present ? 'Accepted' : 'Pending'}
+                          </span>
+                        </div>
                       </div>
-                      <div style={styles.infoItem}>
-                        <span style={styles.infoLabel}>Reviewed At</span>
-                        <span style={styles.infoValue}>
-                          {complianceData.status_updated_at ? new Date(complianceData.status_updated_at).toLocaleString() : 'Pending'}
-                        </span>
-                      </div>
-                      {complianceData.rejection_reason && (
-                        <div style={{ ...styles.infoItem, gridColumn: '1 / -1' }}>
-                          <span style={styles.infoLabel}>Rejection Reason</span>
-                          <span style={{ ...styles.infoValue, color: '#ef4444' }}>{complianceData.rejection_reason}</span>
-                        </div>
-                      )}
-                      {complianceData.resubmission_comment && (
-                        <div style={{ ...styles.infoItem, gridColumn: '1 / -1' }}>
-                          <span style={styles.infoLabel}>Resubmission Comment</span>
-                          <span style={{ ...styles.infoValue, color: '#f59e0b' }}>{complianceData.resubmission_comment}</span>
-                        </div>
-                      )}
-                      {getApprovedBy(complianceData) && (
-                        <div style={styles.infoItem}>
-                          <span style={styles.infoLabel}>Approved By</span>
-                          <span style={{ ...styles.infoValue, color: '#22c55e' }}>{getApprovedBy(complianceData)}</span>
-                        </div>
-                      )}
-                      {getStatusUpdatedBy(complianceData) && (
-                        <div style={styles.infoItem}>
-                          <span style={styles.infoLabel}>Reviewed By</span>
-                          <span style={styles.infoValue}>{getStatusUpdatedBy(complianceData)}</span>
-                        </div>
-                      )}
-                    </div>
+                    ))}
                   </div>
-                )}
+                </div>
 
-                {/* Actions */}
+                <div style={styles.section}>
+                  <h4 style={styles.sectionTitle}>Compliance Info</h4>
+                  <div style={styles.infoGrid}>
+                    <div style={styles.infoItem}>
+                      <span style={styles.infoLabel}>Submitted At</span>
+                      <span style={styles.infoValue}>{formatDate(complianceData?.submitted_at || complianceData?.created_at)}</span>
+                    </div>
+                    <div style={styles.infoItem}>
+                      <span style={styles.infoLabel}>Reviewed At</span>
+                      <span style={styles.infoValue}>{complianceData?.status_updated_at ? formatDate(complianceData.status_updated_at) : 'Pending'}</span>
+                    </div>
+                    {getApprovedBy(complianceData) && (
+                      <div style={styles.infoItem}>
+                        <span style={styles.infoLabel}>Approved By</span>
+                        <span style={{ ...styles.infoValue, color: '#22c55e' }}>{getApprovedBy(complianceData)}</span>
+                      </div>
+                    )}
+                    {getReviewedBy(complianceData) && (
+                      <div style={styles.infoItem}>
+                        <span style={styles.infoLabel}>Reviewed By</span>
+                        <span style={styles.infoValue}>{getReviewedBy(complianceData)}</span>
+                      </div>
+                    )}
+                    {complianceData?.rejection_reason && (
+                      <div style={{ ...styles.infoItem, gridColumn: '1 / -1' }}>
+                        <span style={styles.infoLabel}>Rejection Reason</span>
+                        <span style={{ ...styles.infoValue, color: '#ef4444' }}>{complianceData.rejection_reason}</span>
+                      </div>
+                    )}
+                    {complianceData?.resubmission_comment && (
+                      <div style={{ ...styles.infoItem, gridColumn: '1 / -1' }}>
+                        <span style={styles.infoLabel}>Resubmission Comment</span>
+                        <span style={{ ...styles.infoValue, color: '#f59e0b' }}>{complianceData.resubmission_comment}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div style={styles.actions}>
                   <button
+                    type="button"
                     style={{ ...styles.btn, ...styles.btnApprove }}
-                    onClick={handleApprove}
-                    disabled={actionLoading || getDriverStatus(selectedDriver) === 'approved' || !areAllDocsUploaded(complianceData)}
-                    title={!areAllDocsUploaded(complianceData) ? 'All documents must be uploaded before approval' : ''}
+                    disabled={actionLoading || selectedDetailStatus === 'approved' || !isReadyForApproval}
+                    title={!isReadyForApproval ? 'All required documents and signed agreements must be complete before approval.' : ''}
+                    onClick={() => submitApproval([selectedDriver.id])}
                   >
-                    {actionLoading ? 'Processing...' : '✓ Approve Driver'}
+                    {actionLoading ? 'Processing...' : 'Approve Driver'}
                   </button>
                   <button
+                    type="button"
                     style={{ ...styles.btn, ...styles.btnReject }}
-                    onClick={handleRejectClick}
                     disabled={actionLoading}
+                    onClick={() => openActionModal('rejected')}
                   >
-                    ✕ Reject
+                    Reject
                   </button>
                   <button
+                    type="button"
                     style={{ ...styles.btn, ...styles.btnResubmit }}
-                    onClick={handleResubmitClick}
                     disabled={actionLoading}
+                    onClick={() => openActionModal('resubmission_required')}
                   >
-                    ↻ Request Resubmission
+                    Request Resubmission
                   </button>
                 </div>
               </>
@@ -484,37 +557,37 @@ export default function Compliance() {
           </div>
         </div>
 
-        {/* Reject/Resubmit Modal */}
-        {showRejectModal && (
-          <div style={styles.modalOverlay} onClick={() => setShowRejectModal(false)}>
-            <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        {showActionModal && (
+          <div style={styles.modalOverlay} onClick={closeActionModal}>
+            <div style={styles.modal} onClick={event => event.stopPropagation()}>
               <h3 style={styles.modalTitle}>
-                {pendingAction === 'reject' ? 'Reject Driver' : 'Request Resubmission'}
+                {bulkMode
+                  ? `${pendingAction === 'rejected' ? 'Reject' : 'Request Resubmission for'} ${selectedDrivers.length} Drivers`
+                  : pendingAction === 'rejected'
+                    ? 'Reject Driver'
+                    : 'Request Resubmission'}
               </h3>
               <p style={styles.modalDesc}>
-                {pendingAction === 'reject'
-                  ? 'Please provide a reason for rejecting this driver.'
-                  : 'Please specify what documents need to be resubmitted.'}
+                {pendingAction === 'rejected'
+                  ? 'Provide a clear reason that the driver should see in the portal.'
+                  : 'Explain what must be corrected before the next review.'}
               </p>
-              {rejectError && (
-                <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>⚠️ {rejectError}</div>
-              )}
+              {actionError && <div style={styles.modalError}>{actionError}</div>}
               <textarea
                 style={styles.textarea}
-                placeholder={pendingAction === 'rejected' ? 'Rejection reason (required)...' : 'Resubmission instructions (required)...'}
-                value={rejectReason}
-                onChange={e => { setRejectReason(e.target.value); setRejectError(''); }}
+                value={actionReason}
+                onChange={event => {
+                  setActionReason(event.target.value);
+                  setActionError('');
+                }}
                 rows={4}
+                placeholder={pendingAction === 'rejected' ? 'Reason for rejection' : 'Resubmission instructions'}
               />
               <div style={styles.modalActions}>
-                <button style={{ ...styles.btn, ...styles.btnSecondary }} onClick={() => setShowRejectModal(false)}>
+                <button type="button" style={{ ...styles.btn, ...styles.btnSecondary }} onClick={closeActionModal}>
                   Cancel
                 </button>
-                <button
-                  style={{ ...styles.btn, ...styles.btnPrimary }}
-                  onClick={handleConfirmAction}
-                  disabled={actionLoading}
-                >
+                <button type="button" style={{ ...styles.btn, ...styles.btnPrimary }} disabled={actionLoading} onClick={submitActionWithReason}>
                   {actionLoading ? 'Processing...' : 'Confirm'}
                 </button>
               </div>
@@ -522,10 +595,9 @@ export default function Compliance() {
           </div>
         )}
 
-        {/* Toast */}
         {toast && (
           <div style={{ ...styles.toast, ...(toast.type === 'error' ? styles.toastError : styles.toastSuccess) }}>
-            {toast.msg}
+            {toast.message}
           </div>
         )}
       </div>
@@ -533,36 +605,32 @@ export default function Compliance() {
   );
 }
 
-const styles = {
-  container: { padding: '24px 32px', maxWidth: 1400, margin: '0 auto' },
-  header: { marginBottom: 24 },
-  title: { fontSize: 26, fontWeight: 700, color: '#e8eaf2', marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#8892a4' },
+function getDriverName(driver) {
+  if (!driver) return 'Unknown';
+  return driver.user?.full_name || driver.full_name || 'Unknown';
+}
 
-  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 },
+function getDriverStatus(driver) {
+  if (!driver) return 'not_submitted';
+  return driver.user?.compliance_status || driver.compliance_status || 'not_submitted';
+}
+
+const styles = {
+  container: { padding: '24px 32px', maxWidth: 1440, margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+  title: { fontSize: 26, fontWeight: 700, color: '#e8eaf2', marginBottom: 6 },
+  subtitle: { fontSize: 14, color: '#8892a4', margin: 0 },
+  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16, marginBottom: 24 },
   statCard: {
     background: 'linear-gradient(135deg, #1a1f2e 0%, #161922 100%)',
     border: '1px solid rgba(255,255,255,0.06)',
     borderLeftWidth: 4,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: '16px 20px',
   },
   statValue: { fontSize: 28, fontWeight: 700, marginBottom: 4 },
   statLabel: { fontSize: 12, color: '#8892a4', textTransform: 'uppercase', letterSpacing: 0.5 },
-
-  filterBar: { display: 'flex', gap: 16, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' },
-  bulkBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    background: 'linear-gradient(135deg, #1a1f2e 0%, #161922 100%)',
-    border: '1px solid rgba(59,130,246,0.3)',
-    borderRadius: 12,
-    padding: '12px 16px',
-    marginBottom: 16,
-  },
-  bulkCount: { fontSize: 14, fontWeight: 600, color: '#60a5fa' },
-  bulkActions: { display: 'flex', gap: 10 },
+  filterBar: { display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 18 },
   tabs: { display: 'flex', gap: 8, flexWrap: 'wrap' },
   tab: {
     padding: '8px 16px',
@@ -572,7 +640,6 @@ const styles = {
     color: '#8892a4',
     fontSize: 13,
     cursor: 'pointer',
-    transition: 'all 0.2s',
   },
   tabActive: {
     background: 'rgba(232,160,32,0.15)',
@@ -580,191 +647,200 @@ const styles = {
     color: '#e8a020',
   },
   search: {
+    minWidth: 260,
     flex: 1,
-    minWidth: 200,
-    padding: '10px 14px',
-    borderRadius: 8,
-    border: '1px solid rgba(255,255,255,0.1)',
-    background: '#181e2d',
+    maxWidth: 360,
+    background: '#11151f',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    padding: '11px 14px',
     color: '#e8eaf2',
     fontSize: 14,
   },
-
-  contentGrid: { display: 'grid', gridTemplateColumns: '360px 1fr', gap: 20 },
-  listPanel: {
-    background: 'linear-gradient(135deg, #1a1f2e 0%, #161922 100%)',
-    border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 12,
-    maxHeight: 'calc(100vh - 280px)',
-    overflow: 'auto',
-  },
-  driverRow: {
-    padding: '14px 16px',
-    borderBottom: '1px solid rgba(255,255,255,0.04)',
-    cursor: 'pointer',
+  bulkBar: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    transition: 'background 0.2s',
-  },
-  driverRowActive: {
-    background: 'rgba(232,160,32,0.08)',
-    borderLeft: '3px solid #e8a020',
-  },
-  driverRowSelected: {
-    background: 'rgba(59,130,246,0.08)',
-  },
-  checkbox: {
-    marginRight: 12,
-    width: 18,
-    height: 18,
-    cursor: 'pointer',
-    accentColor: '#e8a020',
-  },
-  driverInfo: { flex: 1 },
-  driverName: { fontWeight: 600, color: '#e8eaf2', fontSize: 14, marginBottom: 2 },
-  driverMeta: { fontSize: 12, color: '#8892a4' },
-  statusBadge: {
-    padding: '4px 10px',
-    borderRadius: 20,
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-  },
-
-  detailPanel: {
+    gap: 16,
+    flexWrap: 'wrap',
     background: 'linear-gradient(135deg, #1a1f2e 0%, #161922 100%)',
-    border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 12,
-    padding: 24,
-  },
-  detailHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 24,
-    paddingBottom: 16,
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
-  },
-  detailName: { fontSize: 20, fontWeight: 700, color: '#e8eaf2', marginBottom: 4 },
-  detailMeta: { fontSize: 13, color: '#8892a4' },
-
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 14, fontWeight: 600, color: '#e8eaf2', marginBottom: 12 },
-
-  docGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 },
-  docCard: {
-    background: 'rgba(10,14,23,0.5)',
-    border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 10,
-    padding: 16,
-    textAlign: 'center',
-  },
-  docIcon: { fontSize: 24, marginBottom: 8 },
-  docLabel: { fontSize: 12, color: '#8892a4', marginBottom: 4 },
-  docStatus: { fontSize: 12, fontWeight: 500 },
-
-  infoGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
-  infoItem: {
-    background: 'rgba(10,14,23,0.5)',
-    border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 10,
-    padding: 12,
-  },
-  infoLabel: { display: 'block', fontSize: 11, color: '#8892a4', marginBottom: 4, textTransform: 'uppercase' },
-  infoValue: { fontSize: 14, color: '#e8eaf2', fontWeight: 500 },
-
-  actions: { display: 'flex', gap: 12, marginTop: 24 },
-  btn: {
-    padding: '12px 20px',
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    border: 'none',
-    transition: 'opacity 0.2s',
-  },
-  btnApprove: { background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff' },
-  btnReject: { background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' },
-  btnResubmit: { background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' },
-  btnPrimary: { background: 'linear-gradient(135deg, #e8a020, #d18a0e)', color: '#0a0e17' },
-  btnSecondary: { background: 'rgba(255,255,255,0.1)', color: '#e8eaf2' },
-  btnView: {
-    background: 'rgba(59,130,246,0.15)',
-    color: '#60a5fa',
     border: '1px solid rgba(59,130,246,0.3)',
-    fontSize: 12,
-    padding: '6px 12px',
-    textDecoration: 'none',
-    display: 'inline-block',
+    borderRadius: 12,
+    padding: '12px 16px',
+    marginBottom: 16,
   },
-
-  empty: { padding: 40, textAlign: 'center', color: '#8892a4', fontSize: 14 },
-
-  loadingOverlay: {
-    position: 'absolute',
-    inset: 0,
-    background: 'rgba(10,14,23,0.8)',
+  bulkCount: { fontSize: 14, fontWeight: 600, color: '#60a5fa' },
+  bulkActions: { display: 'flex', gap: 10, flexWrap: 'wrap' },
+  contentGrid: { display: 'grid', gridTemplateColumns: 'minmax(320px, 440px) minmax(0, 1fr)', gap: 18, alignItems: 'start' },
+  listPanel: {
+    background: '#141924',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 640,
+  },
+  detailPanel: {
+    position: 'relative',
+    background: '#141924',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: 16,
+    padding: 20,
+    minHeight: 640,
+  },
+  empty: {
+    height: '100%',
+    minHeight: 240,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
-    zIndex: 10,
-  },
-  spinner: { color: '#e8a020', fontSize: 14, fontWeight: 500 },
-
-  errorBox: {
-    background: 'rgba(239,68,68,0.1)',
-    border: '1px solid rgba(239,68,68,0.3)',
-    borderRadius: 10,
-    padding: 16,
-    color: '#ef4444',
+    color: '#8892a4',
     fontSize: 14,
+    textAlign: 'center',
+  },
+  driverRow: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '12px 14px',
+    background: 'transparent',
+    border: '1px solid transparent',
+    borderRadius: 12,
+    textAlign: 'left',
+    cursor: 'pointer',
+    marginBottom: 8,
+  },
+  driverRowActive: { background: 'rgba(232,160,32,0.08)', borderColor: 'rgba(232,160,32,0.25)' },
+  driverRowSelected: { boxShadow: 'inset 0 0 0 1px rgba(59,130,246,0.35)' },
+  checkbox: { width: 16, height: 16, cursor: 'pointer' },
+  driverInfo: { flex: 1, minWidth: 0 },
+  driverName: { color: '#e8eaf2', fontSize: 14, fontWeight: 600, marginBottom: 4 },
+  driverMeta: { color: '#8892a4', fontSize: 12 },
+  statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    borderRadius: 999,
+    padding: '5px 10px',
+    fontSize: 12,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+  detailHeader: { display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 18 },
+  detailName: { color: '#e8eaf2', fontSize: 24, fontWeight: 700, margin: 0 },
+  detailMeta: { color: '#8892a4', fontSize: 13, marginTop: 6, marginBottom: 0 },
+  section: {
+    background: '#101521',
+    border: '1px solid rgba(255,255,255,0.05)',
+    borderRadius: 14,
+    padding: 16,
     marginBottom: 16,
   },
-
+  sectionTitleRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' },
+  sectionTitle: { color: '#e8eaf2', fontSize: 15, fontWeight: 700, margin: 0, marginBottom: 12 },
+  readinessBadge: { fontSize: 12, fontWeight: 700 },
+  docGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 },
+  docCard: {
+    background: '#161c29',
+    border: '1px solid rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 14,
+    minHeight: 112,
+  },
+  docLabel: { color: '#e8eaf2', fontSize: 13, fontWeight: 600, marginBottom: 10 },
+  docStatus: { fontSize: 13, marginBottom: 8 },
+  docMeta: { fontSize: 12, color: '#8892a4' },
+  infoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 },
+  infoItem: {
+    background: '#161c29',
+    border: '1px solid rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 14,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  infoLabel: { fontSize: 12, color: '#8892a4', textTransform: 'uppercase', letterSpacing: 0.5 },
+  infoValue: { fontSize: 14, color: '#e8eaf2', lineHeight: 1.5 },
+  actions: { display: 'flex', gap: 12, flexWrap: 'wrap' },
+  btn: {
+    border: 'none',
+    borderRadius: 10,
+    padding: '11px 16px',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'opacity 0.2s ease',
+  },
+  btnPrimary: { background: '#f59e0b', color: '#11151f' },
+  btnApprove: { background: '#22c55e', color: '#04140a' },
+  btnReject: { background: '#ef4444', color: '#fff5f5' },
+  btnResubmit: { background: '#f59e0b', color: '#11151f' },
+  btnSecondary: { background: '#1f2937', color: '#e8eaf2', border: '1px solid rgba(255,255,255,0.08)' },
+  btnView: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#0f172a',
+    color: '#bfdbfe',
+    textDecoration: 'none',
+    width: '100%',
+  },
+  errorBox: {
+    background: 'rgba(239,68,68,0.08)',
+    border: '1px solid rgba(239,68,68,0.25)',
+    borderRadius: 14,
+    color: '#fecaca',
+    padding: 18,
+  },
+  errorTitle: { fontWeight: 700, color: '#ef4444', marginBottom: 8 },
   modalOverlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(0,0,0,0.7)',
+    background: 'rgba(2,6,23,0.7)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 100,
+    padding: 24,
+    zIndex: 50,
   },
   modal: {
-    background: 'linear-gradient(135deg, #1a1f2e 0%, #161922 100%)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: 16,
-    padding: 24,
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 520,
+    background: '#111827',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    padding: 20,
   },
-  modalTitle: { fontSize: 18, fontWeight: 700, color: '#e8eaf2', marginBottom: 8 },
-  modalDesc: { fontSize: 14, color: '#8892a4', marginBottom: 16 },
+  modalTitle: { color: '#e8eaf2', fontSize: 20, fontWeight: 700, margin: 0, marginBottom: 8 },
+  modalDesc: { color: '#94a3b8', fontSize: 14, lineHeight: 1.5, marginTop: 0, marginBottom: 12 },
+  modalError: { color: '#fca5a5', fontSize: 13, marginBottom: 12 },
   textarea: {
     width: '100%',
-    padding: 12,
-    borderRadius: 8,
-    border: '1px solid rgba(255,255,255,0.1)',
-    background: '#0a0e17',
+    minHeight: 120,
+    resize: 'vertical',
+    background: '#0f172a',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: 14,
     color: '#e8eaf2',
     fontSize: 14,
-    resize: 'vertical',
     marginBottom: 16,
   },
-  modalActions: { display: 'flex', gap: 12, justifyContent: 'flex-end' },
-
+  modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' },
   toast: {
     position: 'fixed',
-    bottom: 24,
-    right: 24,
-    padding: '12px 20px',
-    borderRadius: 8,
+    right: 20,
+    bottom: 20,
+    minWidth: 280,
+    maxWidth: 420,
+    borderRadius: 12,
+    padding: '14px 16px',
+    color: '#fff',
     fontSize: 14,
-    fontWeight: 500,
-    zIndex: 1000,
+    fontWeight: 600,
+    zIndex: 60,
+    boxShadow: '0 18px 45px rgba(0,0,0,0.3)',
   },
-  toastSuccess: { background: 'rgba(34,197,94,0.9)', color: '#fff' },
-  toastError: { background: 'rgba(239,68,68,0.9)', color: '#fff' },
+  toastSuccess: { background: '#16a34a' },
+  toastError: { background: '#dc2626' },
 };

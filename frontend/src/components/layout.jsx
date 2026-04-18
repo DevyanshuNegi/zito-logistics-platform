@@ -3,8 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationPanel, { useNotifications } from './notifications';
 import ConnectionStatus from './ConnectionStatus';
+import ViewAsSwitcher from './ViewAsSwitcher';
 import { hasPermission } from '../utils/permission';
-import { canUseViewAs, getHomePathForRole, normalizeRole } from '../utils/roles';
+import { ADMIN_ROLES, canUseViewAs, getHomePathForRole, normalizeRole } from '../utils/roles';
 
 const navGroups = [
   {
@@ -14,6 +15,7 @@ const navGroups = [
       { label: 'Live Map', icon: 'MP', path: '/map' },
       { label: 'Trip Management', icon: 'TR', path: '/bookings' },
       { label: 'Assignments', icon: 'AS', path: '/assignments' },
+      { label: 'Notifications', icon: 'NT', path: '/notifications', roles: ADMIN_ROLES },
       { label: 'Complaints', icon: 'CP', path: '/complaints' },
       { label: 'Help / SOS', icon: 'HP', path: '/help' },
       {
@@ -38,6 +40,7 @@ const navGroups = [
       { label: 'Customers', icon: 'CU', path: '/customers' },
       { label: 'Transporters', icon: 'TP', path: '/transporters' },
       { label: 'Verification', icon: 'VR', path: '/verification' },
+      { label: 'Audit Log', icon: 'AL', path: '/audit-log', roles: ADMIN_ROLES },
     ],
   },
   {
@@ -52,7 +55,7 @@ const navGroups = [
 ];
 
 export default function Layout({ children, title }) {
-  const { user, logout } = useAuth();
+  const { user, adminUser, logout, endViewAs, isViewingAs } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [showNotifs, setShowNotifs] = useState(false);
@@ -86,24 +89,7 @@ export default function Layout({ children, title }) {
 
         {showViewAs && (
           <div style={s.viewAs}>
-            <div style={s.viewAsLabel}>VIEW AS</div>
-            <div style={s.viewAsGrid}>
-              {[
-                { label: 'Customer', icon: 'CU', portal: '/portal/customer', color: '#6366f1' },
-                { label: 'Agent', icon: 'AG', portal: '/portal/agent', color: '#22c55e' },
-                { label: 'Driver', icon: 'DR', portal: '/portal/driver-view', color: '#2dd4bf' },
-                { label: 'Transporter', icon: 'TP', portal: '/portal/transporter', color: '#e8a020' },
-              ].map((previewTarget) => (
-                <button
-                  key={previewTarget.label}
-                  style={s.viewAsBtn}
-                  onClick={() => window.open(`${previewTarget.portal}?preview=true`, '_blank')}
-                >
-                  <span style={{ fontSize: 13 }}>{previewTarget.icon}</span>
-                  <span style={{ color: previewTarget.color }}>{previewTarget.label}</span>
-                </button>
-              ))}
-            </div>
+            <ViewAsSwitcher />
           </div>
         )}
 
@@ -155,8 +141,10 @@ export default function Layout({ children, title }) {
 
               {showNotifs && (
                 <NotificationPanel
+                  onClose={() => setShowNotifs(false)}
                   notifications={notifications}
                   loading={loading}
+                  unreadCount={unreadCount}
                   markRead={markRead}
                   markAllRead={markAllRead}
                 />
@@ -174,7 +162,41 @@ export default function Layout({ children, title }) {
           </div>
         </header>
 
-        <div style={s.content}>{children}</div>
+        <div style={s.content}>
+          {isViewingAs && (
+            <div style={{
+              background: '#fff3cd',
+              color: '#856404',
+              padding: '12px 16px',
+              borderRadius: '4px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px',
+              border: '1px solid #ffc107'
+            }}>
+              <div>
+                <strong>View As Mode:</strong> Viewing as {user?.email} ({user?.role})
+              </div>
+              <button
+                onClick={endViewAs}
+                style={{
+                  background: '#ffc107',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  color: '#000'
+                }}
+              >
+                Exit View As
+              </button>
+            </div>
+          )}
+          {children}
+        </div>
       </main>
     </div>
   );

@@ -165,7 +165,12 @@ export default function Trip() {
   };
 
   const callCustomer = () => {
-    alert('Call feature coming soon');
+    const phone = b?.customer?.phone;
+    if (!phone) {
+      alert('Customer phone is not available for this trip.');
+      return;
+    }
+    window.location.href = `tel:${phone}`;
   };
 
   return (

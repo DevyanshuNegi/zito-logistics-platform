@@ -25,6 +25,7 @@ import Verification   from './pages/verification';
 import Payments       from './pages/payments';
 import Assignments    from './pages/assignments';
 import Reports        from './pages/reports';
+import AuditLog       from './pages/audit-log';
 import Contracts      from './pages/contracts';
 import Transporters   from './pages/transporters';
 import DriverApp      from './pages/driver-app';
@@ -32,6 +33,7 @@ import DriverView     from './pages/driver-view';           // ✅ NEW
 import CustomerView, { AgentView } from './pages/customer-view';
 import TransporterView from './pages/transporter-view';
 import AgencyView      from './pages/agency-view';
+import NotificationsCenter from './pages/notifications-center';
 import LiveMap        from './pages/map';
 import Settings       from './pages/settings';
 import Unauthorized   from './pages/unauthorized';
@@ -250,6 +252,24 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={FINANCE_ROLES}>
                 <Reports />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute allowedRoles={[...OPERATIONS_ROLES, ...FINANCE_ROLES]}>
+                <NotificationsCenter />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/audit-log"
+            element={
+              <ProtectedRoute allowedRoles={[...OPERATIONS_ROLES, ...FINANCE_ROLES]}>
+                <AuditLog />
               </ProtectedRoute>
             }
           />

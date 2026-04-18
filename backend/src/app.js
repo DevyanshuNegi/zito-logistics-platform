@@ -102,7 +102,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 /* -------------------------------------------------------------------------- */
 /* REQUEST LOGGER                                                              */
 /* ✅ CHANGED: replaced the old manual console.log block with our logger.    */
-/* Works in both dev (colourised) and production (clean JSON for Railway).   */
+/* Works in both dev (colourised) and production (clean JSON for Render).    */
 /* Shows: method, url, status code, response time, user_id, user_role        */
 /* -------------------------------------------------------------------------- */
 
@@ -173,12 +173,15 @@ app.use('/api/v1/agency',       agencyRoutes);
 app.use('/api/v1/booking',      bookingRoutes);
 app.use('/api/v1/bookings',     bookingRoutes); // alias for legacy frontend
 app.use('/api/v1/vehicle',      vehicleRoutes);
+app.use('/api/v1/vehicles',     vehicleRoutes); // alias for legacy frontend
 app.use('/api/v1/payment',      paymentRoutes);
+app.use('/api/v1/payments',     paymentRoutes); // alias for legacy frontend
 app.use('/api/v1/trip-charge',  tripChargesRoutes);
 app.use('/api/v1/trip-charges', tripChargesRoutes); // alias for legacy frontend
 app.use('/api/v1/user',         userRoutes);
 app.use('/api/v1/users',        userRoutes); // alias for legacy frontend
 app.use('/api/v1/contract',     contractRoutes);
+app.use('/api/v1/contracts',    contractRoutes); // alias for legacy frontend
 app.use('/api/v1/complaints',   complaintRoutes);
 app.use('/api/v1/help',         helpRoutes);
 app.use('/api/v1/map',          mapRoutes);

@@ -47,6 +47,84 @@ exports.getPayments = async (req, res) => {
   return success(res, { payments });
 };
 
+exports.createPayment = async (req, res) => {
+  try {
+    const {
+      booking_id,
+      amount,
+      amount_kes,
+      method,
+      provider,
+      status = 'paid',
+      mpesa_ref,
+      reference,
+      notes,
+    } = req.body;
+
+    if (!booking_id) {
+      return error(res, 'VALIDATION_ERROR', 'booking_id is required', 422);
+    }
+
+    const booking = await ensureBooking(booking_id);
+    const normalizedStatus = ['pending', 'held', 'paid', 'failed', 'refunded'].includes(status)
+      ? status
+      : 'paid';
+    const normalizedProvider = {
+      mpesa: 'mpesa',
+      credit: 'bank',
+      bank: 'bank',
+      cash: 'cash',
+      card: 'card',
+      mock: 'mock',
+    }[provider || method] || 'mock';
+
+    const payment = await Payment.create({
+      booking_id: booking.id,
+      provider: normalizedProvider,
+      amount: Number(amount_kes ?? amount ?? booking.customer_rate ?? booking.final_fare ?? 0),
+      status: normalizedStatus,
+      reference: mpesa_ref || reference || `FIN-${uuid().slice(0, 8).toUpperCase()}`,
+      metadata: {
+        notes: notes || null,
+        recorded_by: req.user.id,
+        recorded_by_role: req.user.role,
+        source: 'finance_manual',
+      },
+    });
+
+    if (normalizedStatus === 'paid') {
+      await creditDriver(booking);
+      await booking.update({ payment_status: 'released' });
+      const customer = await loadCustomer(booking);
+      sendPaymentNotification({ booking, customer, status: 'released' }).catch(console.error);
+    } else if (normalizedStatus === 'held') {
+      await booking.update({ payment_status: 'held' });
+    } else if (normalizedStatus === 'refunded') {
+      await booking.update({ payment_status: 'refunded' });
+    } else {
+      await booking.update({ payment_status: 'pending' });
+    }
+
+    if (req.auditLog) {
+      await req.auditLog('PAYMENT_RECORDED', {
+        booking_id: booking.id,
+        payment_id: payment.id,
+        status: normalizedStatus,
+        provider: normalizedProvider,
+        by: req.user.id,
+      });
+    }
+
+    return success(res, {
+      payment,
+      booking_payment_status: booking.payment_status,
+    }, 'Payment recorded successfully');
+  } catch (err) {
+    if (err.message === 'NOT_FOUND') return error(res, 'NOT_FOUND', 'Booking not found', 404);
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
 exports.getPaymentById = async (req, res) => {
   const payment = await Payment.findByPk(req.params.id, { include: [{ model: Booking, as: 'booking' }] });
   if (!payment) return error(res, 'NOT_FOUND', 'Payment not found', 404);
