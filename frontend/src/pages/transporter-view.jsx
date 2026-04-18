@@ -4,6 +4,7 @@ import Layout from '../components/layout';
 import api from '../api/axios';
 import { useAuth } from '../contexts/AuthContext';
 import { canUseViewAs, getHomePathForRole, normalizeRole } from '../utils/roles';
+import { useResponsive } from '../hooks/useResponsive';
 
 const buildViewAsConfig = (userId) => (userId
   ? { headers: { 'X-View-As-User': userId } }
@@ -71,6 +72,7 @@ function TransporterPicker({ onSelect }) {
 export default function TransporterView() {
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
+  const { isMobile } = useResponsive();
   const currentRole = normalizeRole(authUser?.role);
   const previewEnabled = canUseViewAs(currentRole) && new URLSearchParams(window.location.search).get('preview') === 'true';
 
@@ -186,7 +188,10 @@ export default function TransporterView() {
             </div>
           </div>
 
-          <div style={styles.metricsGrid}>
+          <div style={{
+            ...styles.metricsGrid,
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(180px, 1fr))',
+          }}>
             <div style={styles.metricCard}>
               <div style={styles.metricLabel}>Vehicles</div>
               <div style={styles.metricValue}>{dashboard?.totalVehicles || 0}</div>

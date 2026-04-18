@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout';
 import api from '../api/axios';
 import { useAuth } from '../contexts/AuthContext';
+import { useResponsive } from '../hooks/useResponsive';
 import { canUseViewAs, getHomePathForRole, normalizeRole } from '../utils/roles';
 
 const VEHICLE_OPTIONS = [
@@ -365,6 +366,7 @@ function BookingComposer({ endpointBase, role, managedCustomers, onClose, onCrea
 export default function CustomerView({ role = 'customer' }) {
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
+  const { isMobile } = useResponsive();
   const currentRole = normalizeRole(authUser?.role);
   const previewEnabled = canUseViewAs(currentRole) && new URLSearchParams(window.location.search).get('preview') === 'true';
   const endpointBase = role === 'agent' ? '/api/v1/agent' : '/api/v1/customer';
@@ -555,7 +557,10 @@ export default function CustomerView({ role = 'customer' }) {
             ))}
           </div>
 
-          <div style={styles.contentGrid}>
+          <div style={{
+            ...styles.contentGrid,
+            gridTemplateColumns: isMobile ? '1fr' : '1.25fr 0.75fr',
+          }}>
             <div style={styles.sectionCard}>
               <div style={styles.sectionTitle}>
                 {role === 'agent' ? 'Managed Booking Feed' : 'Booking Feed'}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationPanel, { useNotifications } from './notifications';
@@ -59,6 +59,20 @@ export default function Layout({ children, title }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [showNotifs, setShowNotifs] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (window.innerWidth >= 768) {
+        setShowMobileMenu(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const role = normalizeRole(user?.role || '');
   const homePath = getHomePathForRole(role);
@@ -75,8 +89,33 @@ export default function Layout({ children, title }) {
   };
 
   return (
-    <div style={s.shell}>
-      <aside style={s.sidebar}>
+    <div style={{
+      ...s.shell,
+      gridTemplateColumns: isMobile ? '1fr' : '280px 1fr'
+    }}>
+      {/* MOBILE OVERLAY BACKDROP */}
+      {isMobile && showMobileMenu && (
+        <div
+          style={s.mobileBackdrop}
+          onClick={() => setShowMobileMenu(false)}
+        />
+      )}
+
+      {/* SIDEBAR - HIDDEN ON MOBILE UNLESS showMobileMenu IS TRUE */}
+      <aside style={{
+        ...s.sidebar,
+        ...(isMobile ? {
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          height: '100vh',
+          width: '280px',
+          zIndex: showMobileMenu ? 1001 : -1,
+          opacity: showMobileMenu ? 1 : 0,
+          pointerEvents: showMobileMenu ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease',
+        } : {})
+      }}>
         <div style={s.logo}>
           <div style={{ ...s.logoMark, cursor: 'pointer' }} onClick={() => navigate(homePath)}>
             <div style={s.logoIcon}>VG</div>
@@ -128,9 +167,29 @@ export default function Layout({ children, title }) {
 
       <main style={s.main}>
         <header style={s.header}>
-          <div>
-            <div style={s.headerTitle}>{pageTitle}</div>
-            <ConnectionStatus />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {isMobile && (
+              <button
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#e8eaf2',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ☰
+              </button>
+            )}
+            <div>
+              <div style={s.headerTitle}>{pageTitle}</div>
+              <ConnectionStatus />
+            </div>
           </div>
 
           <div style={s.headerRight}>
@@ -210,6 +269,16 @@ const s = {
     background: '#0f121c',
     color: '#e8eaf2',
     fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+    position: 'relative',
+  },
+  mobileBackdrop: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0,0,0,0.5)',
+    zIndex: 1000,
   },
   sidebar: {
     background: '#0b0e16',

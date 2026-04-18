@@ -1036,3 +1036,79 @@ exports.clearTestData = async (req, res) => {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
 };
+
+// ── User Recovery (Soft Delete) ────────────────────────────────────────────
+// PRD §25.9 — List soft-deleted users for recovery
+
+exports.getDeletedUsers = async (req, res) => {
+  try {
+    const { page, limit, offset } = paginate(req.query);
+
+    const { count, rows } = await User.findAndCountAll({
+      paranoid: false,  // Include soft-deleted records
+      where: { is_deleted: true },
+      attributes: {
+        exclude: ['password_hash']
+      },
+      order: [['deletedAt', 'DESC']],
+      limit,
+      offset,
+    });
+
+    return paginatedResponse(res, rows, count, page, limit, 'Deleted users retrieved');
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Restore Deleted User ───────────────────────────────────────────────────
+// PRD §25.9 — Super Admin can restore soft-deleted users
+
+exports.restoreUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id, {
+      paranoid: false  // Include soft-deleted records
+    });
+
+    if (!user) {
+      return error(res, 'NOT_FOUND', 'User not found', 404);
+    }
+
+    if (!user.is_deleted) {
+      return error(res, 'INVALID_REQUEST', 'User is not deleted', 400);
+    }
+
+    // Restore paranoid soft delete (removes deletedAt timestamp)
+    await user.restore();
+
+    // Update is_deleted flag and reactivate
+    await user.update({
+      is_deleted: false,
+      is_active: true
+    });
+
+    // Log the restoration action
+    if (req.auditLog) {
+      await req.auditLog('USER_RESTORED', {
+        user_id: user.id,
+        email: user.email,
+        role: user.role,
+        restored_by: req.user.id
+      });
+    }
+
+    return success(res, {
+      message: 'User restored successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        is_active: user.is_active,
+        is_deleted: user.is_deleted
+      }
+    });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};

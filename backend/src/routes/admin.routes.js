@@ -101,6 +101,11 @@ router.get('/view-as/:userId', isSuperAdmin, controller.viewAsUser);
 // PRD §25.8 — Immutable audit log, Admin only
 router.get('/audit-logs', controller.getAuditLogs);
 
+// ── User Recovery (Soft Delete) ────────────────────────────────────────────
+// PRD §25.9 — Super Admin can view and restore soft-deleted users
+router.get('/users/deleted', isSuperAdmin, controller.getDeletedUsers);
+router.patch('/users/:id/restore', isSuperAdmin, controller.restoreUser);
+
 // ── Reports ───────────────────────────────────────────────────────────────
 // PRD §5.1
 router.get('/reports/bookings',  controller.bookingReport);

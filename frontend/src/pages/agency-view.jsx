@@ -4,6 +4,7 @@ import Layout from '../components/layout';
 import api from '../api/axios';
 import { useAuth } from '../contexts/AuthContext';
 import { getHomePathForRole, normalizeRole } from '../utils/roles';
+import { useResponsive } from '../hooks/useResponsive';
 
 const formatKes = (value) => {
   const num = Number(value);
@@ -13,6 +14,7 @@ const formatKes = (value) => {
 export default function AgencyView() {
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
+  const { isMobile } = useResponsive();
   const homePath = getHomePathForRole(normalizeRole(authUser?.role));
   const [agency, setAgency] = useState(null);
   const [dashboard, setDashboard] = useState(null);
@@ -184,7 +186,10 @@ export default function AgencyView() {
         )}
 
         {dashboard && (
-          <div style={s.grid}>
+          <div style={{
+            ...s.grid,
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(120px,1fr))',
+          }}>
             <div style={s.metric}>
               <div style={s.label}>Agents</div>
               <div style={s.value}>{dashboard.agents || 0}</div>
