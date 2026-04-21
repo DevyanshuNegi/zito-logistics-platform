@@ -14,8 +14,6 @@ require('dotenv').config();
 /* MODELS — load ONCE, destructure sequelize from the same require            */
 /* -------------------------------------------------------------------------- */
 
-const { sequelize } = require('./models');
-
 const express   = require('express');
 const helmet    = require('helmet');
 const cors      = require('cors');

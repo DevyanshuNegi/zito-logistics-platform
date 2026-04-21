@@ -4,37 +4,16 @@ require('dotenv').config();
 const http = require('http');
 const { Server } = require('socket.io');
 
-// ✅ 1. Load DB first
-const { connectDB, sequelize } = require('./src/config/database');
-
-// ✅ 2. Load models BEFORE app (VERY IMPORTANT)
-require('./src/models');
+const prisma = require('./src/utils/prisma');
 
 const app = require('./src/app');
 
 const PORT = process.env.PORT || 5000;
-const shouldTruncateOtpOnBoot = process.env.OTP_TRUNCATE_ON_BOOT === 'true';
-const shouldAlterSchemaOnBoot = process.env.DB_SYNC_ALTER === 'true';
 
 const startServer = async () => {
   try {
-    await connectDB();
-
-    // Optional one-time maintenance only when explicitly enabled.
-    // Never truncate OTP rows by default because it breaks active login sessions.
-    if (shouldTruncateOtpOnBoot) {
-      try {
-        await sequelize.query('TRUNCATE TABLE "login_otps" CASCADE;');
-        console.log('🧹 Truncated login_otps (OTP_TRUNCATE_ON_BOOT=true)');
-      } catch (cleanupErr) {
-        console.warn('⚠️ Could not truncate login_otps:', cleanupErr.message);
-      }
-    }
-
-    // Keep startup stable by default. Enable alter only when intentionally migrating.
-    await sequelize.sync({ alter: shouldAlterSchemaOnBoot });
-
-    console.log('✅ Database tables synced');
+    await prisma.$connect();
+    console.log('✅ Database connected via Prisma');
 
     // ✅ Create HTTP server for Socket.io
     const server = http.createServer(app);
