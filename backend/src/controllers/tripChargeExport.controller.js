@@ -1,7 +1,6 @@
 // src/controllers/tripChargeExport.controller.js
 // Export trip charges (expenses) with booking context
 
-const { TripCharge, Booking, Driver, User } = require('../models');
 const { error } = require('../utils/response');
 const { Op } = require('sequelize');
 

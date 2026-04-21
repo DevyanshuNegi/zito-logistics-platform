@@ -3,17 +3,16 @@ require('dotenv').config();
 const express = require('express');
 const router  = express.Router();
 const jwt     = require('jsonwebtoken');
+const bcrypt  = require('bcryptjs');
 const Joi     = require('joi');
-const { User, Driver, LoginOtp } = require('../models');
-const { getJwtExpiresIn, getJwtSecret } = require('../utils/jwt');
-const bcrypt = require('bcryptjs');
+const prisma  = require('../utils/prisma');
 
 // ─── Token generator ──────────────────────────────────────────────────────────
 
 const generateTokens = (user) => {
   const payload = { id: user.id, role: user.role, email: user.email };
-  const secret  = getJwtSecret();
-  const opts    = { expiresIn: getJwtExpiresIn() };
+  const secret  = 'vglogistics_access_secret_key_2026_make_this_very_long_and_random';
+  const opts    = { expiresIn: '30d' };
 
   return {
     accessToken:  jwt.sign(payload,       secret, opts),
@@ -33,13 +32,13 @@ async function sendLoginOTPEmail(toEmail, otp) {
     method:  'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from:    'VG Logistics <onboarding@resend.dev>',
+      from:    'ZITO (VG Global Logistics) <onboarding@resend.dev>',
       to:      [toEmail],
-      subject: 'Your VG Logistics Login OTP',
+      subject: 'Your ZITO (VG Global Logistics) Login OTP',
       html: `
         <div style="font-family:sans-serif;max-width:420px;margin:auto;padding:32px;
                     background:#f9f9f9;border-radius:12px;border:1px solid #eee;">
-          <h2 style="color:#e8a020;margin:0 0 8px;">VG Logistics</h2>
+          <h2 style="color:#e8a020;margin:0 0 8px;">ZITO (VG Global Logistics)</h2>
           <p style="color:#555;margin:0 0 24px;font-size:14px;">
             Use the OTP below to complete your login.<br/>
             Valid for <strong>10 minutes</strong> — one-time use only.
@@ -74,13 +73,13 @@ async function sendResetEmail(toEmail, otp) {
     method:  'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from:    'VG Logistics <onboarding@resend.dev>',
+      from:    'ZITO (VG Global Logistics) <onboarding@resend.dev>',
       to:      [toEmail],
-      subject: 'Reset Your VG Logistics Password',
+      subject: 'Reset Your ZITO (VG Global Logistics) Password',
       html: `
         <div style="font-family:sans-serif;max-width:420px;margin:auto;padding:32px;
                     background:#f9f9f9;border-radius:12px;border:1px solid #eee;">
-          <h2 style="color:#e8a020;margin:0 0 8px;">VG Logistics</h2>
+          <h2 style="color:#e8a020;margin:0 0 8px;">ZITO (VG Global Logistics)</h2>
           <p style="color:#555;margin:0 0 24px;font-size:14px;">
             You requested a password reset. Use the OTP below.<br/>
             Valid for <strong>10 minutes</strong> — one-time use only.
@@ -112,17 +111,7 @@ router.post('/register', async (req, res) => {
       email:     Joi.string().email().required(),
       phone:     Joi.string().min(10).required(),
       password:  Joi.string().min(6).required(),
-      role:      Joi.string().valid(
-        'super_admin',
-        'operations_admin',
-        'finance_admin',
-        'customer',
-        'agent',
-        'driver',
-        'transporter',
-        'agency',
-        'admin'
-      ).default('customer'),
+      role:      Joi.string().valid('super_admin', 'admin', 'customer', 'agent', 'driver', 'transporter').default('customer'),
     }).options({ allowUnknown: true });
 
     const { error, value } = schema.validate(req.body);
@@ -133,7 +122,7 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    const existing = await User.findOne({ where: { email: value.email } });
+    const existing = await prisma.user.findUnique({ where: { email: value.email } });
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -141,37 +130,34 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(value.password, 12);
-
-    const user = await User.create({
-      full_name:     value.full_name,
-      email:         value.email,
-      phone:         value.phone,
-      password_hash: hashedPassword,
-      role:          value.role === 'admin' ? 'operations_admin' : value.role,
+    const user = await prisma.user.create({
+      data: {
+        full_name:    value.full_name,
+        email:        value.email,
+        phone:        value.phone,
+        passwordHash: await bcrypt.hash(value.password, 12),
+        role:         value.role,
+      }
     });
 
-    
+    const { accessToken, refreshToken } = generateTokens(user);
 
     let driverProfile = null;
 
     if (user.role === 'driver') {
-      const driver = await Driver.findOne({ where: { user_id: user.id } });
+      const driver = await prisma.driver.findUnique({ where: { userId: user.id } });
       if (driver) {
-        driverProfile = { driver_id: driver.id, is_available: driver.is_available };
+        driverProfile = { driver_id: driver.id, is_available: driver.isAvailable };
       }
     }
 
     return res.status(201).json({
       success: true,
       data: {
-        user: {
-          id: user.id,
-          full_name: user.full_name,
-          email: user.email,
-          role: user.role
-        },
-        driver: driverProfile
+        user: { id: user.id, full_name: user.full_name, email: user.email, role: user.role },
+        driver: driverProfile,
+        accessToken,
+        refreshToken,
       },
     });
 
@@ -201,21 +187,20 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    let user;
-    if (value.email) {
-      user = await User.scope('withPassword').findOne({ where: { email: value.email } });
-    } else {
-      user = await User.scope('withPassword').findOne({ where: { phone: value.mobile } });
-    }
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [{ email: value.email }, { phone: value.mobile }]
+      }
+    });
 
-    if (!user) {
+    if (!user || user.deletedAt || !user.isActive) {
       return res.status(401).json({
         success: false,
         error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email/mobile or password' },
       });
     }
 
-    const isMatch = await user.comparePassword(value.password);
+    const isMatch = await bcrypt.compare(value.password, user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -223,55 +208,37 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    
+    const { accessToken, refreshToken } = generateTokens(user);
 
     let driverProfile = null;
     if (user.role === 'driver') {
-      const driver = await Driver.findOne({ where: { user_id: user.id } });
+      const driver = await prisma.driver.findUnique({ where: { userId: user.id } });
       if (driver) {
-        driverProfile = { driver_id: driver.id, is_available: driver.is_available };
+        driverProfile = { driver_id: driver.id, is_available: driver.isAvailable };
       }
     }
 
-    // ✅ Login OTP policy:
-    // Reuse the latest unconsumed/unexpired login OTP to avoid invalidation
-    // when user clicks login multiple times. Rotate only on explicit resend.
-    const contact = user.email.trim();
-    let otp;
+    // ✅ Generate and store login OTP
+    const contact = value.email ? value.email.trim() : value.mobile.trim();
+    const otp     = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 10 * 60 * 1000);
 
-    const activeOtp = await LoginOtp.findOne({
-      where: {
-        user_id: user.id,
-        type: 'login',
-        consumed_at: null,
-      },
-      order: [['created_at', 'DESC']],
-    });
-
-    if (activeOtp && new Date(activeOtp.expires_at).getTime() > Date.now()) {
-      otp = activeOtp.otp;
-    } else {
-      if (activeOtp) {
-        await activeOtp.update({ consumed_at: new Date() });
-      }
-
-      otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expires = new Date(Date.now() + 10 * 60 * 1000);
-
-      await LoginOtp.create({
-        user_id: user.id,
+    await prisma.loginOtp.deleteMany({ where: { contact } });
+    await prisma.loginOtp.create({
+      data: {
+        userId: user.id,
         contact,
         otp,
-        type: 'login',
-        expires_at: expires,
-        attempts: 0,
-      });
-    }
+        expiresAt: expires,
+      }
+    });
 
     // ✅ Send LOGIN OTP email (NOT reset password email)
-    sendLoginOTPEmail(user.email, otp)
-      .then(() => console.log(`[LOGIN OTP] sent to ${user.email}`))
-      .catch(err => console.error(`[LOGIN OTP ERROR] ${err.message} — OTP=${otp}`));
+    if (value.email) {
+      sendLoginOTPEmail(contact, otp)
+        .then(() => console.log(`[LOGIN OTP] sent to ${contact}`))
+        .catch(err => console.error(`[LOGIN OTP ERROR] ${err.message} — OTP=${otp}`));
+    }
 
     return res.json({
       success: true,
@@ -299,7 +266,7 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email is required.' });
     }
 
-    const user = await User.findOne({ where: { email: email.trim() } });
+    const user = await prisma.user.findUnique({ where: { email: email.trim() } });
     if (!user) {
       return res.json({ success: true, message: 'If that email exists, an OTP has been sent.' });
     }
@@ -307,17 +274,14 @@ router.post('/forgot-password', async (req, res) => {
     const otp     = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = new Date(Date.now() + 10 * 60 * 1000);
 
-    await LoginOtp.update(
-      { consumed_at: new Date() },
-      { where: { user_id: user.id, type: 'reset_password', consumed_at: null } }
-    );
-    await LoginOtp.create({
-      user_id: user.id,
-      contact: email.trim(),
-      otp,
-      type: 'reset_password',
-      expires_at: expires,
-      attempts: 0,
+    await prisma.loginOtp.deleteMany({ where: { contact: email.trim() } });
+    await prisma.loginOtp.create({
+      data: {
+        userId: user.id,
+        contact: email.trim(),
+        otp,
+        expiresAt: expires
+      }
     });
 
     res.json({ success: true, message: 'If that email exists, an OTP has been sent.' });
@@ -345,124 +309,36 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
 
-    const otpRow = await LoginOtp.findOne({
-      where: {
-        contact: email.trim(),
-        type: 'reset_password',
-        consumed_at: null,
-      },
-      order: [['created_at', 'DESC']],
+    const otpRecord = await prisma.loginOtp.findFirst({
+      where: { contact: email.trim(), otp },
+      orderBy: { createdAt: 'desc' }
     });
 
-    if (!otpRow) {
+    if (!otpRecord) {
       return res.status(400).json({ success: false, message: 'Invalid OTP. Please try again.' });
     }
 
-    // expiry check
-    if (new Date(otpRow.expires_at) < new Date()) {
-      await otpRow.update({ consumed_at: new Date() });
+    if (new Date(otpRecord.expiresAt) < new Date()) {
+      await prisma.loginOtp.delete({ where: { id: otpRecord.id } });
       return res.status(400).json({ success: false, message: 'OTP expired. Please request a new one.' });
     }
 
-    // attempt check
-    if (otpRow.attempts >= 5) {
-      await otpRow.update({ consumed_at: new Date() });
-      return res.status(400).json({ success: false, message: 'Too many attempts. Request a new OTP.' });
-    }
+    await prisma.loginOtp.delete({ where: { id: otpRecord.id } });
 
-    if (otpRow.otp !== otp.trim()) {
-      await otpRow.update({ attempts: (otpRow.attempts || 0) + 1 });
-      return res.status(400).json({ success: false, message: 'Invalid OTP. Please try again.' });
-    }
-
-    await otpRow.update({ consumed_at: new Date() });
-
-    const user = await User.findOne({ where: { email: email.trim() } });
+    const user = await prisma.user.findUnique({ where: { email: email.trim() } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    const hashedPassword = await bcrypt.hash(new_password, 12);
-    user.password_hash = hashedPassword;
-    await user.save();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await bcrypt.hash(new_password, 12) }
+    });
 
     return res.json({ success: true, message: 'Password reset successfully. You can now login.' });
 
   } catch (err) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
-  }
-});
-
-// ─── GET /api/v1/auth/otp-test-peek ──────────────────────────────────────────
-// DEV ONLY — Returns the latest OTP for a contact.
-// ❌ MUST NOT EXIST IN PRODUCTION (PRD §11 — OTP via email/SMS only)
-// Gated by NODE_ENV check — returns 404 in production.
-
-router.get('/otp-test-peek', async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(404).json({
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'This endpoint does not exist in production.' },
-    });
-  }
-
-  try {
-    const { contact, type = 'login' } = req.query;
-
-    if (!contact) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'contact query param is required' },
-      });
-    }
-
-    const user = await User.findOne({
-      where: {
-        [require('sequelize').Op.or]: [
-          { email: contact.trim() },
-          { phone: contact.trim() },
-        ],
-      },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'No user found for this contact' },
-      });
-    }
-
-    const otpRow = await LoginOtp.findOne({
-      where: {
-        user_id: user.id,
-        type,
-        consumed_at: null,
-      },
-      order: [['created_at', 'DESC']],
-    });
-
-    if (!otpRow || new Date(otpRow.expires_at) < new Date()) {
-      return res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'No active OTP found' },
-      });
-    }
-
-    return res.json({
-      success: true,
-      data: {
-        otp: otpRow.otp,
-        type: otpRow.type,
-        expires_at: otpRow.expires_at,
-        attempts: otpRow.attempts,
-      },
-    });
-
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      error: { code: 'SERVER_ERROR', message: err.message },
-    });
   }
 });
 

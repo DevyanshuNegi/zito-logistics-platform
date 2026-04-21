@@ -1,7 +1,7 @@
 // src/services/broadcast.service.js
 // Marketplace broadcast to interested drivers (location interest + backhaul) via socket.io if available; fallback logs.
 
-const { Driver, Vehicle, User } = require('../models');
+const prisma = require('../utils/prisma');
 const getIO = () => {
   try {
     const app = require('../app');
@@ -12,13 +12,18 @@ const getIO = () => {
 };
 
 const findInterestedDrivers = async (booking) => {
-  const where = { is_available: true, can_receive_assignments: true, is_blacklisted: false };
-  const drivers = await Driver.findAll({
-    where,
-    include: [
-      { model: Vehicle, as: 'current_vehicle', where: { is_active: true }, required: false },
-      { model: User, as: 'user', attributes: ['id', 'email', 'phone'] },
-    ],
+  const drivers = await prisma.driver.findMany({
+    where: {
+      isAvailable: true,
+      canReceiveAssignments: true,
+      isBlacklisted: false,
+    },
+    include: {
+      currentVehicle: true,
+      user: {
+        select: { id: true, email: true, phone: true }
+      }
+    }
   });
 
   const interested = [];

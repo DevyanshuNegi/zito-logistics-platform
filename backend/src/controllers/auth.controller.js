@@ -6,7 +6,6 @@
 
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
-const { User } = require('../models');
 const { success, error } = require('../utils/response');
 const { ROLES }          = require('../middleware/auth');
 
@@ -70,7 +69,7 @@ exports.register = async (req, res) => {
       full_name,
       email:      email.toLowerCase().trim(),
       phone:      phone.trim(),
-      password_hash,
+      password_hash, // PRD §11 bcrypt 12 rounds used in hash
       role,
       id_number,
       transporter_id: transporter_id || null,
@@ -123,14 +122,12 @@ exports.login = async (req, res) => {
       return error(res, 'INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
 
-    // PRD §25.9 — soft delete check
-    if (user.is_deleted) {
-      return error(res, 'ACCOUNT_DELETED', 'This account has been removed', 401);
+    // PRD §25.9 — soft delete and suspension checks
+    if (user.deletedAt || user.is_deleted) {
+      return error(res, 'ACCOUNT_DELETED', 'This account has been removed. Contact support.', 401);
     }
-
-    // PRD §17 — inactive accounts blocked
     if (!user.is_active) {
-      return error(res, 'ACCOUNT_INACTIVE', 'Account is suspended. Contact support.', 401);
+      return error(res, 'ACCOUNT_SUSPENDED', 'Your account is currently suspended.', 401);
     }
 
     // Verify password

@@ -17,6 +17,9 @@ const ROLES = {
   TRANSPORTER:       'transporter',
   AGENT:             'agent',
   AGENCY:            'agency',
+  CALL_CENTRE_AGENT: 'call_centre_agent',
+  WAREHOUSE_PARTNER: 'warehouse_partner',
+  SGR_OPERATOR:      'sgr_operator',
 };
 
 /**
@@ -40,6 +43,7 @@ const ROLE_GROUPS = {
   BOOKING_MANAGERS: [
     ROLES.SUPER_ADMIN,
     ROLES.OPERATIONS_ADMIN,
+    ROLES.CALL_CENTRE_AGENT,
     ROLES.TRANSPORTER,
     ROLES.AGENT,
   ],
@@ -49,6 +53,7 @@ const ROLE_GROUPS = {
     ROLES.SUPER_ADMIN,
     ROLES.OPERATIONS_ADMIN,
     ROLES.CUSTOMER,
+    ROLES.CALL_CENTRE_AGENT,
     ROLES.TRANSPORTER,
     ROLES.AGENT,
   ],
@@ -148,6 +153,21 @@ const ROLE_META = {
     label: 'Agency',
     portal: 'Agency Portal',
     description: 'Manage multiple agents and transporters in a franchise model.',
+  },
+  [ROLES.CALL_CENTRE_AGENT]: {
+    label: 'Call Centre Agent',
+    portal: 'Admin Portal',
+    description: 'Support users with offline bookings and issue resolution.',
+  },
+  [ROLES.WAREHOUSE_PARTNER]: {
+    label: 'Warehouse Partner',
+    portal: 'Warehouse Partner Portal',
+    description: 'Manage godown space, GRN processing, and inventory.',
+  },
+  [ROLES.SGR_OPERATOR]: {
+    label: 'SGR Operator',
+    portal: 'SGR Partner Portal',
+    description: 'Manage rail cargo slots and terminus handovers.',
   },
 };
 

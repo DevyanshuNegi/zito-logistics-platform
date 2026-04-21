@@ -1,5 +1,5 @@
 // src/controllers/tripCharges.controller.js
-const { TripCharge, Booking, Driver } = require('../models');
+const prisma = require('../utils/prisma');
 const { calculateProfit } = require('../utils/helpers');
 
 /* -------------------------------------------------------------------------- */

@@ -2,7 +2,6 @@
 // PRD §5.5 — Agent Portal
 // PRD §20 — Agent API Endpoints
 
-const { User, Booking } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { generateUuidReference } = require('../utils/id');
@@ -48,7 +47,7 @@ exports.getCustomers = async (req, res) => {
       where: { agent_id: req.user.id, role: 'customer' },
       limit, offset, attributes: { exclude: ['password_hash'] },
     });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    return success(res, rows, 'Customers retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -61,7 +60,7 @@ exports.addCustomer = async (req, res) => {
     const existing = await User.findOne({ where: { email } });
     if (existing) return error(res, 'DUPLICATE_ENTRY', 'Email already registered', 409);
     const user = await User.create({ full_name, email, phone, password_hash: phone, role: 'customer', agent_id: req.user.id, compliance_status: 'approved' });
-    return success(res, { user: { id: user.id, email: user.email } }, 201);
+    return success(res, { user: { id: user.id, email: user.email } }, 'Customer created');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -84,7 +83,7 @@ exports.getBookings = async (req, res) => {
     const where = { agent_id: req.user.id };
     if (status) where.status = status;
     const { count, rows } = await Booking.findAndCountAll({ where, limit, offset, order: [['created_at', 'DESC']] });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    return success(res, rows, 'Bookings retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -104,7 +103,7 @@ exports.createBooking = async (req, res) => {
 
     const autoResult = await autoAssignIfNeeded(booking, req.auditLog);
 
-    return success(res, { booking, auto_assignment: autoResult }, 201);
+    return success(res, { booking, auto_assignment: autoResult }, 'Booking created');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

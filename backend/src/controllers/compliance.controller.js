@@ -1,7 +1,6 @@
 // src/controllers/compliance.controller.js
 // Admin compliance review endpoints (PRD section 14)
 
-const { Driver, DriverCompliance, User, sequelize } = require('../models');
 const { success, error } = require('../utils/response');
 
 const ALLOWED_STATUSES = ['approved', 'rejected', 'resubmission_required'];
@@ -90,9 +89,9 @@ const applyComplianceStatus = async ({ driverId, status, comment, actorId, trans
     );
   }
 
-  await compliance.update(payload, { transaction });
+    const updated = await compliance.update(payload, { transaction });
 
-  return { driver, compliance };
+    return { driver, compliance: updated };
 };
 
 exports.getCompliance = async (req, res) => {

@@ -1,14 +1,14 @@
 // src/controllers/bookingOffer.controller.js
 // PRD §7.8–7.10 — Bidding & negotiation marketplace
 
-const { Booking, BookingOffer, Driver, Vehicle } = require('../models');
+const prisma = require('../utils/prisma');
 const { success, error } = require('../utils/response');
 const { TERMINAL_BOOKING_STATUSES } = require('../constants/bookingStatus');
 const { notifyOfferResponse } = require('../services/notification.service');
 
 // Helpers
 const ensureBookingExists = async (bookingId) => {
-  const booking = await Booking.findByPk(bookingId);
+  const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
   if (!booking) throw new Error('NOT_FOUND');
   return booking;
 };
@@ -16,9 +16,9 @@ const ensureBookingExists = async (bookingId) => {
 exports.listOffers = async (req, res) => {
   try {
     const booking = await ensureBookingExists(req.params.id);
-    const offers = await BookingOffer.findAll({
-      where: { booking_id: booking.id },
-      order: [['created_at', 'DESC']],
+    const offers = await prisma.bookingOffer.findMany({
+      where: { bookingId: booking.id },
+      orderBy: { createdAt: 'desc' },
     });
     return success(res, { booking_id: booking.id, offers });
   } catch (err) {
@@ -32,24 +32,28 @@ exports.listOffers = async (req, res) => {
 exports.listMyOffers = async (req, res) => {
   try {
     const { page, limit, offset } = require('../utils/helpers').paginate(req.query);
-    const where = { user_id: req.user.id };
+    const where = { userId: req.user.id };
     if (req.query.status) where.status = req.query.status;
 
-    const { count, rows } = await BookingOffer.findAndCountAll({
-      where,
-      limit,
-      offset,
-      order: [['created_at', 'DESC']],
-      include: [
-        {
-          model: Booking,
-          as: 'booking',
-          attributes: ['id', 'reference', 'pickup_address', 'delivery_address', 'vehicle_type', 'customer_rate', 'status'],
+    const [count, rows] = await prisma.$transaction([
+      prisma.bookingOffer.count({ where }),
+      prisma.bookingOffer.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          booking: {
+            select: {
+              id: true, reference: true, pickupAddress: true, deliveryAddress: true, 
+              vehicleType: true, customerRate: true, status: true
+            }
+          }
         },
-      ],
-    });
+      })
+    ]);
 
-    return success(res, rows, 200, require('../utils/helpers').paginatedResponse(rows, count, page, limit).meta);
+    return success(res, rows, 'Offers retrieved', require('../utils/helpers').paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -70,26 +74,28 @@ exports.createOffer = async (req, res) => {
 
     // Optional sanity: if driver_id provided, ensure driver exists
     if (driver_id) {
-      const driver = await Driver.findByPk(driver_id);
+      const driver = await prisma.driver.findUnique({ where: { id: driver_id } });
       if (!driver) return error(res, 'NOT_FOUND', 'Driver not found', 404);
     }
 
     if (vehicle_id) {
-      const vehicle = await Vehicle.findByPk(vehicle_id);
+      const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicle_id } });
       if (!vehicle) return error(res, 'NOT_FOUND', 'Vehicle not found', 404);
     }
 
-    const offer = await BookingOffer.create({
-      booking_id: booking.id,
-      user_id: req.user.id,
-      role: req.user.role,
-      price,
-      message,
-      vehicle_id: vehicle_id || null,
-      driver_id: driver_id || null,
-      estimated_arrival_mins: estimated_arrival_mins || null,
-      expires_at: expires_at || null,
-      status: 'pending',
+    const offer = await prisma.bookingOffer.create({
+      data: {
+        bookingId: booking.id,
+        userId: req.user.id,
+        role: req.user.role,
+        offeredPrice: price,
+        message,
+        vehicleId: vehicle_id || null,
+        driverId: driver_id || null,
+        estimatedArrivalMins: estimated_arrival_mins || null,
+        expiresAt: expires_at || null,
+        status: 'pending',
+      }
     });
 
     if (req.auditLog) await req.auditLog('OFFER_SUBMITTED', { booking_id: booking.id, offer_id: offer.id, by: req.user.id });
@@ -97,7 +103,7 @@ exports.createOffer = async (req, res) => {
     const { notifyOfferCreated } = require('../services/notification.service');
     notifyOfferCreated({ offer, booking }).catch(console.error);
 
-    return success(res, { offer }, 201);
+    return success(res, { offer }, 'Offer submitted');
   } catch (err) {
     if (err.message === 'NOT_FOUND') return error(res, 'NOT_FOUND', 'Booking not found', 404);
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -107,7 +113,7 @@ exports.createOffer = async (req, res) => {
 exports.respondToOffer = async (req, res) => {
   try {
     const booking = await ensureBookingExists(req.params.id);
-    const offer = await BookingOffer.findOne({ where: { id: req.params.offerId, booking_id: booking.id } });
+    const offer = await prisma.bookingOffer.findFirst({ where: { id: req.params.offerId, bookingId: booking.id } });
     if (!offer) return error(res, 'NOT_FOUND', 'Offer not found', 404);
 
     const { status, rejection_reason } = req.body;
@@ -116,27 +122,36 @@ exports.respondToOffer = async (req, res) => {
       return error(res, 'VALIDATION_ERROR', 'status must be accepted or rejected', 422);
     }
 
-    await offer.update({
-      status,
-      rejection_reason: status === 'rejected' ? (rejection_reason || null) : null,
-      responded_at: new Date(),
-      responded_by: req.user.id,
+    const updatedOffer = await prisma.bookingOffer.update({
+      where: { id: offer.id },
+      data: {
+        status,
+        rejectionReason: status === 'rejected' ? (rejection_reason || null) : null,
+        respondedAt: new Date(),
+        respondedById: req.user.id,
+      }
     });
 
     if (status === 'accepted') {
       // If the offer includes a driver/vehicle, assign them
-      if (offer.driver_id) {
-        await booking.update({
-          assigned_driver_id: offer.driver_id,
-          vehicle_id: offer.vehicle_id || booking.vehicle_id,
-          status: 'assigned',
-          assigned_at: new Date(),
+      if (offer.driverId) {
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: {
+            assignedDriverId: offer.driverId,
+            vehicleId: offer.vehicleId || booking.vehicleId,
+            status: 'assigned',
+            assignedAt: new Date(),
+          }
         });
-        if (req.auditLog) await req.auditLog('BOOKING_ASSIGNED', { booking_id: booking.id, driver_id: offer.driver_id, vehicle_id: offer.vehicle_id, by: req.user.id, via: 'offer_accept' });
+        if (req.auditLog) await req.auditLog('BOOKING_ASSIGNED', { booking_id: booking.id, driver_id: offer.driverId, vehicle_id: offer.vehicleId, by: req.user.id, via: 'offer_accept' });
         const { notifyDriverAssignment } = require('../services/notification.service');
-        notifyDriverAssignment({ booking, driver_id: offer.driver_id }).catch(console.error);
+        notifyDriverAssignment({ booking, driver_id: offer.driverId }).catch(console.error);
       } else {
-        await booking.update({ status: 'approved' });
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { status: 'approved' }
+        });
       }
     }
 

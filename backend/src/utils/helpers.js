@@ -63,6 +63,23 @@ const getPagination = (query) => {
   return { page, limit, offset };
 };
 
+const paginate = getPagination;
+
+const paginatedResponse = (rows, count, page, limit) => {
+  const totalPages = Math.ceil(count / limit);
+  return {
+    data: rows,
+    meta: {
+      total:        count,
+      page:         Number(page),
+      limit:        Number(limit),
+      total_pages:  totalPages,
+      has_next:     page < totalPages,
+      has_prev:     page > 1,
+    }
+  };
+};
+
 /* ============================================================
    SEQUELIZE PAGINATION OPTIONS
    Merges pagination into a Sequelize findAndCountAll options object.
@@ -210,6 +227,8 @@ module.exports = {
   generateOtp,
   otpExpiry,
   isOtpExpired,
+  paginate,
+  paginatedResponse,
   getPagination,
   paginateQuery,
   pick,

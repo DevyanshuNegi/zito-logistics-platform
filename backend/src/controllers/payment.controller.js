@@ -2,8 +2,7 @@
 // PRD Â§25.6 â€” Payment Hold & Release Lifecycle
 // PRD Â§9 â€” M-Pesa Phase 2 (sandbox / mock friendly)
 
-const { v4: uuid } = require('uuid');
-const { Booking, Driver, TripCharge, Payment, User } = require('../models');
+const { randomUUID: uuid } = require('crypto');
 const { success, error } = require('../utils/response');
 const { sendPaymentNotification } = require('../services/notification.service');
 
@@ -63,6 +62,11 @@ exports.createPayment = async (req, res) => {
 
     if (!booking_id) {
       return error(res, 'VALIDATION_ERROR', 'booking_id is required', 422);
+    }
+
+    // PRD §7.14 — No cash initially
+    if (provider === 'cash' || method === 'cash') {
+      return error(res, 'PAYMENT_METHOD_NOT_ALLOWED', 'Cash payments are not supported in Phase 1', 400);
     }
 
     const booking = await ensureBooking(booking_id);

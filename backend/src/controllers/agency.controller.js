@@ -2,62 +2,71 @@
 // PRD §5.6 — Agency Portal
 // PRD §20 — Agency API Endpoints
 
-const { User, Booking } = require('../models');
+const prisma = require('../utils/prisma');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 
 exports.getDashboard = async (req, res) => {
   try {
-    const agency_id = req.user.id;
-    const [agents, transporters, totalBookings] = await Promise.all([
-      User.count({ where: { agency_id, role: 'agent' } }),
-      User.count({ where: { agency_id, role: 'transporter' } }),
-      Booking.count({ where: { '$customer.agency_id$': agency_id } }),
+    const [agents, transporters, totalBookings] = await prisma.$transaction([
+      prisma.user.count({ where: { agencyId: req.user.id, role: 'agent' } }),
+      prisma.user.count({ where: { agencyId: req.user.id, role: 'transporter' } }),
+      prisma.booking.count({ where: { customer: { agencyId: req.user.id } } }),
     ]);
     return success(res, { agents, transporters, totalBookings });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, { attributes: { exclude: ['password_hash'] } });
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, full_name: true, email: true, phone: true, role: true, complianceStatus: true }
+    });
     return success(res, { user });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.updateProfile = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id);
-    await user.update({ full_name: req.body.full_name, phone: req.body.phone });
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { full_name: req.body.full_name, phone: req.body.phone }
+    });
     return success(res, { message: 'Profile updated' });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getAgents = async (req, res) => {
   try {
     const { page, limit, offset } = paginate(req.query);
-    const where = { agency_id: req.user.id, role: 'agent' };
+    const where = { agencyId: req.user.id, role: 'agent', deletedAt: null };
     if (req.query.q) {
-      const { Op } = require('sequelize');
-      where[Op.or] = [
-        { full_name: { [Op.iLike]: `%${req.query.q}%` } },
-        { email:     { [Op.iLike]: `%${req.query.q}%` } },
-        { phone:     { [Op.iLike]: `%${req.query.q}%` } },
+      where.OR = [
+        { full_name: { contains: req.query.q, mode: 'insensitive' } },
+        { email:     { contains: req.query.q, mode: 'insensitive' } },
+        { phone:     { contains: req.query.q, mode: 'insensitive' } },
       ];
     }
-    const { count, rows } = await User.findAndCountAll({
-      where,
-      limit, offset, attributes: { exclude: ['password_hash'] },
-    });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    const [count, rows] = await prisma.$transaction([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        select: { id: true, full_name: true, email: true, phone: true, complianceStatus: true },
+        orderBy: { createdAt: 'desc' }
+      })
+    ]);
+    return success(res, rows, 'Agents retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
@@ -65,138 +74,152 @@ exports.createAgent = async (req, res) => {
   try {
     const { full_name, email, phone } = req.body;
     if (!full_name || !email || !phone) return error(res, 'VALIDATION_ERROR', 'full_name, email, phone required', 422);
-    const existing = await User.findOne({ where: { email } });
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return error(res, 'DUPLICATE_ENTRY', 'Email already registered', 409);
-    const user = await User.create({ full_name, email, phone, password_hash: phone, role: 'agent', agency_id: req.user.id, compliance_status: 'approved' });
-    return success(res, { user: { id: user.id, email: user.email } }, 201);
+    
+    const user = await prisma.user.create({
+      data: {
+        full_name, email, phone,
+        password_hash: await require('bcryptjs').hash(phone, 12),
+        role: 'agent',
+        agencyId: req.user.id,
+        complianceStatus: 'approved'
+      }
+    });
+    return success(res, { user: { id: user.id, email: user.email } }, 'Agent created');
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getAgentById = async (req, res) => {
   try {
-    const user = await User.findOne({ where: { id: req.params.id, agency_id: req.user.id, role: 'agent' }, attributes: { exclude: ['password_hash'] } });
+    const user = await prisma.user.findFirst({
+      where: { id: req.params.id, agencyId: req.user.id, role: 'agent' },
+      select: { id: true, full_name: true, email: true, phone: true, complianceStatus: true }
+    });
     if (!user) return error(res, 'NOT_FOUND', 'Agent not found', 404);
     return success(res, { user });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.updateAgent = async (req, res) => {
   try {
-    const user = await User.findOne({ where: { id: req.params.id, agency_id: req.user.id } });
+    const user = await prisma.user.findFirst({ where: { id: req.params.id, agencyId: req.user.id } });
     if (!user) return error(res, 'NOT_FOUND', 'Agent not found', 404);
-    await user.update({ full_name: req.body.full_name, phone: req.body.phone });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { full_name: req.body.full_name, phone: req.body.phone }
+    });
     return success(res, { message: 'Agent updated' });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getTransporters = async (req, res) => {
   try {
     const { page, limit, offset } = paginate(req.query);
-    const where = { agency_id: req.user.id, role: 'transporter' };
+    const where = { agencyId: req.user.id, role: 'transporter', deletedAt: null };
+
     if (req.query.q) {
-      const { Op } = require('sequelize');
-      where[Op.or] = [
-        { full_name: { [Op.iLike]: `%${req.query.q}%` } },
-        { email:     { [Op.iLike]: `%${req.query.q}%` } },
-        { phone:     { [Op.iLike]: `%${req.query.q}%` } },
+      where.OR = [
+        { full_name: { contains: req.query.q, mode: 'insensitive' } },
+        { email:     { contains: req.query.q, mode: 'insensitive' } },
+        { phone:     { contains: req.query.q, mode: 'insensitive' } },
       ];
     }
-    const { count, rows } = await User.findAndCountAll({
-      where,
-      limit, offset, attributes: { exclude: ['password_hash'] },
-    });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+
+    const [count, rows] = await prisma.$transaction([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        select: { id: true, full_name: true, email: true, phone: true, complianceStatus: true },
+        orderBy: { createdAt: 'desc' }
+      })
+    ]);
+
+    return success(res, rows, 'Transporters retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.linkTransporter = async (req, res) => {
   try {
     const { transporter_id } = req.body;
-    const transporter = await User.findOne({ where: { id: transporter_id, role: 'transporter' } });
-    if (!transporter) return error(res, 'NOT_FOUND', 'Transporter not found', 404);
-    await transporter.update({ agency_id: req.user.id });
-    return success(res, { message: 'Transporter linked to agency' });
+    if (!transporter_id) return error(res, 422, 'VALIDATION_ERROR', 'transporter_id required');
+
+    await prisma.user.update({
+      where: { id: transporter_id },
+      data: { agencyId: req.user.id }
+    });
+    return success(res, null, 'Transporter linked to agency');
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getTransporterById = async (req, res) => {
   try {
-    const user = await User.findOne({ where: { id: req.params.id, agency_id: req.user.id, role: 'transporter' }, attributes: { exclude: ['password_hash'] } });
-    if (!user) return error(res, 'NOT_FOUND', 'Transporter not found', 404);
+    const user = await prisma.user.findFirst({
+      where: { id: req.params.id, agencyId: req.user.id, role: 'transporter' },
+      select: { id: true, full_name: true, email: true, phone: true, complianceStatus: true }
+    });
+    if (!user) return error(res, 404, 'NOT_FOUND', 'Transporter not found');
     return success(res, { user });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getBookings = async (req, res) => {
   try {
     const { page, limit, offset } = paginate(req.query);
-    // Agency sees bookings from all their agents
-    const agents = await User.findAll({ where: { agency_id: req.user.id, role: 'agent' }, attributes: ['id'] });
-    const agentIds = agents.map(a => a.id);
-    const where = { agent_id: agentIds };
-    const { Op } = require('sequelize');
-    if (req.query.status) {
-      where.status = req.query.status;
-    }
-    if (req.query.q) {
-      where[Op.or] = [
-        { reference: { [Op.iLike]: `%${req.query.q}%` } },
-        { cargo_description: { [Op.iLike]: `%${req.query.q}%` } },
+    const { status, q } = req.query;
+
+    // PRD §25.1 — Agency sees all bookings from their agents
+    const where = {
+      agent: { agencyId: req.user.id }
+    };
+
+    if (status) where.status = status;
+    if (q) {
+      where.OR = [
+        { reference: { contains: q, mode: 'insensitive' } },
+        { cargoDescription: { contains: q, mode: 'insensitive' } },
       ];
     }
 
-    // Sorting
-    const allowedSort = {
-      created_at: ['created_at', 'DESC'],
-      customer_rate: ['customer_rate', 'DESC'],
-      hire_rate: ['hire_rate', 'DESC'],
-      profit: ['profit', 'DESC'],
-      status: ['status', 'ASC'],
-    };
-    const sortKey = req.query.sort_by;
-    const sortDir = (req.query.sort_dir || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-    const order = sortKey && allowedSort[sortKey]
-      ? [[allowedSort[sortKey][0], sortDir]]
-      : [['created_at', 'DESC']];
+    const [count, rows] = await prisma.$transaction([
+      prisma.booking.count({ where }),
+      prisma.booking.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          agent: { select: { id: true, full_name: true, email: true } },
+          customer: { select: { id: true, full_name: true, phone: true } },
+        }
+      })
+    ]);
 
-    const { count, rows } = await Booking.findAndCountAll({
-      where,
-      limit,
-      offset,
-      order,
-      include: [
-        { model: User, as: 'agent', attributes: ['id', 'full_name', 'email'] },
-      ],
-    });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    return success(res, rows, 'Bookings retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getReports = async (req, res) => {
   try {
-    const agents = await User.findAll({
-      where: { agency_id: req.user.id, role: 'agent' },
-      attributes: ['id'],
-    });
-    const agentIds = agents.map((a) => a.id);
-
-    const bookings = await Booking.findAll({
-      where: { agent_id: agentIds },
-      attributes: ['id', 'status', 'customer_rate', 'hire_rate', 'total_expenses', 'profit'],
+    const bookings = await prisma.booking.findMany({
+      where: { agent: { agencyId: req.user.id } },
+      select: { status: true, customerRate: true, hireRate: true, totalExpenses: true, profit: true }
     });
 
     const byStatus = bookings.reduce((acc, b) => {
@@ -206,39 +229,39 @@ exports.getReports = async (req, res) => {
 
     const totals = bookings.reduce(
       (acc, b) => {
-        acc.customer_rate += Number(b.customer_rate || 0);
-        acc.hire_rate += Number(b.hire_rate || 0);
-        acc.expenses += Number(b.total_expenses || 0);
+        acc.customer_rate += Number(b.customerRate || 0);
+        acc.hire_rate += Number(b.hireRate || 0);
+        acc.expenses += Number(b.totalExpenses || 0);
         acc.profit += Number(b.profit || 0);
         return acc;
       },
       { customer_rate: 0, hire_rate: 0, expenses: 0, profit: 0 }
     );
 
-    return success(res, {
-      report: {
-        total_bookings: bookings.length,
-        by_status: byStatus,
-        totals,
-      },
-    });
+    const payload = {
+      total_bookings: bookings.length,
+      by_status: byStatus,
+      totals,
+    };
+
+    return success(res, payload, 'Agency reports retrieved');
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.exportReports = async (req, res) => {
   try {
-    const agents = await User.findAll({
-      where: { agency_id: req.user.id, role: 'agent' },
-      attributes: ['id'],
-    });
-    const agentIds = agents.map((a) => a.id);
-    const bookings = await Booking.findAll({
-      where: { agent_id: agentIds },
-      attributes: ['id', 'reference', 'agent_id', 'status', 'customer_rate', 'hire_rate', 'total_expenses', 'profit', 'created_at'],
-      order: [['created_at', 'DESC']],
-      limit: Number(req.query.limit) || 5000,
+    const limit = Math.min(Number(req.query.limit) || 5000, 10000);
+    const bookings = await prisma.booking.findMany({
+      where: { agent: { agencyId: req.user.id } },
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, reference: true, agentId: true, status: true, 
+        customerRate: true, hireRate: true, totalExpenses: true, 
+        profit: true, createdAt: true
+      }
     });
 
     const header = ['id', 'reference', 'agent_id', 'status', 'customer_rate', 'hire_rate', 'total_expenses', 'profit', 'created_at'];
@@ -246,13 +269,13 @@ exports.exportReports = async (req, res) => {
       [
         b.id,
         b.reference,
-        b.agent_id,
+        b.agentId,
         b.status,
-        b.customer_rate ?? '',
-        b.hire_rate ?? '',
-        b.total_expenses ?? '',
+        b.customerRate ?? '',
+        b.hireRate ?? '',
+        b.totalExpenses ?? '',
         b.profit ?? '',
-        b.created_at ? new Date(b.created_at).toISOString() : '',
+        b.createdAt ? b.createdAt.toISOString() : '',
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
@@ -263,6 +286,6 @@ exports.exportReports = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="agency-report-${Date.now()}.csv"`);
     return res.send(csv);
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };

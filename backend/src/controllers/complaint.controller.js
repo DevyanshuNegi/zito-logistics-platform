@@ -1,9 +1,9 @@
 // src/controllers/complaint.controller.js
 // PRD §18.2 — Complaint system
 
-const { Complaint, Booking, User } = require('../models');
+const prisma = require('../utils/prisma');
 const { success, error, paginated } = require('../utils/response');
-const { getPagination } = require('../utils/helpers');
+const { paginate, paginatedResponse } = require('../utils/helpers');
 const { ROLES, ADMIN_ROLES } = require('../middleware/auth');
 
 exports.createComplaint = async (req, res) => {
@@ -15,23 +15,25 @@ exports.createComplaint = async (req, res) => {
 
     // Optional: ensure booking belongs to user unless admin
     if (booking_id && !ADMIN_ROLES.includes(req.user.role)) {
-      const booking = await Booking.findByPk(booking_id);
-      if (!booking || (booking.customer_id !== req.user.id && booking.agent_id !== req.user.id && booking.transporter_id !== req.user.id)) {
+      const booking = await prisma.booking.findUnique({ where: { id: booking_id } });
+      if (!booking || (booking.customerId !== req.user.id && booking.transporterId !== req.user.id)) {
         return error(res, 403, 'FORBIDDEN', 'You cannot attach this booking');
       }
     }
 
-    const complaint = await Complaint.create({
-      user_id: req.user.id,
-      booking_id: booking_id || null,
-      category,
-      description,
-      status: 'submitted',
+    const complaint = await prisma.complaint.create({
+      data: {
+        userId: req.user.id,
+        bookingId: booking_id || null,
+        category,
+        description,
+        status: 'submitted',
+      }
     });
 
     if (req.auditLog) await req.auditLog('COMPLAINT_SUBMITTED', { complaint_id: complaint.id, user_id: req.user.id });
 
-    return success(res, { complaint }, 201);
+    return success(res, { complaint }, 'Complaint submitted');
   } catch (err) {
     return error(res, 500, 'SERVER_ERROR', err.message);
   }

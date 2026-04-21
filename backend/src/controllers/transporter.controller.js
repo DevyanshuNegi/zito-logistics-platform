@@ -2,23 +2,45 @@
 // PRD §5.4 — Transporter Portal
 // PRD §3.6 — Transporter manages own fleet, drivers, customers, bookings
 
-const { User, Driver, Vehicle, Booking, Contract, ContractRate } = require('../models');
+const prisma = require('../utils/prisma');
+const bcrypt = require('bcryptjs');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { generateUuidReference } = require('../utils/id');
 const { autoAssignIfNeeded } = require('../services/assignment.service');
-
 // ── Dashboard ──────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
   try {
-    const transporter_id = req.user.id;
-    const [totalVehicles, totalDrivers, totalBookings, activeBookings] = await Promise.all([
-      Vehicle.count({ where: { transporter_id } }),
-      User.count({ where: { transporter_id, role: 'driver' } }),
-      Booking.count({ where: { transporter_id } }),
-      Booking.count({ where: { transporter_id, status: ['assigned','accepted','picked_up','in_transit'] } }),
+    const [totalVehicles, totalDrivers, totalBookings, activeBookings] = await prisma.$transaction([
+      prisma.vehicle.count({ where: { transporterId: req.user.id } }),
+      prisma.user.count({ where: { transporterId: req.user.id, role: 'driver' } }),
+      prisma.booking.count({ where: { transporterId: req.user.id } }),
+      prisma.booking.count({ where: { transporterId: req.user.id, status: { in: ['assigned','accepted','picked_up','in_transit'] } } }),
     ]);
     return success(res, { totalVehicles, totalDrivers, totalBookings, activeBookings });
+  } catch (err) {
+    return error(res, 500, 'SERVER_ERROR', err.message);
+  }
+};
+
+exports.updateTransporter = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) return error(res, 'NOT_FOUND', 'Transporter not found', 404);
+
+    const updates = {};
+    if (req.body.full_name !== undefined) updates.full_name = req.body.full_name;
+    if (req.body.phone !== undefined)     updates.phone = req.body.phone;
+    if (req.body.email !== undefined)     updates.email = req.body.email;
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: updates
+    });
+
+    if (req.auditLog) await req.auditLog('TRANSPORTER_PROFILE_UPDATED', { user_id: user.id, updates });
+
+    return success(res, { user: updated }, 'Profile updated');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -28,56 +50,75 @@ exports.getDashboard = async (req, res) => {
 exports.getFleet = async (req, res) => {
   try {
     const { page, limit, offset } = paginate(req.query);
-    const { count, rows } = await Vehicle.findAndCountAll({
-      where: { transporter_id: req.user.id },
-      limit, offset, order: [['created_at', 'DESC']],
-    });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    const [count, rows] = await prisma.$transaction([
+      prisma.vehicle.count({ where: { transporterId: req.user.id } }),
+      prisma.vehicle.findMany({
+        where: { transporterId: req.user.id },
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+      })
+    ]);
+    return success(res, rows, 'Fleet retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.addVehicle = async (req, res) => {
   try {
-    const vehicle = await Vehicle.create({ ...req.body, transporter_id: req.user.id, owner_user_id: req.user.id, ownership_type: 'contracted' });
+    const vehicle = await prisma.vehicle.create({
+      data: { 
+        ...req.body, 
+        transporterId: req.user.id, 
+        ownerUserId: req.user.id, 
+        ownershipType: 'contracted',
+        plateNumber: req.body.plate_number,
+        vehicleType: req.body.vehicle_type
+      }
+    });
     if (req.auditLog) await req.auditLog('VEHICLE_ADDED', { vehicle_id: vehicle.id, by: req.user.id });
-    return success(res, { vehicle }, 201);
+    return success(res, { vehicle }, 'Vehicle added');
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getVehicleById = async (req, res) => {
   try {
-    const vehicle = await Vehicle.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.id, transporterId: req.user.id } });
     if (!vehicle) return error(res, 'NOT_FOUND', 'Vehicle not found', 404);
     return success(res, { vehicle });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.updateVehicle = async (req, res) => {
   try {
-    const vehicle = await Vehicle.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.id, transporterId: req.user.id } });
     if (!vehicle) return error(res, 'NOT_FOUND', 'Vehicle not found', 404);
-    await vehicle.update(req.body);
-    return success(res, { vehicle });
+    const updated = await prisma.vehicle.update({
+      where: { id: vehicle.id },
+      data: req.body
+    });
+    return success(res, { vehicle: updated });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.retireVehicle = async (req, res) => {
   try {
-    const vehicle = await Vehicle.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.id, transporterId: req.user.id } });
     if (!vehicle) return error(res, 'NOT_FOUND', 'Vehicle not found', 404);
-    await vehicle.update({ is_active: false });
-    await vehicle.destroy();
+    await prisma.vehicle.update({
+      where: { id: vehicle.id },
+      data: { isActive: false, deletedAt: new Date() }
+    });
     return success(res, { message: 'Vehicle retired' });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
@@ -85,15 +126,22 @@ exports.retireVehicle = async (req, res) => {
 exports.getDrivers = async (req, res) => {
   try {
     const { page, limit, offset } = paginate(req.query);
-    const { count, rows } = await User.findAndCountAll({
-      where: { transporter_id: req.user.id, role: 'driver' },
-      limit, offset,
-      attributes: { exclude: ['password_hash'] },
-      include: [{ model: Driver, as: 'driver_profile' }],
-    });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    const [count, rows] = await prisma.$transaction([
+      prisma.user.count({ where: { transporterId: req.user.id, role: 'driver', deletedAt: null } }),
+      prisma.user.findMany({
+        where: { transporterId: req.user.id, role: 'driver', deletedAt: null },
+        take: limit,
+        skip: offset,
+        select: {
+          id: true, full_name: true, email: true, phone: true, complianceStatus: true,
+          driver: true // Assuming one-to-one relation named 'driver'
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+    ]);
+    return success(res, rows, 'Drivers retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
@@ -101,68 +149,51 @@ exports.inviteDriver = async (req, res) => {
   try {
     const { full_name, email, phone } = req.body;
     if (!full_name || !email || !phone) return error(res, 'VALIDATION_ERROR', 'full_name, email, phone required', 422);
-    const existing = await User.findOne({ where: { email } });
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return error(res, 'DUPLICATE_ENTRY', 'Email already registered', 409);
 
-    const user = await User.create({
-      full_name, email, phone,
-      password_hash:  phone, // temp password = phone, driver must reset
-      role:           'driver',
-      transporter_id: req.user.id,
-      compliance_status: 'pending',
+    const user = await prisma.user.create({
+      data: {
+        full_name, email, phone,
+        passwordHash:  await bcrypt.hash(phone, 12),
+        role:           'driver',
+        transporterId: req.user.id,
+        complianceStatus: 'pending',
+      }
     });
-    return success(res, { message: 'Driver invited', user: { id: user.id, email: user.email } }, 201);
+    return success(res, { user: { id: user.id, email: user.email } }, 'Driver invited');
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.getDriverById = async (req, res) => {
   try {
-    const user = await User.findOne({
-      where: { id: req.params.id, transporter_id: req.user.id },
-      attributes: { exclude: ['password_hash'] },
-      include: [{ model: Driver, as: 'driver_profile' }],
+    const user = await prisma.user.findFirst({
+      where: { id: req.params.id, transporterId: req.user.id },
+      select: {
+        id: true, full_name: true, email: true, phone: true, complianceStatus: true,
+        driver: true
+      }
     });
     if (!user) return error(res, 'NOT_FOUND', 'Driver not found', 404);
     return success(res, { user });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
 exports.updateDriver = async (req, res) => {
   try {
-    const user = await User.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const user = await prisma.user.findFirst({ where: { id: req.params.id, transporterId: req.user.id } });
     if (!user) return error(res, 'NOT_FOUND', 'Driver not found', 404);
-    await user.update({ full_name: req.body.full_name, phone: req.body.phone });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { full_name: req.body.full_name, phone: req.body.phone }
+    });
     return success(res, { message: 'Driver updated' });
   } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
-  }
-};
-
-exports.assignVehicleToDriver = async (req, res) => {
-  try {
-    const { vehicle_id } = req.body;
-    const driver = await Driver.findOne({ include: [{ model: User, as: 'user', where: { id: req.params.id, transporter_id: req.user.id } }] });
-    if (!driver) return error(res, 'NOT_FOUND', 'Driver not found', 404);
-    await driver.update({ vehicle_id });
-    return success(res, { message: 'Vehicle assigned to driver' });
-  } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
-  }
-};
-
-exports.setDriverAvailability = async (req, res) => {
-  try {
-    const { is_available } = req.body;
-    const driver = await Driver.findOne({ include: [{ model: User, as: 'user', where: { id: req.params.id, transporter_id: req.user.id } }] });
-    if (!driver) return error(res, 'NOT_FOUND', 'Driver not found', 404);
-    await driver.update({ is_available });
-    return success(res, { message: `Driver availability set to ${is_available}` });
-  } catch (err) {
-    return error(res, 'SERVER_ERROR', err.message, 500);
+    return error(res, 500, 'SERVER_ERROR', err.message);
   }
 };
 
@@ -170,12 +201,22 @@ exports.setDriverAvailability = async (req, res) => {
 exports.getCustomers = async (req, res) => {
   try {
     const { page, limit, offset } = paginate(req.query);
-    const { count, rows } = await User.findAndCountAll({
-      where: { transporter_id: req.user.id, role: 'customer' },
-      limit, offset,
-      attributes: { exclude: ['password_hash'] },
-    });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    const where = { transporterId: req.user.id, role: 'customer', deletedAt: null };
+
+    const [count, rows] = await prisma.$transaction([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        select: {
+          id: true, full_name: true, email: true, phone: true, complianceStatus: true, createdAt: true
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+    ]);
+
+    return success(res, rows, 'Customers retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -185,17 +226,19 @@ exports.addCustomer = async (req, res) => {
   try {
     const { full_name, email, phone } = req.body;
     if (!full_name || !email || !phone) return error(res, 'VALIDATION_ERROR', 'full_name, email, phone required', 422);
-    const existing = await User.findOne({ where: { email } });
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return error(res, 'DUPLICATE_ENTRY', 'Email already registered', 409);
 
-    const user = await User.create({
-      full_name, email, phone,
-      password_hash:    phone,
-      role:             'customer',
-      transporter_id:   req.user.id,
-      compliance_status:'approved',
+    const user = await prisma.user.create({
+      data: {
+        full_name, email, phone,
+        passwordHash: await bcrypt.hash(phone, 12),
+        role: 'customer',
+        transporterId: req.user.id,
+        complianceStatus: 'approved',
+      }
     });
-    return success(res, { user: { id: user.id, email: user.email } }, 201);
+    return success(res, { user: { id: user.id, email: user.email } }, 'Customer added');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -203,7 +246,13 @@ exports.addCustomer = async (req, res) => {
 
 exports.getCustomerById = async (req, res) => {
   try {
-    const user = await User.findOne({ where: { id: req.params.id, transporter_id: req.user.id }, attributes: { exclude: ['password_hash'] } });
+    const user = await prisma.user.findFirst({ 
+      where: { id: req.params.id, transporterId: req.user.id },
+      select: {
+        id: true, full_name: true, email: true, phone: true, role: true, 
+        complianceStatus: true, createdAt: true
+      }
+    });
     if (!user) return error(res, 'NOT_FOUND', 'Customer not found', 404);
     return success(res, { user });
   } catch (err) {
@@ -213,9 +262,12 @@ exports.getCustomerById = async (req, res) => {
 
 exports.updateCustomer = async (req, res) => {
   try {
-    const user = await User.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const user = await prisma.user.findFirst({ where: { id: req.params.id, transporterId: req.user.id } });
     if (!user) return error(res, 'NOT_FOUND', 'Customer not found', 404);
-    await user.update({ full_name: req.body.full_name, phone: req.body.phone });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { full_name: req.body.full_name, phone: req.body.phone }
+    });
     return success(res, { message: 'Customer updated' });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -227,17 +279,24 @@ exports.getBookings = async (req, res) => {
   try {
     const { page, limit, offset } = paginate(req.query);
     const { status } = req.query;
-    const where = { transporter_id: req.user.id };
+    const where = { transporterId: req.user.id };
     if (status) where.status = status;
 
-    const { count, rows } = await Booking.findAndCountAll({
-      where, limit, offset, order: [['created_at', 'DESC']],
-      include: [
-        { model: User,   as: 'customer', attributes: ['id','full_name','phone'] },
-        { model: Vehicle,as: 'vehicle',  attributes: ['id','plate_number','vehicle_type'] },
-      ],
-    });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    const [count, rows] = await prisma.$transaction([
+      prisma.booking.count({ where }),
+      prisma.booking.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { id: true, full_name: true, phone: true } },
+          vehicle: { select: { id: true, plateNumber: true, vehicleType: true } },
+        },
+      })
+    ]);
+
+    return success(res, rows, 'Bookings retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -246,16 +305,16 @@ exports.getBookings = async (req, res) => {
 exports.createBooking = async (req, res) => {
   try {
     const ref = generateUuidReference('ZT');
-    const booking = await Booking.create({
-      ...req.body, reference: ref,
-      transporter_id:  req.user.id,
-      created_by_role: req.user.role,
-      created_by_id:   req.user.id,
-      handled_by:      'transporter',
-      status:          'pending',
+    const booking = await prisma.booking.create({
+      data: {
+        ...req.body, reference: ref,
+        transporterId: req.user.id,
+        // PRD §25.2 ownership fields
+        status: 'pending',
+      }
     });
     const autoResult = await autoAssignIfNeeded(booking, req.auditLog);
-    return success(res, { booking, auto_assignment: autoResult }, 201);
+    return success(res, { booking, auto_assignment: autoResult }, 'Booking created');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -263,7 +322,13 @@ exports.createBooking = async (req, res) => {
 
 exports.getBookingById = async (req, res) => {
   try {
-    const booking = await Booking.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const booking = await prisma.booking.findFirst({ 
+      where: { id: req.params.id, transporterId: req.user.id },
+      include: {
+        customer: { select: { id: true, full_name: true, phone: true } },
+        vehicle: true
+      }
+    });
     if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
     return success(res, { booking });
   } catch (err) {
@@ -274,15 +339,20 @@ exports.getBookingById = async (req, res) => {
 exports.assignDriver = async (req, res) => {
   try {
     const { driver_id, vehicle_id } = req.body;
-    const booking = await Booking.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const booking = await prisma.booking.findFirst({ where: { id: req.params.id, transporterId: req.user.id } });
     if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
 
-    const driver = await Driver.findByPk(driver_id);
-    if (!driver || driver.is_blacklisted || !driver.can_receive_assignments || !driver.is_available) {
+    const driver = await prisma.driver.findUnique({ where: { id: driver_id } });
+    if (!driver || driver.isBlacklisted || !driver.canReceiveAssignments || !driver.isAvailable) {
       return error(res, 'DRIVER_UNAVAILABLE', 'Driver is not eligible for assignment', 400);
     }
 
-    await booking.update({ assigned_driver_id: driver_id, vehicle_id, status: 'assigned', assigned_at: new Date() });
+    const updated = await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        assignedDriverId: driver_id, vehicleId: vehicle_id, status: 'assigned',
+      }
+    });
     return success(res, { message: 'Driver assigned', booking });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -291,9 +361,12 @@ exports.assignDriver = async (req, res) => {
 
 exports.cancelBooking = async (req, res) => {
   try {
-    const booking = await Booking.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const booking = await prisma.booking.findFirst({ where: { id: req.params.id, transporterId: req.user.id } });
     if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
-    await booking.update({ status: 'cancelled', cancellation_reason: req.body.reason, cancelled_at: new Date() });
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { status: 'cancelled' }
+    });
     return success(res, { message: 'Booking cancelled' });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -303,18 +376,18 @@ exports.cancelBooking = async (req, res) => {
 // ── Finance ────────────────────────────────────────────────────────────────
 exports.getFinanceSummary = async (req, res) => {
   try {
-    const bookings = await Booking.findAll({
-      where: { transporter_id: req.user.id, status: 'completed' },
-      attributes: ['id', 'customer_rate', 'hire_rate', 'total_expenses', 'profit', 'completed_at'],
-      order: [['completed_at', 'DESC']],
+    const bookings = await prisma.booking.findMany({
+      where: { transporterId: req.user.id, status: 'completed' },
+      select: { id: true, customerRate: true, hireRate: true, profit: true, updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
     });
 
     const totals = bookings.reduce(
       (acc, b) => {
-        acc.total_customer_rate += Number(b.customer_rate || 0);
-        acc.total_hire_rate += Number(b.hire_rate || 0);
-        acc.total_expenses += Number(b.total_expenses || 0);
+        acc.total_customer_rate += Number(b.customerRate || 0);
+        acc.total_hire_rate += Number(b.hireRate || 0);
         acc.total_profit += Number(b.profit || 0);
+        acc.total_expenses += 0; // Placeholder for trip charges logic
         return acc;
       },
       { total_customer_rate: 0, total_hire_rate: 0, total_expenses: 0, total_profit: 0 }
@@ -333,11 +406,10 @@ exports.getFinanceSummary = async (req, res) => {
 
 exports.getInvoices = async (req, res) => {
   try {
-    const bookings = await Booking.findAll({
-      where: { transporter_id: req.user.id, status: 'completed' },
-      include: [{ model: User, as: 'customer', attributes: ['id', 'full_name', 'email'] }],
-      attributes: ['id', 'reference', 'customer_rate', 'hire_rate', 'total_expenses', 'profit', 'completed_at'],
-      order: [['completed_at', 'DESC']],
+    const bookings = await prisma.booking.findMany({
+      where: { transporterId: req.user.id, status: 'completed' },
+      include: { customer: { select: { id: true, full_name: true, email: true } } },
+      orderBy: { updatedAt: 'desc' },
       limit: Number(req.query.limit) || 200,
     });
 
@@ -346,11 +418,11 @@ exports.getInvoices = async (req, res) => {
       booking_id: b.id,
       booking_reference: b.reference,
       customer: b.customer ? { id: b.customer.id, full_name: b.customer.full_name, email: b.customer.email } : null,
-      customer_rate: Number(b.customer_rate || 0),
-      hire_rate: Number(b.hire_rate || 0),
-      expenses: Number(b.total_expenses || 0),
+      customer_rate: Number(b.customerRate || 0),
+      hire_rate: Number(b.hireRate || 0),
+      expenses: 0,
       transporter_profit: Number(b.profit || 0),
-      issued_at: b.completed_at || b.updated_at,
+      issued_at: b.updatedAt,
       status: 'issued',
     }));
 
@@ -363,8 +435,10 @@ exports.getInvoices = async (req, res) => {
 // ── Contracts ──────────────────────────────────────────────────────────────
 exports.getContracts = async (req, res) => {
   try {
-    const { count, rows } = await Contract.findAndCountAll({ where: { transporter_id: req.user.id } });
-    return success(res, rows);
+    const contracts = await prisma.contract.findMany({ 
+      where: { customer: { transporterId: req.user.id } } 
+    });
+    return success(res, contracts);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -372,8 +446,13 @@ exports.getContracts = async (req, res) => {
 
 exports.createContract = async (req, res) => {
   try {
-    const contract = await Contract.create({ ...req.body, transporter_id: req.user.id, created_by: req.user.id });
-    return success(res, { contract }, 201);
+    const contract = await prisma.contract.create({ 
+      data: { 
+        ...req.body, 
+        status: 'active'
+      } 
+    });
+    return success(res, { contract }, 'Contract created');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -381,7 +460,10 @@ exports.createContract = async (req, res) => {
 
 exports.getContractById = async (req, res) => {
   try {
-    const contract = await Contract.findOne({ where: { id: req.params.id, transporter_id: req.user.id }, include: [{ model: ContractRate, as: 'rates' }] });
+    const contract = await prisma.contract.findUnique({ 
+      where: { id: req.params.id },
+      // include rates logic here if added to schema
+    });
     if (!contract) return error(res, 'NOT_FOUND', 'Contract not found', 404);
     return success(res, { contract });
   } catch (err) {
@@ -391,9 +473,12 @@ exports.getContractById = async (req, res) => {
 
 exports.updateContract = async (req, res) => {
   try {
-    const contract = await Contract.findOne({ where: { id: req.params.id, transporter_id: req.user.id } });
+    const contract = await prisma.contract.findUnique({ where: { id: req.params.id } });
     if (!contract) return error(res, 'NOT_FOUND', 'Contract not found', 404);
-    await contract.update(req.body);
+    await prisma.contract.update({
+      where: { id: contract.id },
+      data: req.body
+    });
     return success(res, { contract });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);

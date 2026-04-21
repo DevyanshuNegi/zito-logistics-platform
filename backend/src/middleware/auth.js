@@ -1,4 +1,4 @@
-// src/middleware/auth.js
+// PRD v8.0 — Industry Standard Backend Alignment
 //
 // PRD References:
 //   §3   — User Roles & Permissions (RBAC)
@@ -21,34 +21,14 @@
 // Run migration: UPDATE users SET role='operations_admin' WHERE role='admin';
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { User, Driver, DriverCompliance } = require('../models');
+const prisma = require('../utils/prisma');
+
 const { verifyJwt } = require('../utils/jwt');
+const { ROLES, ADMIN_ROLES } = require('../constants/roles');
+const { ERRORS, buildError } = require('../constants/errors');
 
-/* ============================================================
-   ROLE CONSTANTS
-   Single source of truth — import ROLES in every route file
-   instead of using magic strings.
-   PRD §3 — all eight roles defined here.
-   ============================================================ */
-
-const ROLES = {
-  SUPER_ADMIN:      'super_admin',
-  OPERATIONS_ADMIN: 'operations_admin',
-  FINANCE_ADMIN:    'finance_admin',
-  CUSTOMER:         'customer',
-  DRIVER:           'driver',
-  TRANSPORTER:      'transporter',
-  AGENT:            'agent',
-  AGENCY:           'agency',
-};
-
+/* ============================================================ */
 // All three admin variants — used throughout for role guards
-const ADMIN_ROLES = [
-  ROLES.SUPER_ADMIN,
-  ROLES.OPERATIONS_ADMIN,
-  ROLES.FINANCE_ADMIN,
-];
-
 // All roles — useful for routes open to every authenticated user
 const ALL_ROLES = Object.values(ROLES);
 
@@ -63,10 +43,7 @@ const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        error: { code: 'NO_TOKEN', message: 'Access token required' }
-      });
+      return res.status(ERRORS.UNAUTHORIZED.httpStatus).json(buildError(ERRORS.AUTH_REQUIRED));
     }
 
     const token = authHeader.split(' ')[1];
@@ -79,57 +56,51 @@ const authenticate = async (req, res, next) => {
       const code = jwtErr.name === 'TokenExpiredError'
         ? 'TOKEN_EXPIRED'
         : 'INVALID_TOKEN';
-      return res.status(401).json({
-        success: false,
-        error: { code, message: 'Invalid or expired token. Please log in again.' }
-      });
+      return res.status(401).json(buildError(ERRORS[code] || ERRORS.TOKEN_INVALID));
     }
 
     // Always load fresh from DB — never trust stale token payload for role/status
-    const user = await User.findByPk(decoded.id, {
-      attributes: [
-        'id', 'role', 'email', 'full_name', 'phone',
-        'is_active', 'is_deleted',
-        'compliance_status', 'data_locked',
-        'transporter_id', 'agent_id', 'agency_id',
-        'scope_type',
-      ]
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: {
+        id: true,
+        role: true,
+        email: true,
+        full_name: true,
+        phone: true,
+        isActive: true,
+        deletedAt: true,
+        complianceStatus: true,
+        dataLocked: true,
+        transporterId: true,
+        agentId: true,
+        agencyId: true,
+      }
     });
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: { code: 'USER_NOT_FOUND', message: 'User no longer exists' }
-      });
+      return res.status(ERRORS.USER_NOT_FOUND.httpStatus).json(buildError(ERRORS.USER_NOT_FOUND));
     }
 
     // PRD §25.9 — soft delete: blocked accounts must not pass auth
-    if (user.is_deleted) {
-      return res.status(401).json({
-        success: false,
-        error: { code: 'ACCOUNT_DELETED', message: 'This account has been removed. Contact support.' }
-      });
+    if (user.deletedAt) {
+      return res.status(401).json(buildError(ERRORS.ACCOUNT_DEACTIVATED, 'This account has been removed.'));
     }
 
     // PRD §17 — inactive / suspended accounts are blocked immediately
-    if (!user.is_active) {
-      return res.status(401).json({
-        success: false,
-        error: { code: 'ACCOUNT_INACTIVE', message: 'Account is suspended. Contact support.' }
-      });
+    if (!user.isActive) {
+      return res.status(401).json(buildError(ERRORS.ACCOUNT_DEACTIVATED, 'Account is suspended.'));
     }
 
-    // ── Legacy role guard ──────────────────────────────────────────────────
-    // If DB still has old 'admin' role before migration runs, treat it as
-    // operations_admin so authorize() does not silently fail.
-    // Remove this block after running:
-    //   UPDATE users SET role='operations_admin' WHERE role='admin';
-    if (user.role === 'admin') {
-      user.role = ROLES.OPERATIONS_ADMIN;
+    // §4.1 acting_as field in JWT enables View As mode
+    if (decoded.acting_as && user.role === ROLES.SUPER_ADMIN) {
+      req.adminUser = user;
+      req.user = { ...user, role: decoded.acting_as, isImpersonated: true };
+      req.viewAs = true;
+    } else {
+      req.user = user;
     }
-    // ──────────────────────────────────────────────────────────────────────
 
-    req.user = user;
     next();
 
   } catch (err) {
@@ -275,36 +246,14 @@ const requireCompliance = async (req, res, next) => {
     return next();
   }
 
-  let status = req.user.compliance_status;
+  let status = req.user.complianceStatus;
 
-  // Expiry auto-block check (drivers)
+  // Expiry auto-block check (drivers) - Delegates to service
   if (req.user.role === ROLES.DRIVER) {
-    try {
-      const driver = await Driver.findOne({ where: { user_id: req.user.id } });
-      if (driver) {
-        const comp = await DriverCompliance.findOne({ where: { driver_id: driver.id } });
-        const now = new Date();
-        const expiredFields = [];
-        if (comp) {
-          if (comp.license_expiry && new Date(comp.license_expiry) < now) expiredFields.push('license_expiry');
-          if (comp.police_clearance_expiry && new Date(comp.police_clearance_expiry) < now) expiredFields.push('police_clearance_expiry');
-          if (comp.medical_expiry && new Date(comp.medical_expiry) < now) expiredFields.push('medical_expiry');
-        }
-        if (expiredFields.length) {
-          status = 'resubmission_required';
-          await Promise.all([
-            driver.update({ can_receive_assignments: false, is_available: false }),
-            comp?.update({
-              compliance_status: 'resubmission_required',
-              status_updated_at: now,
-              resubmission_comment: `Document expired: ${expiredFields.join(', ')}`,
-            }),
-            User.update({ compliance_status: 'resubmission_required' }, { where: { id: req.user.id } }),
-          ]);
-        }
-      }
-    } catch (e) {
-      console.error('compliance expiry check failed', e.message);
+    const { checkDriverExpiry } = require('../services/compliance.service');
+    const updatedStatus = await checkDriverExpiry(req.user.id);
+    if (updatedStatus) {
+      status = updatedStatus;
     }
   }
 
@@ -345,10 +294,7 @@ const requireCompliance = async (req, res, next) => {
 
 const applyScope = (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'User not authenticated' }
-    });
+    return res.status(401).json(buildError(ERRORS.UNAUTHORIZED));
   }
 
   const { role, id } = req.user;
@@ -363,17 +309,17 @@ const applyScope = (req, res, next) => {
 
     case ROLES.TRANSPORTER:
       // Own fleet, drivers, customers, bookings — PRD §3.6, §16.5
-      req.scope = { isAdmin: false, transporter_id: id };
+      req.scope = { isAdmin: false, transporter_id: req.user.transporterId || id };
       break;
 
     case ROLES.AGENT:
       // Own customer portfolio and their bookings — PRD §3.7, §16.5
-      req.scope = { isAdmin: false, agent_id: id };
+      req.scope = { isAdmin: false, agent_id: req.user.agentId || id };
       break;
 
     case ROLES.AGENCY:
       // All managed agents/transporters under this agency — PRD §3.8, §16.5
-      req.scope = { isAdmin: false, agency_id: id };
+      req.scope = { isAdmin: false, agency_id: req.user.agencyId || id };
       break;
 
     case ROLES.DRIVER:
@@ -386,11 +332,16 @@ const applyScope = (req, res, next) => {
       req.scope = { isAdmin: false, customer_id: id };
       break;
 
+    case ROLES.WAREHOUSE_PARTNER:
+      req.scope = { isAdmin: false, partner_id: id };
+      break;
+
+    case ROLES.SGR_OPERATOR:
+      req.scope = { isAdmin: false, operator_id: id };
+      break;
+
     default:
-      return res.status(403).json({
-        success: false,
-        error: { code: 'UNKNOWN_ROLE', message: `Unrecognised role: ${role}` }
-      });
+      return res.status(403).json(buildError(ERRORS.SCOPE_VIOLATION));
   }
 
   next();
@@ -417,13 +368,7 @@ const viewAs = async (req, res, next) => {
   }
 
   try {
-    const targetUser = await User.findByPk(viewAsId, {
-      attributes: [
-        'id', 'role', 'email', 'full_name',
-        'is_active', 'is_deleted', 'compliance_status',
-        'transporter_id', 'agent_id', 'agency_id',
-      ]
-    });
+    const targetUser = await prisma.user.findUnique({ where: { id: viewAsId } });
 
     if (!targetUser) {
       return res.status(404).json({
@@ -432,7 +377,7 @@ const viewAs = async (req, res, next) => {
       });
     }
 
-    if (targetUser.is_deleted || !targetUser.is_active) {
+    if (targetUser.deletedAt || !targetUser.isActive) {
       return res.status(400).json({
         success: false,
         error: { code: 'INVALID_VIEW_AS', message: 'Cannot view as an inactive or deleted user' }
@@ -468,16 +413,16 @@ const viewAs = async (req, res, next) => {
 const auditLogger = (req, _res, next) => {
   req.auditLog = async (action, details = {}) => {
     try {
-      const AuditLog = require('../models/auditLog');
-      await AuditLog.create({
-        user_id:      req.adminUser?.id || req.user?.id || null,
-        acting_as:    req.viewAs ? req.adminUser?.role : req.user?.role,
-        view_as_user: req.viewAs ? req.user?.id : null,
-        action,
-        details:      JSON.stringify(details),
-        ip_address:   req.ip || req.headers['x-forwarded-for'] || null,
-        user_agent:   req.headers['user-agent'] || null,
-        // created_at is set by DB default — never passed in (immutable)
+      await prisma.auditLog.create({
+        data: {
+          userId:       req.adminUser?.id || req.user?.id || null,
+          actingAs:     req.viewAs ? req.adminUser?.role : req.user?.role,
+          viewAsUser:   req.viewAs ? req.user?.id : null,
+          action,
+          details:      details, // Prisma handles JSONB directly
+          ipAddress:    req.ip || req.headers['x-forwarded-for'] || null,
+          userAgent:    req.headers['user-agent'] || null,
+        }
       });
     } catch (err) {
       // Non-fatal — never let audit failure break the main request
@@ -517,7 +462,7 @@ const checkDataLock = (req, res, next) => {
   // Admins can always modify any field
   if (ADMIN_ROLES.includes(req.user.role)) return next();
 
-  if (req.user.data_locked) {
+  if (req.user.dataLocked) {
     const attemptedLockedFields = Object.keys(req.body)
       .filter(key => LOCKED_FIELDS.includes(key));
 
@@ -554,7 +499,7 @@ const injectBookingOwnership = (req, res, next) => {
     });
   }
 
-  const { role, id, transporter_id } = req.user;
+  const { role, id, transporterId } = req.user;
 
   req.body.created_by_role = role;
   req.body.created_by_id   = id;
@@ -617,8 +562,6 @@ module.exports = {
 
   // Audit
   auditLogger,
-  // Inline export for compliance routes convenience
-  requireCompliance,
 
   // Role constants — always import from here, never use magic strings
   ROLES,

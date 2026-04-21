@@ -1,7 +1,6 @@
 // src/services/pricing.service.js
 // PRD §7 — Pricing Engine with surcharges (heavy load, night, holiday, waiting, multi-stop)
 
-const { Contract, ContractRate } = require('../models');
 const { calculateProfit, roundMoney, isNightSurcharge } = require('../utils/helpers');
 
 const DEFAULT_RATES = {

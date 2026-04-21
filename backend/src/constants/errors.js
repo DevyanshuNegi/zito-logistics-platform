@@ -119,6 +119,16 @@ const ERRORS = {
     message: 'You cannot access this data.',
     httpStatus: 403,
   },
+  SCOPE_VIOLATION: {
+    code: 'SCOPE_VIOLATION',
+    message: 'Access outside your permitted data scope is not allowed.',
+    httpStatus: 403,
+  },
+  CREDIT_BLOCKED: {
+    code: 'CREDIT_BLOCKED',
+    message: 'Booking blocked due to exceeded credit limit.',
+    httpStatus: 403,
+  },
   ACCESS_SCOPE_VIOLATION: {
     code: 'ACCESS_SCOPE_VIOLATION',
     message: 'Access outside your permitted data scope is not allowed.',

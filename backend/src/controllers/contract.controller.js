@@ -2,7 +2,6 @@
 // PRD §7 — Custom pricing via contracts
 // PRD §5.4 — Transporter contract management
 
-const { Contract, ContractRate } = require('../models');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 
@@ -12,7 +11,7 @@ exports.getContracts = async (req, res) => {
     const where = {};
     if (req.scope && !req.scope.isAdmin && req.scope.transporter_id) where.transporter_id = req.scope.transporter_id;
     const { count, rows } = await Contract.findAndCountAll({ where, limit, offset, order: [['created_at', 'DESC']] });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    return success(res, rows, 'Contracts retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -32,7 +31,7 @@ exports.createContract = async (req, res) => {
   try {
     const contract = await Contract.create({ ...req.body, created_by: req.user.id });
     if (req.auditLog) await req.auditLog('CONTRACT_CREATED', { contract_id: contract.id, by: req.user.id });
-    return success(res, { contract }, 201);
+    return success(res, contract, 'Contract created');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -61,7 +60,7 @@ exports.getContractRates = async (req, res) => {
 exports.addContractRate = async (req, res) => {
   try {
     const rate = await ContractRate.create({ ...req.body, contract_id: req.params.id });
-    return success(res, { rate }, 201);
+    return success(res, rate, 'Contract rate added');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

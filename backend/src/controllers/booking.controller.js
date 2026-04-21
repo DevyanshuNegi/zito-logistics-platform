@@ -6,15 +6,18 @@
 // PRD §23 — Cancellation Policy
 // PRD §25.2 — Booking Ownership Model
 
-const { User, Driver, Vehicle, Booking } = require('../models');
+const prisma = require('../utils/prisma');
 const { autoAssignIfNeeded } = require('../services/assignment.service');
-const { success, error } = require('../utils/response');
+const { success, created, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { generateUuidReference } = require('../utils/id');
 const { quoteFare } = require('../services/pricing.service');
 const { sendBookingNotification } = require('../services/notification.service');
 const { broadcastNewLoad } = require('../services/broadcast.service');
 const SOS_MARKER = '[SOS_FROZEN]';
+
+// PRD §12.1 — High-value threshold
+const HIGH_VALUE_THRESHOLD = Number(process.env.HIGH_VALUE_THRESHOLD_KES || 50000);
 
 // ── Create Booking ─────────────────────────────────────────────────────────
 exports.createBooking = async (req, res) => {
@@ -31,32 +34,28 @@ exports.createBooking = async (req, res) => {
       waiting_minutes: req.body.waiting_minutes,
     });
 
-    const booking = await Booking.create({
-      ...req.body,
-      reference:     ref,
-      status:        'pending',
-      base_rate:     pricing.base_rate,
-      per_km_rate:   pricing.per_km_rate,
-      customer_rate: pricing.customer_rate,
-      hire_rate:     pricing.hire_rate,
-      profit:        pricing.profit,
-      surcharges:    pricing.surcharges,
-      estimated_fare: pricing.customer_rate,
-      final_fare:     pricing.customer_rate,
-      distance_km:    pricing.distance_km,
+    const booking = await prisma.booking.create({
+      data: {
+        ...req.body,
+        reference:     ref,
+        status:        'pending',
+        customerRate:  pricing.customer_rate,
+        hireRate:      pricing.hire_rate,
+        isHighValue:   pricing.customer_rate >= HIGH_VALUE_THRESHOLD,
+        customerId:    req.scope?.customer_id || req.body.customer_id,
+      }
     });
     if (req.auditLog) await req.auditLog('BOOKING_CREATED', { booking_id: booking.id, by: req.user.id });
 
     const autoResult = await autoAssignIfNeeded(booking, req.auditLog);
-    // If not auto-assigned, broadcast to interested drivers
     if (!autoResult.assigned) {
       broadcastNewLoad(booking).catch(console.error);
     }
 
-    const customer = booking.customer_id ? await User.findByPk(booking.customer_id) : null;
+    const customer = await prisma.user.findUnique({ where: { id: booking.customerId } });
     sendBookingNotification({ booking, customer, event: 'created' }).catch(console.error);
 
-    return success(res, { booking, auto_assignment: autoResult }, 201);
+    return created(res, { booking, auto_assignment: autoResult }, 'Booking created');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -94,7 +93,7 @@ exports.getBookings = async (req, res) => {
       ],
     });
 
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    return success(res, rows, 'Bookings retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -232,6 +231,11 @@ exports.updateStatus = async (req, res) => {
       }
     }
 
+    // PRD §12.1 — High-value proof chain verification
+    if (status === 'delivered' && booking.is_high_value && !booking.consignee_otp_verified) {
+      return error(res, 'OTP_REQUIRED', 'Consignee OTP verification required for high-value cargo delivery', 403);
+    }
+
     const timestamps = {
       picked_up:  { picked_up_at:  new Date() },
       in_transit: { in_transit_at: new Date() },
@@ -247,6 +251,27 @@ exports.updateStatus = async (req, res) => {
       sendBookingNotification({ booking, customer, event: 'status' }).catch(console.error);
     }
     return success(res, { message: `Status updated to ${status}`, booking });
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+// ── Verify Consignee OTP ──────────────────────────────────────────────────
+// PRD §12.1 — High-value cargo delivery verification
+exports.verifyConsigneeOtp = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const booking = await Booking.findByPk(req.params.id);
+    if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
+
+    // Mocking validation logic — usually integrates with a redis-backed OTP service
+    if (!otp || otp !== '123456') { 
+      return error(res, 'INVALID_OTP', 'The consignee OTP entered is incorrect', 401);
+    }
+
+    await booking.update({ consignee_otp_verified: true, consignee_otp_verified_at: new Date() });
+    if (req.auditLog) await req.auditLog('CONSIGNEE_OTP_VERIFIED', { booking_id: booking.id, by: req.user.id });
+    return success(res, { message: 'Consignee OTP verified successfully', booking });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

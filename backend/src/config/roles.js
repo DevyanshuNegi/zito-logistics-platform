@@ -1,3 +1,4 @@
+```js
 // src/config/roles.js
 
 const ROLES = {
@@ -7,7 +8,7 @@ const ROLES = {
   CUSTOMER: 'customer',
   DRIVER: 'driver',
   TRANSPORTER: 'transporter',
-  AGENCY: 'agency' // 🔥 Added as per your system design
+  AGENCY: 'agency'
 };
 
 const PERMISSIONS = {
@@ -24,6 +25,11 @@ const PERMISSIONS = {
     ROLES.ADMIN,
     ROLES.TRANSPORTER,
     ROLES.AGENT,
+    ROLES.AGENCY
+  ],
+
+  // CUSTOMER - own bookings only
+  customerBookings: [
     ROLES.CUSTOMER
   ],
 
@@ -31,7 +37,13 @@ const PERMISSIONS = {
   assignments: [
     ROLES.SUPER_ADMIN,
     ROLES.ADMIN,
-    ROLES.TRANSPORTER
+    ROLES.TRANSPORTER,
+    ROLES.DRIVER
+  ],
+
+  // ================= DRIVER =================
+  driverTrips: [
+    ROLES.DRIVER
   ],
 
   // ================= DRIVERS =================
@@ -91,3 +103,4 @@ module.exports = {
   ROLES,
   PERMISSIONS
 };
+```

@@ -1,19 +1,17 @@
 // src/controllers/otp.controller.js
-// PRD §12 — OTP endpoints
+// PRD v8.0 §5.1 & §7.1 — OTP endpoints (Redis required for Phase 1)
 // PRD §11 — Mandatory email OTP 2FA, Resend.com provider
 // PRD §25.8 — Audit log on OTP events
 
-const crypto = require('crypto');
-const { Op } = require('sequelize');
-const { User, LoginOtp } = require('../models');
+const prisma = require('../utils/prisma');
+
 const { success, error } = require('../utils/response');
+const { generateOtp } = require('../utils/helpers');
+const { ERRORS, buildError } = require('../constants/errors');
 const { sendSms } = require('../services/sms.service');
 const { signJwt, verifyJwt } = require('../utils/jwt');
 
-const generateOtp = () => {
-  // PRD §12 — 6-digit OTP
-  return crypto.randomInt(100000, 999999).toString();
-};
+// TODO: Migration §5.1 — Move LoginOtp from Sequelize to Redis
 
 const OTP_EXPIRY_MINS = parseInt(process.env.OTP_EXPIRY_MINS || '10', 10);
 
@@ -65,59 +63,57 @@ exports.sendOtp = async (req, res) => {
     // Find user (email > contact > user_id)
     let user;
     if (user_id) {
-      user = await User.findByPk(user_id);
+      user = await prisma.user.findUnique({ where: { id: user_id } });
     } else if (email) {
-      user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
+      user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
     } else if (contact) {
-      const lookup = contact.includes('@')
-        ? { email: contact.toLowerCase().trim() }
-        : { phone: contact.trim() };
-      user = await User.findOne({ where: lookup });
+      user = await prisma.user.findFirst({
+        where: contact.includes('@')
+          ? { email: contact.toLowerCase().trim() }
+          : { phone: contact.trim() }
+      });
     }
 
     if (!user) {
       // Don't reveal if email exists
-      return success(res, { message: 'OTP sent if account exists.' });
+      return success(res, null, 'OTP sent if account exists.');
     }
 
     let otp;
 
     // For login flow, reuse active OTP instead of rotating.
     // This prevents invalid-OTP when user receives delayed/duplicated emails.
-    const activeOtp = await LoginOtp.findOne({
+    const activeOtp = await prisma.loginOtp.findFirst({
       where: {
-        user_id: user.id,
+        userId: user.id,
         type,
-        consumed_at: null,
+        consumedAt: null,
+        expiresAt: { gt: new Date() }
       },
-      order: [['created_at', 'DESC']],
+      orderBy: { createdAt: 'desc' },
     });
 
-    if (type === 'login' && activeOtp && new Date(activeOtp.expires_at).getTime() > Date.now()) {
+    if (type === 'login' && activeOtp) {
       otp = activeOtp.otp;
     } else {
       otp = generateOtp();
       const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINS * 60 * 1000);
 
       // Invalidate old unconsumed OTP rows for this user+type before creating new one
-      await LoginOtp.update(
-        { consumed_at: new Date() },
-        {
-          where: {
-            user_id: user.id,
-            type,
-            consumed_at: null,
-          },
-        }
-      );
+      await prisma.loginOtp.updateMany({
+        where: { userId: user.id, type, consumedAt: null },
+        data: { consumedAt: new Date() }
+      });
 
-      await LoginOtp.create({
-        user_id: user.id,
-        contact: user.email,
-        otp,
-        type,
-        expires_at: expiresAt,
-        attempts: 0,
+      await prisma.loginOtp.create({
+        data: {
+          userId: user.id,
+          contact: user.email,
+          otp,
+          type,
+          expiresAt,
+          attempts: 0,
+        }
       });
     }
 
@@ -136,10 +132,9 @@ exports.sendOtp = async (req, res) => {
     }
 
     return success(res, {
-      message: `OTP sent to ${user.email}`,
       // Only expose in development
       ...(process.env.NODE_ENV !== 'production' && { _dev_otp: otp }),
-    });
+    }, `OTP sent to ${user.email}`);
 
   } catch (err) {
     console.error('sendOtp error:', err);
@@ -168,7 +163,7 @@ exports.verifyOtp = async (req, res) => {
       const lookup = contact.includes('@')
         ? { email: contact.toLowerCase().trim() }
         : { phone: contact.trim() };
-      resolvedUser = await User.findOne({ where: lookup });
+      resolvedUser = await prisma.user.findFirst({ where: lookup });
       resolvedUserId = resolvedUser?.id;
     }
 
@@ -186,55 +181,71 @@ exports.verifyOtp = async (req, res) => {
       return error(res, 'VALIDATION_ERROR', 'user_id, contact or temp_token required', 422);
     }
 
-        const stored = await LoginOtp.findOne({
-          where: {
-            user_id: resolvedUserId,
-            type,
-            consumed_at: null,
-          },
-          order: [['created_at', 'DESC']],
-        });
+    const stored = await prisma.loginOtp.findFirst({
+      where: {
+        userId: resolvedUserId,
+        type,
+        consumedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
     if (!stored) {
       return error(res, 'OTP_NOT_FOUND', 'OTP not found or already used. Request a new one.', 400);
     }
 
     // Check expiry
-    if (Date.now() > new Date(stored.expires_at).getTime()) {
-      await stored.update({ consumed_at: new Date() });
+    if (Date.now() > new Date(stored.expiresAt).getTime()) {
+      await prisma.loginOtp.update({
+        where: { id: stored.id },
+        data: { consumedAt: new Date() }
+      });
       return error(res, 'OTP_EXPIRED', 'OTP has expired. Please request a new one.', 400);
     }
 
     // Max 5 attempts
     if (stored.attempts >= 5) {
-      await stored.update({ consumed_at: new Date() });
+      await prisma.loginOtp.update({
+        where: { id: stored.id },
+        data: { consumedAt: new Date() }
+      });
       return error(res, 'OTP_MAX_ATTEMPTS', 'Too many failed attempts. Request a new OTP.', 429);
     }
 
     // Verify OTP
     if (stored.otp !== String(otp).trim()) {
       const nextAttempts = Number(stored.attempts || 0) + 1;
-      await stored.update({ attempts: nextAttempts });
+      await prisma.loginOtp.update({
+        where: { id: stored.id },
+        data: { attempts: nextAttempts }
+      });
       return error(res, 'INVALID_OTP', `Invalid OTP. ${Math.max(0, 5 - nextAttempts)} attempts remaining.`, 400);
     }
 
     // OTP valid — mark consumed
-    await stored.update({ consumed_at: new Date() });
+    await prisma.loginOtp.update({
+      where: { id: stored.id },
+      data: { consumedAt: new Date() }
+    });
 
     // Load user
-    const user = resolvedUser || await User.findByPk(resolvedUserId);
+    const user = resolvedUser || await prisma.user.findUnique({ where: { id: resolvedUserId } });
     if (!user) {
       return error(res, 'NOT_FOUND', 'User not found', 404);
     }
 
     // Update last login
-    await user.update({
-      otp_verified: true,
-      last_login_at: new Date(),
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        otpVerified: true,
+        lastLoginAt: new Date(),
+      }
     });
 
     // Issue full JWT — PRD §11
-    const token = signJwt({ id: user.id, role: user.role });
+    const accessToken  = signJwt({ id: user.id, role: user.role });
+    const refreshToken = signJwt({ id: user.id, role: user.role }, { expiresIn: '90d' }); // PRD §15.1
 
     // Audit log — PRD §25.8
     if (req.auditLog) {
@@ -242,18 +253,18 @@ exports.verifyOtp = async (req, res) => {
     }
 
     return success(res, {
-      message: 'OTP verified successfully.',
-      token,
-      accessToken: token,
+      token: accessToken,
+      accessToken,
+      refreshToken,
       user: {
         id:                user.id,
         email:             user.email,
-        full_name:         user.full_name,
+        full_name:         user.full_name, // Assuming snake_case in schema based on select in auth middleware
         role:              user.role,
-        compliance_status: user.compliance_status,
-        is_active:         user.is_active,
+        compliance_status: user.complianceStatus, // PRD v8 uses camelCase in Prisma
+        is_active:         user.isActive,         // PRD v8 uses camelCase in Prisma
       },
-    });
+    }, 'OTP verified successfully.');
 
   } catch (err) {
     console.error('verifyOtp error:', err);

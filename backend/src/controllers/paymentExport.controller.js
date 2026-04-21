@@ -1,7 +1,6 @@
 // src/controllers/paymentExport.controller.js
 // CSV/XLSX export for payments with linked booking info
 
-const { Payment, Booking, User } = require('../models');
 const { error } = require('../utils/response');
 
 exports.exportPayments = async (req, res) => {

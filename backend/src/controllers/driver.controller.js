@@ -4,31 +4,32 @@
 // PRD §18.1 — Assignment Validation
 // PRD §18.5 — GPS Tracking
 
-const { User, Driver, Vehicle, Booking, DriverCompliance, TripCharge } = require('../models');
+const prisma = require('../utils/prisma');
 const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { BOOKING_STATUS } = require('../constants/bookingStatus');
 const { getIO } = require('../services/notification.service');
+
 const SOS_MARKER = '[SOS_FROZEN]';
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    const [total, active, completed] = await Promise.all([
-      Booking.count({ where: { assigned_driver_id: driver.id } }),
-      Booking.count({ where: { assigned_driver_id: driver.id, status: ['accepted','picked_up','in_transit'] } }),
-      Booking.count({ where: { assigned_driver_id: driver.id, status: 'completed' } }),
+    const [total, active, completed] = await prisma.$transaction([
+      prisma.booking.count({ where: { assignedDriverId: driver.id } }),
+      prisma.booking.count({ where: { assignedDriverId: driver.id, status: { in: ['accepted','picked_up','in_transit'] } } }),
+      prisma.booking.count({ where: { assignedDriverId: driver.id, status: 'completed' } }),
     ]);
 
     return success(res, {
       driver: {
         id:           driver.id,
-        is_available: driver.is_available,
-        avg_rating:   driver.avg_rating,
-        total_trips:  driver.total_trips,
+        is_available: driver.isAvailable,
+        avg_rating:   driver.avgRating,
+        total_trips:  driver.totalTrips,
       },
       trips: { total, active, completed },
     });
@@ -40,12 +41,12 @@ exports.getDashboard = async (req, res) => {
 // ── Profile ────────────────────────────────────────────────────────────────
 exports.getProfile = async (req, res) => {
   try {
-    const driver = await Driver.findOne({
-      where: { user_id: req.user.id },
-      include: [
-        { model: User,    as: 'user',            attributes: { exclude: ['password_hash'] } },
-        { model: Vehicle, as: 'current_vehicle' },
-      ],
+    const driver = await prisma.driver.findUnique({
+      where: { userId: req.user.id },
+      include: {
+        user: { select: { id: true, full_name: true, email: true, phone: true, role: true, profilePhoto: true } },
+        currentVehicle: true,
+      }
     });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
     return success(res, { driver });
@@ -56,12 +57,18 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id);
     const allowed = ['full_name', 'phone', 'profile_photo'];
     const updates = {};
-    allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
-    await user.update(updates);
-    return success(res, { message: 'Profile updated', user });
+    if (req.body.full_name !== undefined)     updates.full_name = req.body.full_name;
+    if (req.body.phone !== undefined)         updates.phone = req.body.phone;
+    if (req.body.profile_photo !== undefined) updates.profilePhoto = req.body.profile_photo;
+
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updates
+    });
+
+    return success(res, { user: updated }, 'Profile updated');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -71,10 +78,13 @@ exports.updateProfile = async (req, res) => {
 exports.setAvailability = async (req, res) => {
   try {
     const { is_available } = req.body;
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
-    await driver.update({ is_available });
-    return success(res, { message: `Availability set to ${is_available}`, is_available });
+    const updated = await prisma.driver.update({
+      where: { id: driver.id },
+      data: { isAvailable: !!is_available }
+    });
+    return success(res, { is_available: updated.isAvailable }, `Availability set to ${updated.isAvailable}`);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -83,23 +93,29 @@ exports.setAvailability = async (req, res) => {
 // ── Trips ──────────────────────────────────────────────────────────────────
 exports.getTrips = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
     const { page, limit, offset } = paginate(req.query);
     const { status } = req.query;
-    const where = { assigned_driver_id: driver.id };
+    const where = { assignedDriverId: driver.id };
     if (status) where.status = status;
 
-    const { count, rows } = await Booking.findAndCountAll({
-      where, limit, offset,
-      order: [['created_at', 'DESC']],
-      include: [
-        { model: User,    as: 'customer', attributes: ['id','full_name','phone'] },
-        { model: Vehicle, as: 'vehicle',  attributes: ['id','plate_number','vehicle_type'] },
-      ],
-    });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    const [count, rows] = await prisma.$transaction([
+      prisma.booking.count({ where }),
+      prisma.booking.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { id: true, full_name: true, phone: true } },
+          vehicle: { select: { id: true, plateNumber: true, vehicleType: true } },
+        }
+      })
+    ]);
+
+    return success(res, rows, 'Trips retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -107,17 +123,17 @@ exports.getTrips = async (req, res) => {
 
 exports.getTripById = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    const booking = await Booking.findOne({
-      where: { id: req.params.id, assigned_driver_id: driver.id },
-      include: [
-        { model: User,    as: 'customer', attributes: ['id','full_name','phone'] },
-        { model: Vehicle, as: 'vehicle' },
-      ],
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        customer: { select: { id: true, full_name: true, phone: true } },
+        vehicle: true,
+      }
     });
-    if (!booking) return error(res, 'NOT_FOUND', 'Trip not found', 404);
+    if (!booking || booking.assignedDriverId !== driver.id) return error(res, 'NOT_FOUND', 'Trip not found', 404);
     return success(res, { booking });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -126,18 +142,23 @@ exports.getTripById = async (req, res) => {
 
 exports.acceptTrip = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    const booking = await Booking.findOne({ where: { id: req.params.id, assigned_driver_id: driver.id, status: 'assigned' } });
-    if (!booking) return error(res, 'NOT_FOUND', 'Trip not found or not in assigned status', 404);
-    if ((booking.special_instructions || '').includes(SOS_MARKER)) {
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id } });
+    if (!booking || booking.assignedDriverId !== driver.id || booking.status !== 'assigned') {
+      return error(res, 'NOT_FOUND', 'Trip not found or not in assigned status', 404);
+    }
+    if ((booking.specialInstructions || '').includes(SOS_MARKER)) {
       return error(res, 'BOOKING_FROZEN', 'Trip is frozen due to SOS. Wait for admin.', 409);
     }
 
-    await booking.update({ status: 'accepted', accepted_at: new Date() });
+    const updated = await prisma.booking.update({
+      where: { id: booking.id },
+      data: { status: 'accepted', acceptedAt: new Date() }
+    });
     if (req.auditLog) await req.auditLog('TRIP_ACCEPTED', { booking_id: booking.id, driver_id: driver.id });
-    return success(res, { message: 'Trip accepted', booking });
+    return success(res, { booking: updated }, 'Trip accepted');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -146,18 +167,23 @@ exports.acceptTrip = async (req, res) => {
 exports.rejectTrip = async (req, res) => {
   try {
     const { reason } = req.body;
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    const booking = await Booking.findOne({ where: { id: req.params.id, assigned_driver_id: driver.id, status: 'assigned' } });
-    if (!booking) return error(res, 'NOT_FOUND', 'Trip not found or not in assigned status', 404);
-    if ((booking.special_instructions || '').includes(SOS_MARKER)) {
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id } });
+    if (!booking || booking.assignedDriverId !== driver.id || booking.status !== 'assigned') {
+      return error(res, 'NOT_FOUND', 'Trip not found or not in assigned status', 404);
+    }
+    if ((booking.specialInstructions || '').includes(SOS_MARKER)) {
       return error(res, 'BOOKING_FROZEN', 'Trip is frozen due to SOS. Wait for admin.', 409);
     }
 
-    await booking.update({ status: 'pending', assigned_driver_id: null, rejection_reason: reason });
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { status: 'pending', assignedDriverId: null, rejectionReason: reason }
+    });
     if (req.auditLog) await req.auditLog('TRIP_REJECTED', { booking_id: booking.id, driver_id: driver.id, reason });
-    return success(res, { message: 'Trip rejected' });
+    return success(res, null, 'Trip rejected');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -167,13 +193,18 @@ exports.rejectTrip = async (req, res) => {
 exports.updateTripStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    const booking = await Booking.findOne({ where: { id: req.params.id, assigned_driver_id: driver.id } });
-    if (!booking) return error(res, 'NOT_FOUND', 'Trip not found', 404);
-    if ((booking.special_instructions || '').includes(SOS_MARKER)) {
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id } });
+    if (!booking || booking.assignedDriverId !== driver.id) return error(res, 'NOT_FOUND', 'Trip not found', 404);
+    if ((booking.specialInstructions || '').includes(SOS_MARKER)) {
       return error(res, 'BOOKING_FROZEN', 'Trip is frozen due to SOS. Wait for admin.', 409);
+    }
+
+    // PRD §12.1 — High-value proof chain check
+    if (status === 'delivered' && booking.isHighValue && !booking.consigneeOtpVerified) {
+      return error(res, 'OTP_REQUIRED', 'Consignee OTP verification required for high-value cargo', 403);
     }
 
     // PRD §6 — valid transitions
@@ -190,27 +221,33 @@ exports.updateTripStatus = async (req, res) => {
 
     if (status === 'completed') {
       const paidStatuses = ['released', 'refunded'];
-      if (!paidStatuses.includes(booking.payment_status)) {
+      if (!paidStatuses.includes(booking.paymentStatus)) {
         return error(res, 'PAYMENT_PENDING', 'Payment not confirmed yet; finance/admin must mark paid.', 400);
       }
     }
 
     const timestamps = {
-      picked_up:  { picked_up_at:  new Date() },
-      in_transit: { in_transit_at: new Date() },
-      delivered:  { delivered_at:  new Date() },
-      completed:  { completed_at:  new Date() },
+      picked_up:  { pickedUpAt:  new Date() },
+      in_transit: { inTransitAt: new Date() },
+      delivered:  { deliveredAt:  new Date() },
+      completed:  { completedAt:  new Date() },
     };
 
-    await booking.update({ status, ...timestamps[status] });
+    const updated = await prisma.booking.update({
+      where: { id: booking.id },
+      data: { status, ...timestamps[status] }
+    });
 
     // Update driver total trips on completion
     if (status === 'completed') {
-      await driver.update({ total_trips: driver.total_trips + 1 });
+      await prisma.driver.update({
+        where: { id: driver.id },
+        data: { totalTrips: driver.totalTrips + 1 }
+      });
     }
 
     if (req.auditLog) await req.auditLog('TRIP_STATUS_UPDATED', { booking_id: booking.id, status, driver_id: driver.id });
-    return success(res, { message: `Trip status updated to ${status}`, booking });
+    return success(res, { booking: updated }, `Trip status updated to ${status}`);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -229,40 +266,39 @@ exports.getDocuments = async (req, res) => {
 
 exports.uploadDocument = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    // Accept both current and testing-doc field names
-    const payload = ((body) => ({
-      national_id_url:       body.national_id_url,
-      license_url:           body.license_url || body.license_doc_url,
-      license_expiry:        body.license_expiry || body.license_doc_expiry,
-      kra_pin_doc_url:       body.kra_pin_doc_url,
-      police_clearance_url:  body.police_clearance_url,
-      police_clearance_expiry: body.police_clearance_expiry,
-      medical_cert_url:      body.medical_cert_url,
-      medical_expiry:        body.medical_cert_expiry,
-      contract_signed:       body.contract_signed,
-      oath_signed:           body.oath_signed,
-      sop_signed:            body.sop_signed,
-    }))(req.body);
+    const payload = {
+      nationalIdUrl:       req.body.national_id_url,
+      licenseUrl:           req.body.license_url || req.body.license_doc_url,
+      licenseExpiry:        req.body.license_expiry ? new Date(req.body.license_expiry) : null,
+      kraPinDocUrl:       req.body.kra_pin_doc_url,
+      policeClearanceUrl:  req.body.police_clearance_url,
+      policeClearanceExpiry: req.body.police_clearance_expiry ? new Date(req.body.police_clearance_expiry) : null,
+      medicalCertUrl:      req.body.medical_cert_url,
+      medicalExpiry:        req.body.medical_expiry ? new Date(req.body.medical_expiry) : null,
+      contractSigned:       req.body.contract_signed,
+      oathSigned:           req.body.oath_signed,
+      sopSigned:            req.body.sop_signed,
+    };
 
-    let compliance = await DriverCompliance.findOne({ where: { driver_id: driver.id } });
-    if (!compliance) {
-      compliance = await DriverCompliance.create({ driver_id: driver.id });
-    }
-
-    await compliance.update({
-      ...payload,
-      compliance_status: 'pending',
-      status_updated_at: new Date(),
-      status_updated_by: req.user.id,
+    const updatedCompliance = await prisma.driverCompliance.upsert({
+      where: { driverId: driver.id },
+      update: { ...payload, complianceStatus: 'pending', statusUpdatedAt: new Date(), statusUpdatedBy: req.user.id },
+      create: { driverId: driver.id, ...payload, complianceStatus: 'pending', statusUpdatedAt: new Date(), statusUpdatedBy: req.user.id }
     });
 
-    await driver.update({ can_receive_assignments: false, is_available: false });
-    await User.update({ compliance_status: 'pending', data_locked: false }, { where: { id: req.user.id } });
+    await prisma.driver.update({
+      where: { id: driver.id },
+      data: { canReceiveAssignments: false, isAvailable: false }
+    });
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { complianceStatus: 'pending', dataLocked: false }
+    });
 
-    return success(res, { message: 'Documents submitted. Awaiting admin review.', compliance });
+    return success(res, { compliance: updatedCompliance }, 'Documents submitted. Awaiting admin review.');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -272,16 +308,16 @@ exports.uploadDocument = async (req, res) => {
 // PRD — drivers are salary-backed, but the portal still exposes wallet visibility
 exports.getEarnings = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    const approvedExpenses = await TripCharge.findAll({
+    const approvedExpenses = await prisma.tripCharge.findMany({
       where: {
-        driver_id: driver.id,
-        charge_type: 'driver_expense',
+        driverId: driver.id,
+        chargeType: 'driver_expense',
         status: 'approved',
       },
-      attributes: ['amount'],
+      select: { amount: true },
     });
 
     const totalExpenses = approvedExpenses.reduce(
@@ -290,14 +326,13 @@ exports.getEarnings = async (req, res) => {
     );
 
     return success(res, {
-      message: 'Wallet visibility is available here. Final payouts are still approved by Admin.',
-      total_trips: driver.total_trips,
-      avg_rating:  driver.avg_rating,
-      total_earnings: Number(driver.wallet_balance || 0),
+      total_trips: driver.totalTrips,
+      avg_rating:  driver.avgRating,
+      total_earnings: Number(driver.walletBalance || 0),
       total_expenses: totalExpenses,
-      pending_payout: Number(driver.pending_payout || 0),
-      last_payout_at: driver.last_payout_at,
-    });
+      pending_payout: Number(driver.pendingPayout || 0),
+      last_payout_at: driver.lastPayoutAt,
+    }, 'Wallet visibility is available here. Final payouts are still approved by Admin.');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -336,7 +371,7 @@ exports.updateLocation = async (req, res) => {
       }
     }
 
-    return success(res, { message: 'Location updated' });
+    return success(res, null, 'Location updated');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -349,11 +384,16 @@ exports.setLocationInterest = async (req, res) => {
     if (lat === undefined || lng === undefined) {
       return error(res, 'VALIDATION_ERROR', 'lat and lng required', 422);
     }
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    await driver.update({ location_interest: { lat: Number(lat), lng: Number(lng), radius_km: Number(radius_km), note } });
-    return success(res, { message: 'Location interest saved', location_interest: driver.location_interest });
+    const updated = await prisma.driver.update({
+      where: { id: driver.id },
+      data: { locationInterest: { lat: Number(lat), lng: Number(lng), radius_km: Number(radius_km), note } }
+    });
+
+    if (req.auditLog) await req.auditLog('DRIVER_LOCATION_INTEREST_SET', { driver_id: driver.id, interest: { lat, lng, radius_km } });
+    return success(res, { location_interest: updated.locationInterest }, 'Location interest saved');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -361,9 +401,9 @@ exports.setLocationInterest = async (req, res) => {
 
 exports.getLocationInterest = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
-    return success(res, { location_interest: driver.location_interest });
+    return success(res, { location_interest: driver.locationInterest });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -373,15 +413,19 @@ exports.getLocationInterest = async (req, res) => {
 exports.requestBackhaul = async (req, res) => {
   try {
     const { wants_backhaul = true, last_drop_lat, last_drop_lng } = req.body;
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    await driver.update({
-      wants_backhaul: wants_backhaul === true || wants_backhaul === 'true',
-      last_drop_lat: last_drop_lat || driver.last_drop_lat,
-      last_drop_lng: last_drop_lng || driver.last_drop_lng,
+    const updated = await prisma.driver.update({
+      where: { id: driver.id },
+      data: {
+        wantsBackhaul: wants_backhaul === true || wants_backhaul === 'true',
+        lastDropLat: last_drop_lat || driver.lastDropLat,
+        lastDropLng: last_drop_lng || driver.lastDropLng,
+      }
     });
-    return success(res, { message: 'Backhaul preference updated', wants_backhaul: driver.wants_backhaul });
+    if (req.auditLog) await req.auditLog('DRIVER_BACKHAUL_REQUESTED', { driver_id: driver.id, wants_backhaul });
+    return success(res, { wants_backhaul: updated.wantsBackhaul }, 'Backhaul preference updated');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -390,26 +434,35 @@ exports.requestBackhaul = async (req, res) => {
 // ── Open Loads / Marketplace browse (PRD §5.8, §7.9) ────────────────────────
 exports.getOpenLoads = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id }, include: [{ model: Vehicle, as: 'current_vehicle' }] });
+    const driver = await prisma.driver.findUnique({ 
+      where: { userId: req.user.id }, 
+      include: { currentVehicle: true } 
+    });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
     const where = {
-      status: [BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED],
+      status: { in: [BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED] },
     };
-    if (driver.current_vehicle?.vehicle_type) {
-      where.vehicle_type = driver.current_vehicle.vehicle_type;
+    if (driver.currentVehicle?.vehicleType) {
+      where.vehicleType = driver.currentVehicle.vehicleType;
     }
 
     const { page, limit, offset } = paginate(req.query);
-    const { count, rows } = await Booking.findAndCountAll({
-      where,
-      limit,
-      offset,
-      order: [['created_at', 'DESC']],
-      attributes: ['id', 'reference', 'pickup_address', 'delivery_address', 'vehicle_type', 'customer_rate', 'hire_rate', 'status', 'created_at'],
-    });
+    const [count, rows] = await prisma.$transaction([
+      prisma.booking.count({ where }),
+      prisma.booking.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, reference: true, pickupAddress: true, deliveryAddress: true, 
+          vehicleType: true, customerRate: true, hireRate: true, status: true, createdAt: true
+        }
+      })
+    ]);
 
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    return success(res, rows, 'Open loads retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

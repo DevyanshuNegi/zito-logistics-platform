@@ -4,12 +4,31 @@
 // PRD §24.3 — Notification preferences
 
 const bcrypt = require('bcryptjs');
-const { User } = require('../models');
+const prisma = require('../utils/prisma');
 const { success, error } = require('../utils/response');
 
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, { attributes: { exclude: ['password_hash'] } });
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        role: true,
+        email: true,
+        phone: true,
+        full_name: true,
+        isActive: true,
+        complianceStatus: true,
+        dataLocked: true,
+        profilePhoto: true,
+        dateOfBirth: true,
+        notifyEmail: true,
+        notifySms: true,
+        notifyInApp: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
     return success(res, { user });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -18,13 +37,19 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id);
-    const allowed = ['full_name', 'phone', 'profile_photo', 'date_of_birth'];
     const updates = {};
-    allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
-    await user.update(updates);
-    if (req.auditLog) await req.auditLog('PROFILE_UPDATED', { user_id: user.id });
-    return success(res, { message: 'Profile updated', user });
+    if (req.body.full_name !== undefined)     updates.full_name = req.body.full_name;
+    if (req.body.phone !== undefined)         updates.phone = req.body.phone;
+    if (req.body.profile_photo !== undefined) updates.profilePhoto = req.body.profile_photo;
+    if (req.body.date_of_birth !== undefined) updates.dateOfBirth = req.body.date_of_birth;
+
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updates
+    });
+
+    if (req.auditLog) await req.auditLog('PROFILE_UPDATED', { user_id: req.user.id });
+    return success(res, { user: updated }, 'Profile updated');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -36,13 +61,22 @@ exports.changePassword = async (req, res) => {
     if (!current_password || !new_password) return error(res, 'VALIDATION_ERROR', 'current_password and new_password required', 422);
     if (new_password.length < 6) return error(res, 'VALIDATION_ERROR', 'Password must be at least 6 characters', 422);
 
-    const user = await User.scope('withPassword').findByPk(req.user.id);
-    const isMatch = await user.comparePassword(current_password);
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, password_hash: true }
+    });
+
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
     if (!isMatch) return error(res, 'INVALID_CREDENTIALS', 'Current password is incorrect', 401);
 
-    await user.update({ password_hash: new_password });
-    if (req.auditLog) await req.auditLog('PASSWORD_CHANGED', { user_id: user.id });
-    return success(res, { message: 'Password changed successfully' });
+    const password_hash = await bcrypt.hash(new_password, 12);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { password_hash }
+    });
+
+    if (req.auditLog) await req.auditLog('PASSWORD_CHANGED', { user_id: req.user.id });
+    return success(res, null, 'Password changed successfully');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -50,15 +84,19 @@ exports.changePassword = async (req, res) => {
 
 exports.uploadPhoto = async (req, res) => {
   try {
-    const { photo_url, photo_base64 } = req.body;
-    if (!photo_url && !photo_base64) {
-      return error(res, 'VALIDATION_ERROR', 'photo_url or photo_base64 required', 422);
+    const { photo_url } = req.body;
+    if (!photo_url) {
+      return error(res, 'VALIDATION_ERROR', 'photo_url required', 422);
     }
-    const user = await User.findByPk(req.user.id);
-    const payload = photo_url || photo_base64;
-    await user.update({ profile_photo: payload });
-    if (req.auditLog) await req.auditLog('PHOTO_UPLOADED', { user_id: user.id });
-    return success(res, { message: 'Photo updated', profile_photo: payload });
+
+    // PRD §5.7 — Photo stored in Cloudflare R2
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { profilePhoto: photo_url }
+    });
+
+    if (req.auditLog) await req.auditLog('PHOTO_UPLOADED', { user_id: req.user.id });
+    return success(res, { profile_photo: updated.profilePhoto }, 'Photo updated');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -66,11 +104,11 @@ exports.uploadPhoto = async (req, res) => {
 
 exports.getNotificationPreferences = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id);
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
     return success(res, {
-      email: user.notify_email,
-      sms: user.notify_sms,
-      in_app: user.notify_in_app,
+      email: user.notifyEmail,
+      sms: user.notifySms,
+      in_app: user.notifyInApp,
     });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -80,14 +118,24 @@ exports.getNotificationPreferences = async (req, res) => {
 exports.updateNotificationPreferences = async (req, res) => {
   try {
     const { email, sms, in_app } = req.body;
-    const user = await User.findByPk(req.user.id);
     const updates = {};
-    if (email !== undefined) updates.notify_email = !!email;
-    if (sms !== undefined) updates.notify_sms = !!sms;
-    if (in_app !== undefined) updates.notify_in_app = !!in_app;
-    await user.update(updates);
-    if (req.auditLog) await req.auditLog('NOTIFICATION_PREFS_UPDATED', { user_id: user.id, ...updates });
-    return success(res, { message: 'Notification preferences updated', preferences: updates });
+    if (email !== undefined) updates.notifyEmail = !!email;
+    if (sms !== undefined)   updates.notifySms = !!sms;
+    if (in_app !== undefined) updates.notifyInApp = !!in_app;
+
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updates
+    });
+
+    if (req.auditLog) await req.auditLog('NOTIFICATION_PREFS_UPDATED', { user_id: req.user.id, ...updates });
+    return success(res, {
+      preferences: {
+        email: updated.notifyEmail,
+        sms: updated.notifySms,
+        in_app: updated.notifyInApp
+      }
+    }, 'Notification preferences updated');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }

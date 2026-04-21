@@ -3,7 +3,6 @@
 // Falls back to console logging when no credentials are provided.
 
 const { sendSms } = require('./sms.service');
-const { User, Driver, Vehicle, BookingOffer } = require('../models');
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM || 'ZITO <noreply@zito.test>';

@@ -6,7 +6,6 @@
 // PRD §21 — Rating System
 
 const { Op }     = require('sequelize');
-const { User, Driver, Vehicle, Booking, Contract, ContractRate } = require('../models');
 const { success, error }   = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { autoAssignIfNeeded } = require('../services/assignment.service');
@@ -68,7 +67,7 @@ exports.getBookings = async (req, res) => {
         { model: Vehicle, as: 'vehicle', attributes: ['id','plate_number','vehicle_type','make','model'] },
       ],
     });
-    return success(res, rows, 200, paginatedResponse(rows, count, page, limit).meta);
+    return success(res, rows, 'Bookings retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
