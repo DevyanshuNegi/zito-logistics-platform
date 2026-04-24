@@ -69,6 +69,12 @@ const fetchEligibleDrivers = async (booking) => {
         complianceStatus: 'approved',
         isActive: true,
         deletedAt: null
+      },
+      // PRD §44.1 — No booking allowed without an active shift
+      driverShifts: {
+        some: {
+          endTime: null
+        }
       }
     },
     include: {

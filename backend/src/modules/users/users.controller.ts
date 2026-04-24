@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -7,7 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 
 @ApiTags('Admin Users')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard) // Activated RolesGuard per PRD §3
 @Controller('api/v1/admin/users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -22,8 +22,8 @@ export class UsersController {
   @Post()
   @Roles('super_admin') // Only super admin can create users manually (for operations ops usually manage specific scoped data)
   @ApiOperation({ summary: 'Create a new user' })
-  async create(@Body() data: any) {
-    return this.usersService.create(data);
+  async create(@Body() data: any, @Req() req: any) {
+    return this.usersService.create(data, req.user);
   }
 
   @Get(':id')
@@ -34,20 +34,23 @@ export class UsersController {
   }
 
   @Patch(':id')
+  @Roles('super_admin', 'operations_admin')
   @ApiOperation({ summary: 'Update a user by ID' })
-  async update(@Param('id') id: string, @Body() data: any) {
-    return this.usersService.update(id, data);
+  async update(@Param('id') id: string, @Body() data: any, @Req() req: any) {
+    return this.usersService.update(id, data, req.user);
   }
 
   @Patch(':id/lock')
+  @Roles('super_admin')
   @ApiOperation({ summary: 'Lock a user record (prevents modification of key fields)' })
-  async lock(@Param('id') id: string) {
-    return this.usersService.toggleLock(id, true);
+  async lock(@Param('id') id: string, @Req() req: any) {
+    return this.usersService.toggleLock(id, true, req.user);
   }
 
   @Patch(':id/unlock')
+  @Roles('super_admin')
   @ApiOperation({ summary: 'Unlock a user record' })
-  async unlock(@Param('id') id: string) {
-    return this.usersService.toggleLock(id, false);
+  async unlock(@Param('id') id: string, @Req() req: any) {
+    return this.usersService.toggleLock(id, false, req.user);
   }
 }

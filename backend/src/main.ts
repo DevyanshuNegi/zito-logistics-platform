@@ -6,33 +6,32 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // §5.1 Validation — class-validator + class-transformer
-  // Standard decorator-based validation for all DTOs
+  // Validation pipe for DTO-driven request validation.
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     forbidNonWhitelisted: true,
     transform: true,
   }));
 
-  // §5.1 API Documentation — Swagger / OpenAPI 3.0
   const config = new DocumentBuilder()
-    .setTitle('ZITO — Logistics Super-App')
-    .setDescription('Autoritative API documentation for the ZITO logistics ecosystem.')
-    .setVersion('8.0')
+    .setTitle('ZITO - Logistics Super-App')
+    .setDescription('Authoritative API documentation aligned to ZITO PRD v10 ULTIMATE.')
+    .setVersion('PRD v10 ULTIMATE')
     .addBearerAuth()
     .build();
-    
+
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  // §5.3 Hosting & Infrastructure — Render.com sets the PORT
   const port = process.env.PORT || 3000;
-  
-  // Enable CORS for frontend static sites (§5.3)
+
+  // Enable CORS for frontend static sites.
   app.enableCors();
 
   await app.listen(port);
-  console.log(`🚀 ZITO Backend v8.0 is running on: http://localhost:${port}`);
-  console.log(`📖 API Documentation: http://localhost:${port}/api/docs`);
+  console.log(`ZITO Backend is running on: http://localhost:${port}`);
+  console.log(`API Documentation: http://localhost:${port}/api/docs`);
+  console.log('PRD baseline: ZITO_PRD_v10_ULTIMATE');
 }
+
 bootstrap();

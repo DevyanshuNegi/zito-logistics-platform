@@ -1,5 +1,9 @@
 // Test setup - runs before all tests
-const { sequelize } = require('../src/models');
+
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+global.prisma = prisma;
 
 // Increase timeout for database operations
 jest.setTimeout(30000);
@@ -7,9 +11,8 @@ jest.setTimeout(30000);
 // Setup test database
 beforeAll(async () => {
   try {
-    // Sync database (use force in test mode)
-    await sequelize.sync({ force: true });
-    console.log('Test database synced');
+    await prisma.$connect();
+    console.log('Test database synced via Prisma');
   } catch (err) {
     console.error('Database sync failed:', err);
     throw err;
@@ -19,7 +22,7 @@ beforeAll(async () => {
 // Cleanup after all tests
 afterAll(async () => {
   try {
-    await sequelize.close();
+    await prisma.$disconnect();
     console.log('Test database connection closed');
   } catch (err) {
     console.error('Database close failed:', err);

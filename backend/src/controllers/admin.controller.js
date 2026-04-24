@@ -1,4 +1,4 @@
-// PRD v8.0 §4 — User Roles & Permissions
+// PRD §4 — User Roles & Permissions
 // PRD §12 — Admin API endpoints
 // PRD §25.4 — Admin Compliance & Approval APIs
 // PRD §25.8 — Audit Log
@@ -765,6 +765,49 @@ exports.assignDriver = async (req, res) => {
   }
 };
 
+/**
+ * PRD §44.4 — Rescue Flow: Assign backup vehicle and transfer load
+ * Executed by Operations/Admin to resolve a breakdown.
+ */
+exports.rescueBooking = async (req, res) => {
+  try {
+    const { id } = req.params; // bookingId
+    const { new_driver_id, new_vehicle_id, note } = req.body;
+
+    const booking = await prisma.booking.findUnique({ where: { id } });
+    if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Assign new backup driver and vehicle
+      const updated = await tx.booking.update({
+        where: { id },
+        data: {
+          assignedDriverId: new_driver_id,
+          vehicleId: new_vehicle_id,
+          specialInstructions: `${booking.specialInstructions || ''}\n[RESCUE_EXECUTED] Load transferred. Backup: ${new_vehicle_id}. Rescue Note: ${note}`
+        }
+      });
+
+      // 2. Resolve breakdown alerts for this booking
+      await tx.internalAlert.updateMany({
+        where: { entityId: id, type: 'VEHICLE_BREAKDOWN', status: 'pending' },
+        data: {
+          status: 'acknowledged',
+          acknowledgedById: req.user.id,
+          acknowledgedAt: new Date()
+        }
+      });
+
+      return updated;
+    });
+
+    if (req.auditLog) await req.auditLog('BOOKING_RESCUED', { booking_id: id, new_driver_id, new_vehicle_id });
+    return success(res, { booking: result }, 'Rescue operation completed. Backup driver assigned and alerts cleared.');
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
 exports.approveBooking = async (req, res) => {
   try {
     const booking = await prisma.booking.findUnique({ where: { id: req.params.id } });
@@ -1223,7 +1266,7 @@ exports.exportAllData = async (req, res) => {
     const snapshot = {};
     for (const table of tables) {
       try {
-        // PRD v8 — Secure Raw Query using tagged template literals
+        // PRD alignment - secure raw query using tagged template literals
         // Note: Identifiers (table names) cannot be parameterized, so we check against whitelist
         const result = await prisma.$queryRawUnsafe(`SELECT * FROM "${table}" ORDER BY created_at DESC NULLS LAST LIMIT $1`, limit);
         snapshot[table] = { count: result.length, rows: result };

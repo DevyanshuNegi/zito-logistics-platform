@@ -1,13 +1,14 @@
 /**
  * ZITO API Test Suite
- * Based on PRD v6 and Testing Addendum
+ * Regression smoke suite for active API flows
+ * Functional baseline now follows backend/PRD_TRACKER.md
  * Run: npm test
  */
 
 const request = require('supertest');
 const app = require('../src/app');
-const { User, Booking, Vehicle, Driver } = require('../src/models');
-const { Op } = require('sequelize');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 // Test users storage
 let testUsers = {};
@@ -19,7 +20,7 @@ const API_BASE = '/api/v1';
 
 // Helper: Create test user
 async function createTestUser(role, email, password = 'Test123!') {
-  const user = await User.create({
+  const user = await prisma.user.create({
     full_name: `Test ${role}`,
     email,
     phone: `+254700${Math.floor(Math.random() * 999999)}`,
@@ -41,7 +42,7 @@ async function loginUser(email, password = 'Test123!') {
 
 // ==================== TEST SUITE ====================
 
-describe('ZITO API Tests - PRD v6 Compliant', () => {
+describe('ZITO API regression smoke tests', () => {
   
   // ==================== SETUP ====================
   beforeAll(async () => {
@@ -63,7 +64,7 @@ describe('ZITO API Tests - PRD v6 Compliant', () => {
   afterAll(async () => {
     // Cleanup test data
     await Booking.destroy({ where: {}, force: true });
-    await User.destroy({ where: { email: { [require('sequelize').Op.like]: '%@test.com' } }, force: true });
+    await prisma.user.deleteMany({ where: { email: { [require('sequelize').Op.like]: '%@test.com' } }, force: true });
   });
 
   // ==================== 1. HEALTH & AUTH ====================

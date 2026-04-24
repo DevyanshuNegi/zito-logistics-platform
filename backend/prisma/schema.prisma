@@ -1,5 +1,5 @@
-// ZITO PRD v8.0 - Industry Standard Edition
-// §5.2 Database — PostgreSQL 16 + PostGIS
+// ZITO PRD v10 ULTIMATE - active source of truth
+// §30.0 Technical Architecture — PostgreSQL 16 + PostGIS
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
@@ -62,7 +62,7 @@ model User {
   id                String    @id @default(uuid())
   email             String    @unique
   phone             String    @unique
-  role              Role
+  roles             Role[]    @default([customer])
   full_name         String
   idNumber          String?
   passwordHash      String
@@ -72,6 +72,7 @@ model User {
   transporterId     String?
   agentId           String?
   agencyId          String?
+  agencyStaff       AgencyStaff?
   
   bookings          Booking[] @relation("CustomerBookings")
   storageBookings   StorageBooking[]
@@ -85,6 +86,36 @@ model User {
   deletedAt         DateTime? @map("deleted_at")
 
   @@map("users")
+}
+
+model Agency {
+  id            String    @id @default(uuid())
+  name          String
+  location      Json?     // Lat/Lng or PostGIS geography
+  city          String
+  region        String
+  country       String
+  managerUserId String?   @unique
+  status        String    @default("active")
+  
+  staff         AgencyStaff[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("agencies")
+}
+
+model AgencyStaff {
+  id        String    @id @default(uuid())
+  userId    String    @unique
+  agencyId  String
+  role      String    // agency_manager, operations, accounts, etc.
+  status    String    @default("active")
+  
+  user      User      @relation(fields: [userId], references: [id])
+  agency    Agency    @relation(fields: [agencyId], references: [id])
+
+  @@map("agency_staff")
 }
 
 model Driver {
@@ -343,6 +374,16 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([userId, createdAt])
   @@map("audit_logs")
+}
+
+model LoginOtp {
+  id        String    @id @default(uuid())
+  contact   String    // Email or Phone
+  otp       String
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("login_otps")
 }
 
 model TripCharge {

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../controllers/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ComplianceService {
@@ -60,23 +60,22 @@ export class ComplianceService {
    * PRD §5.4
    */
   async runSystemWideExpiryCheck(): Promise<{ totalChecked: number; flagged: number }> {
-    const drivers = await this.prisma.driver.findMany({
+    const users = await this.prisma.user.findMany({
       where: {
-        user: {
-          complianceStatus: 'approved',
-          isActive: true,
-          deletedAt: null
-        }
+        role: 'driver',
+        complianceStatus: 'approved',
+        isActive: true,
+        deletedAt: null
       },
-      select: { userId: true }
+      select: { id: true }
     });
 
     let flaggedCount = 0;
-    for (const d of drivers) {
-      const wasUpdated = await this.checkDriverExpiry(d.userId);
+    for (const u of users) {
+      const wasUpdated = await this.checkDriverExpiry(u.id);
       if (wasUpdated) flaggedCount++;
     }
 
-    return { totalChecked: drivers.length, flagged: flaggedCount };
+    return { totalChecked: users.length, flagged: flaggedCount };
   }
 }

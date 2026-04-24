@@ -41,25 +41,28 @@ exports.createComplaint = async (req, res) => {
 
 exports.listComplaints = async (req, res) => {
   try {
-    const { page, limit, offset } = getPagination(req.query);
+    const { page, limit, offset } = paginate(req.query);
 
     const where = {};
     if (!ADMIN_ROLES.includes(req.user.role)) {
-      where.user_id = req.user.id;
+      where.userId = req.user.id;
     }
     if (req.query.status) where.status = req.query.status;
     if (req.query.category) where.category = req.query.category;
 
-    const { rows, count } = await Complaint.findAndCountAll({
-      where,
-      limit,
-      offset,
-      order: [['created_at', 'DESC']],
-      include: [
-        { model: User, as: 'user', attributes: ['id','full_name','email','role'] },
-        { model: Booking, as: 'booking', attributes: ['id','reference','status'] },
-      ],
-    });
+    const [count, rows] = await prisma.$transaction([
+      prisma.complaint.count({ where }),
+      prisma.complaint.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { id: true, full_name: true, email: true, role: true } },
+          booking: { select: { id: true, reference: true, status: true } },
+        }
+      })
+    ]);
 
     return paginated(res, rows, count, page, limit);
   } catch (err) {
@@ -76,17 +79,17 @@ exports.updateStatus = async (req, res) => {
     const { status, resolution_notes } = req.body;
     if (!status) return error(res, 422, 'VALIDATION_ERROR', 'status required');
 
-    const complaint = await Complaint.findByPk(req.params.id);
+    const complaint = await prisma.complaint.findUnique({ where: { id: req.params.id } });
     if (!complaint) return error(res, 404, 'NOT_FOUND', 'Complaint not found');
 
-    await complaint.update({
-      status,
-      resolution_notes: resolution_notes || complaint.resolution_notes,
+    const updated = await prisma.complaint.update({
+      where: { id: complaint.id },
+      data: { status, resolutionNotes: resolution_notes || complaint.resolutionNotes }
     });
 
-    if (req.auditLog) await req.auditLog('COMPLAINT_STATUS_UPDATED', { complaint_id: complaint.id, status, by: req.user.id });
+    if (req.auditLog) await req.auditLog('COMPLAINT_STATUS_UPDATED', { complaint_id: updated.id, status, by: req.user.id });
 
-    return success(res, { complaint });
+    return success(res, { complaint: updated });
   } catch (err) {
     return error(res, 500, 'SERVER_ERROR', err.message);
   }

@@ -5,20 +5,19 @@
 // PRD §23 — Cancellation Policy
 // PRD §21 — Rating System
 
-const { Op }     = require('sequelize');
+const prisma = require('../utils/prisma');
 const { success, error }   = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
-const { autoAssignIfNeeded } = require('../services/assignment.service');
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
   try {
     const customer_id = req.user.id;
-    const [total, active, completed, cancelled] = await Promise.all([
-      Booking.count({ where: { customer_id } }),
-      Booking.count({ where: { customer_id, status: ['assigned','accepted','picked_up','in_transit'] } }),
-      Booking.count({ where: { customer_id, status: 'completed' } }),
-      Booking.count({ where: { customer_id, status: 'cancelled' } }),
+    const [total, active, completed, cancelled] = await prisma.$transaction([
+      prisma.booking.count({ where: { customerId: customer_id } }),
+      prisma.booking.count({ where: { customerId: customer_id, status: { in: ['assigned','accepted','picked_up','in_transit'] } } }),
+      prisma.booking.count({ where: { customerId: customer_id, status: 'completed' } }),
+      prisma.booking.count({ where: { customerId: customer_id, status: 'cancelled' } }),
     ]);
     return success(res, { total, active, completed, cancelled });
   } catch (err) {
@@ -29,8 +28,9 @@ exports.getDashboard = async (req, res) => {
 // ── Profile ────────────────────────────────────────────────────────────────
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ['password_hash'] },
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { passwordHash: false }
     });
     return success(res, { user });
   } catch (err) {
@@ -40,11 +40,13 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id);
     const allowed = ['full_name', 'phone', 'profile_photo', 'date_of_birth'];
     const updates = {};
     allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
-    await user.update(updates);
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updates
+    });
     return success(res, { user });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -56,17 +58,22 @@ exports.getBookings = async (req, res) => {
   try {
     const { page, limit, offset } = paginate(req.query);
     const { status } = req.query;
-    const where = { customer_id: req.user.id };
+    const where = { customerId: req.user.id };
     if (status) where.status = status;
 
-    const { count, rows } = await Booking.findAndCountAll({
-      where, limit, offset,
-      order: [['created_at', 'DESC']],
-      include: [
-        { model: Driver,  as: 'driver',  include: [{ model: User, as: 'user', attributes: ['id','full_name','phone'] }] },
-        { model: Vehicle, as: 'vehicle', attributes: ['id','plate_number','vehicle_type','make','model'] },
-      ],
-    });
+    const [count, rows] = await prisma.$transaction([
+      prisma.booking.count({ where }),
+      prisma.booking.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          driver: { include: { user: { select: { id: true, full_name: true, phone: true } } } },
+          vehicle: { select: { id: true, plateNumber: true, vehicleType: true } },
+        }
+      })
+    ]);
     return success(res, rows, 'Bookings retrieved', paginatedResponse(rows, count, page, limit).meta);
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
@@ -75,12 +82,12 @@ exports.getBookings = async (req, res) => {
 
 exports.getBookingById = async (req, res) => {
   try {
-    const booking = await Booking.findOne({
-      where: { id: req.params.id, customer_id: req.user.id },
-      include: [
-        { model: Driver,  as: 'driver',  include: [{ model: User, as: 'user', attributes: ['id','full_name','phone'] }] },
-        { model: Vehicle, as: 'vehicle' },
-      ],
+    const booking = await prisma.booking.findFirst({
+      where: { id: req.params.id, customerId: req.user.id },
+      include: {
+        driver: { include: { user: { select: { id: true, full_name: true, phone: true } } } },
+        vehicle: true,
+      },
     });
     if (!booking) return error(res, 'NOT_FOUND', 'Booking not found', 404);
     return success(res, { booking });

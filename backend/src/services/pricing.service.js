@@ -2,6 +2,7 @@
 // PRD §7 — Pricing Engine with surcharges (heavy load, night, holiday, waiting, multi-stop)
 
 const { calculateProfit, roundMoney, isNightSurcharge } = require('../utils/helpers');
+const prisma = require('../utils/prisma');
 
 const DEFAULT_RATES = {
   motorcycle:  { base: 200,  per_km: 15,  capacityKg: 30 },
@@ -114,8 +115,28 @@ const quoteFare = async (params) => {
     waitingMinutes: Number(waiting_minutes) || 0,
   });
 
+  // PRD §7.0 — Fetch Transporter contract if applicable for the hire_rate
+  let hire_rate;
   const customer_rate = roundMoney(total);
-  const hire_rate = roundMoney(customer_rate * 0.8); // simple margin; replace with transporter contracts later
+  
+  // Logic to find a contracted hire rate based on the transporter/vehicle
+  if (params.transporter_id) {
+    const tContract = await prisma.contract.findFirst({
+      where: { transporterId: params.transporter_id, status: 'active' },
+      include: { rates: { where: { vehicleType: vehicle_type } } }
+    });
+    
+    if (tContract && tContract.rates.length > 0) {
+      const tRate = tContract.rates[0];
+      hire_rate = roundMoney(Number(tRate.baseRate) + (distance * Number(tRate.perKmRate)));
+    }
+  }
+
+  // Fallback to default margin if no specific contract is found
+  if (!hire_rate) {
+    hire_rate = roundMoney(customer_rate * 0.8); 
+  }
+
   const profit = calculateProfit(customer_rate, hire_rate, 0);
 
   return {

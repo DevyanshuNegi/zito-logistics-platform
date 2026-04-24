@@ -4,7 +4,8 @@ ZITO is a multi-role logistics platform for admin, customer, driver, transporter
 
 Current implementation priorities:
 
-- Frontend-first PRD alignment based on `docs/prd/Zito_PRD_v6_Final.txt`
+- Single-source PRD: `docs/prd/ZITO_PRD_v10_ULTIMATE.docx`
+- Searchable PRD export and tracker: `docs/prd/ZITO_PRD_v10_ULTIMATE.txt` and `backend/PRD_TRACKER.md`
 - Render as the default deployment target
 - Manual finance and route-entry fallbacks until live M-Pesa and paid map services are enabled
 

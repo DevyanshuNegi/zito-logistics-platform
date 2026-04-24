@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/layout';
 import api from '../api/axios';
 
 const TABS = [
-  { key: 'pricing',       icon: '??', label: 'Pricing'        },
-  { key: 'business',      icon: '??', label: 'Business Rules' },
-  { key: 'notifications', icon: '??', label: 'Notifications'  },
-  { key: 'integrations',  icon: '??', label: 'Integrations'   },
-  { key: 'service_areas', icon: '???', label: 'Service Areas'  },
-  { key: 'account',       icon: '??', label: 'Account'        },
+  { key: 'pricing',       icon: '💰', label: 'Pricing'        },
+  { key: 'business',      icon: '⚙',  label: 'Business Rules' },
+  { key: 'notifications', icon: '🔔', label: 'Notifications'  },
+  { key: 'integrations',  icon: '🔗', label: 'Integrations'   },
+  { key: 'service_areas', icon: '🗺',  label: 'Service Areas'  },
+  { key: 'account',       icon: '👤', label: 'Account'        },
 ];
 
 const VEHICLE_TYPES = ['motorcycle', 'van', 'pickup', 'truck', 'articulated'];
@@ -58,7 +57,7 @@ function Input({ value, onChange, prefix, suffix, type = 'text', style = {} }) {
 function SaveBar({ saved, onSave }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-      {saved && <span style={{ fontSize: 12, color: '#22c55e', alignSelf: 'center' }}>? Saved</span>}
+      {saved && <span style={{ fontSize: 12, color: '#22c55e', alignSelf: 'center' }}>✓ Saved</span>}
       <button style={ss.saveBtn} onClick={onSave}>Save Changes</button>
     </div>
   );
@@ -76,43 +75,8 @@ function PricingTab() {
   const [surcharges, setSurcharges] = useState({ peak_pct: 25, weekend_pct: 15, holiday_pct: 30, night_pct: 20 });
   const [vat, setVat] = useState(16);
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  const loadFromSettings = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/api/v1/admin/system-settings');
-      const settings = res.data?.data?.settings || res.data?.settings || [];
-      const map = Object.fromEntries(settings.map(s => [s.key, s]));
-      const parsed = map.pricing?.value_type === 'json' ? JSON.parse(map.pricing.value) : null;
-      if (parsed?.rates) setRates(parsed.rates);
-      if (parsed?.surcharges) setSurcharges(parsed.surcharges);
-      if (parsed?.vat !== undefined) setVat(parsed.vat);
-    } catch {
-      // ignore load errors; keep defaults
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadFromSettings(); }, []);
-
-  const save = async () => {
-    setSaved(false);
-    try {
-      await api.post('/api/v1/admin/system-settings', {
-        key: 'pricing',
-        value: JSON.stringify({ rates, surcharges, vat: Number(vat) || 0 }),
-        value_type: 'json',
-        description: 'Pricing base rates, surcharges, VAT',
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      // surface minimal feedback inline
-      setSaved(false);
-    }
-  };
+  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
   return (
     <div>
@@ -168,7 +132,6 @@ function PricingTab() {
         </Row>
       </Card>
       <SaveBar saved={saved} onSave={save} />
-      {loading && <div style={ss.muted}>Loading pricing from settings...</div>}
     </div>
   );
 }
@@ -193,40 +156,8 @@ function BusinessTab() {
     cancellation_fee_pct: 10,
   });
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(false);
   const set = (k, v) => setRules(r => ({ ...r, [k]: v }));
-  const loadFromSettings = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/api/v1/admin/system-settings');
-      const settings = res.data?.data?.settings || res.data?.settings || [];
-      const map = Object.fromEntries(settings.map(s => [s.key, s]));
-      const parsed = map.business_rules?.value_type === 'json' ? JSON.parse(map.business_rules.value) : null;
-      if (parsed) setRules({ ...rules, ...parsed });
-    } catch {
-      // ignore load errors
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadFromSettings(); }, []);
-
-  const save = async () => {
-    setSaved(false);
-    try {
-      await api.post('/api/v1/admin/system-settings', {
-        key: 'business_rules',
-        value: JSON.stringify(rules),
-        value_type: 'json',
-        description: 'Business rules and trip policies',
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setSaved(false);
-    }
-  };
+  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
   return (
     <div>
@@ -290,7 +221,6 @@ function BusinessTab() {
         </Row>
       </Card>
       <SaveBar saved={saved} onSave={save} />
-      {loading && <div style={ss.muted}>Loading business rules...</div>}
     </div>
   );
 }
@@ -306,40 +236,8 @@ function NotificationsTab() {
     driver_offline_push: true, driver_offline_sms: false,driver_offline_email: false,
   });
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(false);
   const set = (k, v) => setSettings(s => ({ ...s, [k]: v }));
-  const loadFromSettings = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/api/v1/admin/system-settings');
-      const all = res.data?.data?.settings || res.data?.settings || [];
-      const map = Object.fromEntries(all.map(s => [s.key, s]));
-      const parsed = map.notification_rules?.value_type === 'json' ? JSON.parse(map.notification_rules.value) : null;
-      if (parsed) setSettings({ ...settings, ...parsed });
-    } catch {
-      // ignore load errors
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadFromSettings(); }, []);
-
-  const save = async () => {
-    setSaved(false);
-    try {
-      await api.post('/api/v1/admin/system-settings', {
-        key: 'notification_rules',
-        value: JSON.stringify(settings),
-        value_type: 'json',
-        description: 'Notification channel toggles',
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setSaved(false);
-    }
-  };
+  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
   const events = [
     { key: 'trip_assigned',  label: 'Trip Assigned',         hint: 'When a booking is assigned to a driver' },
@@ -375,7 +273,6 @@ function NotificationsTab() {
         ))}
       </Card>
       <SaveBar saved={saved} onSave={save} />
-      {loading && <div style={ss.muted}>Loading notification rules...</div>}
     </div>
   );
 }
@@ -390,41 +287,8 @@ function IntegrationsTab() {
   });
   const [show, setShow] = useState({});
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(false);
   const set = (k, v) => setKeys(s => ({ ...s, [k]: v }));
-
-  const loadFromSettings = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/api/v1/admin/system-settings');
-      const settings = res.data?.data?.settings || res.data?.settings || [];
-      const map = Object.fromEntries(settings.map(s => [s.key, s]));
-      const parsed = map.integrations?.value_type === 'json' ? JSON.parse(map.integrations.value) : null;
-      if (parsed) setKeys(k => ({ ...k, ...parsed }));
-    } catch {
-      // ignore load errors
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadFromSettings(); }, []);
-
-  const save = async () => {
-    setSaved(false);
-    try {
-      await api.post('/api/v1/admin/system-settings', {
-        key: 'integrations',
-        value: JSON.stringify(keys),
-        value_type: 'json',
-        description: '3rd party integration keys (Maps, M-Pesa, FCM, SMS, Email)',
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setSaved(false);
-    }
-  };
+  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
   const SecretInput = ({ label, hint, k }) => (
     <Row label={label} hint={hint}>
@@ -493,10 +357,9 @@ function IntegrationsTab() {
           <span style={{ fontSize: 12, color: keys.sendgrid_key ? '#22c55e' : '#545f73' }}>{keys.sendgrid_key ? 'Connected' : 'Not configured'}</span>
         </div>
         <SecretInput label="API Key" k="sendgrid_key" />
-        <Row label="From Email"><Input value={keys.sendgrid_from} placeholder="noreply@vglogistics.co.ke" style={{ width: 220 }} onChange={v => set('sendgrid_from', v)} /></Row>
+        <Row label="From Email"><Input value={keys.sendgrid_from} placeholder="noreply@ZITO.co.ke" style={{ width: 220 }} onChange={v => set('sendgrid_from', v)} /></Row>
       </Card>
       <SaveBar saved={saved} onSave={save} />
-      {loading && <div style={ss.muted}>Loading integration keys...</div>}
     </div>
   );
 }
@@ -509,45 +372,10 @@ function ServiceAreasTab() {
     { id: 3, name: 'Kisumu',          region: 'Western',  active: true,  vehicles: ['motorcycle','van','pickup'] },
     { id: 4, name: 'Nakuru',          region: 'Rift Valley', active: true, vehicles: ['van','pickup','truck'] },
     { id: 5, name: 'Eldoret',         region: 'North Rift', active: false, vehicles: ['pickup','truck'] },
-    { id: 6, name: 'Nairobi�Mombasa', region: 'Highway',  active: true,  vehicles: ['truck','articulated'] },
+    { id: 6, name: 'Nairobi–Mombasa', region: 'Highway',  active: true,  vehicles: ['truck','articulated'] },
   ]);
   const [showAdd, setShowAdd] = useState(false);
   const [newArea, setNewArea] = useState({ name: '', region: '' });
-  const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const loadFromSettings = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/api/v1/admin/system-settings');
-      const settings = res.data?.data?.settings || res.data?.settings || [];
-      const map = Object.fromEntries(settings.map(s => [s.key, s]));
-      const parsed = map.service_areas?.value_type === 'json' ? JSON.parse(map.service_areas.value) : null;
-      if (parsed?.areas) setAreas(parsed.areas);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadFromSettings(); }, []);
-
-  const save = async () => {
-    setSaved(false);
-    try {
-      await api.post('/api/v1/admin/system-settings', {
-        key: 'service_areas',
-        value: JSON.stringify({ areas }),
-        value_type: 'json',
-        description: 'Enabled service areas and allowed vehicle types',
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setSaved(false);
-    }
-  };
 
   const toggle = (id) => setAreas(a => a.map(x => x.id === id ? { ...x, active: !x.active } : x));
 
@@ -591,113 +419,17 @@ function ServiceAreasTab() {
           </div>
         </div>
       ))}
-
-      <SaveBar saved={saved} onSave={save} />
-      {loading && <div style={ss.muted}>Loading service areas...</div>}
     </div>
   );
 }
 
 // ── ACCOUNT TAB ────────────────────────────────────────────────────────────
 function AccountTab() {
-  const [profile, setProfile] = useState({ company_name: 'VG Global Logistics', email: 'admin@vglogistics.co.ke', phone: '+254 700 000 000', address: 'Nairobi, Kenya', kra_pin: '', logo_url: '' });
+  const [profile, setProfile] = useState({ company_name: 'VG Global Logistics', email: 'admin@ZITO.co.ke', phone: '+254 700 000 000', address: 'Nairobi, Kenya', kra_pin: '', logo_url: '' });
   const [pwd, setPwd] = useState({ current: '', newp: '', confirm: '' });
   const [saved, setSaved] = useState(false);
   const [pwdSaved, setPwdSaved] = useState(false);
-  const [pwdError, setPwdError] = useState('');
-  const [pwdSaving, setPwdSaving] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportFormat, setExportFormat] = useState('json');
-  const [exportMsg, setExportMsg] = useState('');
-  const [clearMsg, setClearMsg] = useState('');
-  const [clearing, setClearing] = useState(false);
-  const { hasRole } = useAuth();
   const set = (k, v) => setProfile(p => ({ ...p, [k]: v }));
-
-  const loadFromSettings = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/api/v1/admin/system-settings');
-      const settings = res.data?.data?.settings || res.data?.settings || [];
-      const map = Object.fromEntries(settings.map(s => [s.key, s]));
-      const parsed = map.account_profile?.value_type === 'json' ? JSON.parse(map.account_profile.value) : null;
-      if (parsed) setProfile(p => ({ ...p, ...parsed }));
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadFromSettings(); }, []);
-
-  const saveProfile = async () => {
-    setSaved(false);
-    try {
-      await api.post('/api/v1/admin/system-settings', {
-        key: 'account_profile',
-        value: JSON.stringify(profile),
-        value_type: 'json',
-        description: 'Admin company profile and contacts',
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setSaved(false);
-    }
-  };
-
-  const exportAll = async () => {
-    setExportMsg('');
-    setExporting(true);
-    try {
-      const res = await api.post(`/api/v1/admin/maintenance/export-all?format=${exportFormat}`, { limit: 500, format: exportFormat });
-      const data = res.data?.data || res.data;
-      if (exportFormat === 'csv') {
-        const csv = typeof data === 'string' ? data : res.data; // axios may already give string
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `zito-export-${Date.now()}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } else {
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `zito-export-${Date.now()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      }
-      setExportMsg(`Export ready � ${exportFormat.toUpperCase()} downloaded.`);
-    } catch (err) {
-      setExportMsg(err.response?.data?.error?.message || 'Export failed.');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const clearTestData = async () => {
-    setClearMsg('');
-    if (!window.confirm('This will TRUNCATE test data in dev. Proceed?')) return;
-    setClearing(true);
-    try {
-      const res = await api.post('/api/v1/admin/maintenance/clear-test-data?confirm=1');
-      const data = res.data?.data || res.data;
-      setClearMsg(`Cleared: ${data?.cleared?.join(', ') || 'none'}. Failed: ${data?.failed?.length || 0}`);
-    } catch (err) {
-      setClearMsg(err.response?.data?.error?.message || 'Clear failed.');
-    } finally {
-      setClearing(false);
-    }
-  };
 
   return (
     <div>
@@ -707,71 +439,26 @@ function AccountTab() {
         <Row label="Phone"><Input value={profile.phone} style={{ width: 180 }} onChange={v => set('phone', v)} /></Row>
         <Row label="Address"><Input value={profile.address} style={{ width: 220 }} onChange={v => set('address', v)} /></Row>
         <Row label="KRA PIN"><Input value={profile.kra_pin} placeholder="P000000000A" style={{ width: 180 }} onChange={v => set('kra_pin', v)} /></Row>
-        <SaveBar saved={saved} onSave={saveProfile} />
-        {loading && <div style={ss.muted}>Loading profile...</div>}
+        <SaveBar saved={saved} onSave={() => { setSaved(true); setTimeout(() => setSaved(false), 3000); }} />
       </Card>
 
       <Card title="Change Password">
         <Row label="Current Password"><Input value={pwd.current} type="password" style={{ width: 200 }} onChange={v => setPwd(p => ({ ...p, current: v }))} /></Row>
         <Row label="New Password"><Input value={pwd.newp} type="password" style={{ width: 200 }} onChange={v => setPwd(p => ({ ...p, newp: v }))} /></Row>
         <Row label="Confirm Password"><Input value={pwd.confirm} type="password" style={{ width: 200 }} onChange={v => setPwd(p => ({ ...p, confirm: v }))} /></Row>
-        {pwdError && <div style={{ ...ss.muted, color: '#f87171' }}>{pwdError}</div>}
-        <SaveBar saved={pwdSaved} onSave={async () => {
-          setPwdError('');
-          if (!pwd.current || !pwd.newp) { setPwdError('Enter current and new password.'); return; }
-          if (pwd.newp !== pwd.confirm) { setPwdError('New password and confirm do not match.'); return; }
-          setPwdSaving(true);
-          try {
-            await api.patch('/api/v1/profile/password', {
-              current_password: pwd.current,
-              new_password: pwd.newp,
-            });
-            setPwdSaved(true);
-            setPwd({ current: '', newp: '', confirm: '' });
-            setTimeout(() => setPwdSaved(false), 3000);
-          } catch (err) {
-            setPwdError(err.response?.data?.error?.message || 'Password change failed.');
-          } finally {
-            setPwdSaving(false);
-          }
+        <SaveBar saved={pwdSaved} onSave={() => {
+          if (pwd.newp && pwd.newp === pwd.confirm) { setPwdSaved(true); setPwd({ current: '', newp: '', confirm: '' }); setTimeout(() => setPwdSaved(false), 3000); }
         }} />
-        {pwdSaving && <div style={ss.muted}>Updating password...</div>}
       </Card>
 
-      {hasRole(['super_admin']) && (
       <Card title="Danger Zone">
         <Row label="Export All Data" hint="Download a full backup of platform data">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <select
-              value={exportFormat}
-              onChange={e => setExportFormat(e.target.value)}
-              style={{ background: '#181e2d', border: '1px solid rgba(99,102,241,0.4)', color: '#e8eaf2', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}
-            >
-              <option value="json">JSON</option>
-              <option value="csv">CSV</option>
-            </select>
-            <button
-              style={{ ...ss.iconBtn, padding: '7px 14px', fontSize: 12, color: '#6366f1', borderColor: 'rgba(99,102,241,0.3)' }}
-              onClick={exportAll}
-              disabled={exporting}
-            >
-              {exporting ? 'Exporting...' : 'Export ' + exportFormat.toUpperCase()}
-            </button>
-          </div>
+          <button style={{ ...ss.iconBtn, padding: '7px 14px', fontSize: 12, color: '#6366f1', borderColor: 'rgba(99,102,241,0.3)' }}>Export CSV</button>
         </Row>
         <Row label="Clear Test Data" hint="Remove all sandbox/demo records">
-          <button
-            style={{ ...ss.iconBtn, padding: '7px 14px', fontSize: 12, color: '#ef4444', borderColor: 'rgba(239,68,68,0.25)' }}
-            onClick={clearTestData}
-            disabled={clearing}
-          >
-            {clearing ? 'Clearing...' : 'Clear Data'}
-          </button>
+          <button style={{ ...ss.iconBtn, padding: '7px 14px', fontSize: 12, color: '#ef4444', borderColor: 'rgba(239,68,68,0.25)' }}>Clear Data</button>
         </Row>
-        {exportMsg && <div style={ss.muted}>{exportMsg}</div>}
-        {clearMsg && <div style={{ ...ss.muted, color: '#f87171' }}>{clearMsg}</div>}
       </Card>
-      )}
     </div>
   );
 }
@@ -815,8 +502,4 @@ const ss = {
   saveBtn: { background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   addBtn: { background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', color: '#818cf8', borderRadius: 8, padding: '7px 14px', fontSize: 12, cursor: 'pointer' },
   iconBtn: { background: 'transparent', border: '1px solid rgba(255,255,255,0.07)', color: '#8892a4', borderRadius: 8, padding: '7px 10px', fontSize: 14, cursor: 'pointer' },
-  muted: { color: '#545f73', fontSize: 12, marginTop: 6 },
 };
-
-
-

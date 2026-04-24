@@ -5,28 +5,12 @@
 // PRD §25.9 — Soft delete check on login
 
 const bcrypt  = require('bcryptjs');
-const jwt     = require('jsonwebtoken');
+const prisma  = require('../utils/prisma');
+const { signJwt } = require('../utils/jwt');
 const { success, error } = require('../utils/response');
-const { ROLES }          = require('../middleware/auth');
+const { ROLES } = require('../middleware/auth');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-
-const generateToken = (user) => {
-  return jwt.sign(
-    { id: user.id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
-  );
-};
-
-const generateBookingReference = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let ref = 'VG';
-  for (let i = 0; i < 8; i++) {
-    ref += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return ref;
-};
 
 // ── Register ──────────────────────────────────────────────────────────────
 // PRD §12 POST /api/v1/auth/register
@@ -45,39 +29,32 @@ exports.register = async (req, res) => {
     }
 
     // Check existing user
-    const existing = await User.findOne({
-      where: { email },
-      paranoid: false, // include soft-deleted
+    const existing = await prisma.user.findFirst({
+      where: { email: email.toLowerCase().trim() }
     });
+
     if (existing) {
       return error(res, 'DUPLICATE_ENTRY', 'Email already registered', 409);
     }
 
-    const existingPhone = await User.findOne({
-      where: { phone },
-      paranoid: false,
-    });
-    if (existingPhone) {
-      return error(res, 'DUPLICATE_ENTRY', 'Phone number already registered', 409);
-    }
-
     // Hash password — PRD §11 bcrypt 12 rounds
-    const password_hash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, 12);
 
     // Create user
-    const user = await User.create({
-      full_name,
-      email:      email.toLowerCase().trim(),
-      phone:      phone.trim(),
-      password_hash, // PRD §11 bcrypt 12 rounds used in hash
-      role,
-      id_number,
-      transporter_id: transporter_id || null,
-      agent_id:       agent_id       || null,
-      agency_id:      agency_id      || null,
-      compliance_status: [ROLES.DRIVER, ROLES.TRANSPORTER].includes(role)
+    const user = await prisma.user.create({
+      data: {
+        full_name,
+        email: email.toLowerCase().trim(),
+        phone: phone.trim(),
+        passwordHash,
+        role,
+        transporterId: transporter_id || null,
+        agentId: agent_id || null,
+        agencyId: agency_id || null,
+        complianceStatus: [ROLES.DRIVER, ROLES.TRANSPORTER].includes(role)
         ? 'pending'
         : 'approved', // customers/agents approved immediately
+      }
     });
 
     // Audit log — PRD §25.8
@@ -139,11 +116,7 @@ exports.login = async (req, res) => {
     // PRD §11 — mandatory OTP 2FA
     // Return temp token to allow OTP verification
     // Full JWT issued only after OTP verified (in otp.controller.verifyOtp)
-    const tempToken = jwt.sign(
-      { id: user.id, role: user.role, otp_pending: true },
-      process.env.JWT_SECRET,
-      { expiresIn: '10m' } // short-lived — OTP must be verified within 10 min
-    );
+    const tempToken = signJwt({ id: user.id, role: user.role, otp_pending: true }, { expiresIn: '10m' });
 
     // Audit log — PRD §25.8
     if (req.auditLog) {
@@ -177,7 +150,7 @@ exports.forgotPassword = async (req, res) => {
       return error(res, 'VALIDATION_ERROR', 'Email required', 422);
     }
 
-    const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
 
     // Always return success to prevent email enumeration
     if (!user) {
@@ -216,14 +189,14 @@ exports.resetPassword = async (req, res) => {
       return error(res, 'VALIDATION_ERROR', 'Password must be at least 8 characters', 422);
     }
 
-    const user = await User.findByPk(user_id);
+    const user = await prisma.user.findUnique({ where: { id: user_id } });
     if (!user) {
       return error(res, 'NOT_FOUND', 'User not found', 404);
     }
 
     // Hash new password — PRD §11 bcrypt 12 rounds
-    const password_hash = await bcrypt.hash(new_password, 12);
-    await user.update({ password_hash });
+    const passwordHash = await bcrypt.hash(new_password, 12);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
 
     // Audit log — PRD §25.8
     if (req.auditLog) {
@@ -243,8 +216,8 @@ exports.resetPassword = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ['password_hash'] },
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id }
     });
 
     if (!user) {

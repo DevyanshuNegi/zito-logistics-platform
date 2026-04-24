@@ -1,5 +1,5 @@
 // src/controllers/otp.controller.js
-// PRD v8.0 §5.1 & §7.1 — OTP endpoints (Redis required for Phase 1)
+// PRD §5.1 & §7.1 — OTP endpoints (Redis required for Phase 1)
 // PRD §11 — Mandatory email OTP 2FA, Resend.com provider
 // PRD §25.8 — Audit log on OTP events
 
@@ -10,8 +10,9 @@ const { generateOtp } = require('../utils/helpers');
 const { ERRORS, buildError } = require('../constants/errors');
 const { sendSms } = require('../services/sms.service');
 const { signJwt, verifyJwt } = require('../utils/jwt');
+const { setOtp, getOtp, delOtp } = require('../utils/redis');
 
-// TODO: Migration §5.1 — Move LoginOtp from Sequelize to Redis
+// PRD §5.1 — Successfully migrated LoginOtp from Database to Redis for performance.
 
 const OTP_EXPIRY_MINS = parseInt(process.env.OTP_EXPIRY_MINS || '10', 10);
 
@@ -79,46 +80,29 @@ exports.sendOtp = async (req, res) => {
       return success(res, null, 'OTP sent if account exists.');
     }
 
-    let otp;
+    // PRD §5.1 — Use Redis for OTP storage to avoid DB bloat and improve performance
+    let otp = generateOtp();
+    const existing = await getOtp(user.id, type);
 
-    // For login flow, reuse active OTP instead of rotating.
-    // This prevents invalid-OTP when user receives delayed/duplicated emails.
-    const activeOtp = await prisma.loginOtp.findFirst({
-      where: {
-        userId: user.id,
-        type,
-        consumedAt: null,
-        expiresAt: { gt: new Date() }
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (type === 'login' && activeOtp) {
-      otp = activeOtp.otp;
-    } else {
-      otp = generateOtp();
-      const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINS * 60 * 1000);
-
-      // Invalidate old unconsumed OTP rows for this user+type before creating new one
-      await prisma.loginOtp.updateMany({
-        where: { userId: user.id, type, consumedAt: null },
-        data: { consumedAt: new Date() }
-      });
-
-      await prisma.loginOtp.create({
-        data: {
-          userId: user.id,
-          contact: user.email,
-          otp,
-          type,
-          expiresAt,
-          attempts: 0,
-        }
-      });
+    // Reuse existing OTP if valid to prevent spamming
+    if (existing) {
+      otp = existing.otp;
     }
 
+    await setOtp(user.id, type, otp, OTP_EXPIRY_MINS);
+
+    // If this is for a high-value delivery (PRD §12.1), the subject changes
+    const isDelivery = type === 'delivery';
+    const emailSubject = isDelivery 
+      ? 'ZITO — Your Delivery Verification Code' 
+      : 'ZITO (VG Global Logistics) — Your OTP Code';
+    
+    const emailBody = isDelivery
+      ? `<p>Give this code to the driver only when your cargo has arrived:</p>`
+      : `<p>Your OTP verification code is:</p>`;
+
     // Send email
-    const delivered = await sendOtpEmail(user.email, otp);
+    const delivered = await sendOtpEmail(user.email, otp, emailSubject, emailBody);
     if (!delivered) {
       return error(res, 'OTP_DELIVERY_FAILED', 'Could not deliver OTP email. Please try again.', 502);
     }
@@ -126,12 +110,13 @@ exports.sendOtp = async (req, res) => {
     // Optional SMS (free/dry-run friendly)
     const smsTarget = contact && !contact.includes('@') ? contact.trim() : user.phone;
     if (process.env.SMS_SEND_OTP === 'true' && smsTarget) {
-      sendSms({ to: smsTarget, message: `ZITO OTP: ${otp} (expires in ${OTP_EXPIRY_MINS} mins)` })
+      sendSms({ to: smsTarget, message: `ZITO (VG Global) OTP: ${otp} (expires in ${OTP_EXPIRY_MINS} mins)` })
         .then(() => console.log(`[OTP SMS] sent to ${user.phone}`))
         .catch((err) => console.error('[OTP SMS] failed', err.message));
     }
 
     return success(res, {
+      user_id: user.id,
       // Only expose in development
       ...(process.env.NODE_ENV !== 'production' && { _dev_otp: otp }),
     }, `OTP sent to ${user.email}`);
@@ -151,87 +136,60 @@ exports.verifyOtp = async (req, res) => {
     const { user_id, contact, otp, type = 'login', temp_token } = req.body;
 
     if (!otp) {
-      return error(res, 'VALIDATION_ERROR', 'OTP required', 422);
+      return res.status(ERRORS.VALIDATION_ERROR.httpStatus).json(buildError(ERRORS.VALIDATION_ERROR, 'OTP code is required.'));
     }
 
-    // Resolve user_id from temp_token if not provided directly
-    let resolvedUserId = user_id;
-    let resolvedUser   = null;
+    let targetUserId = user_id;
 
-    // Resolve from contact (email/phone)
-    if (!resolvedUserId && contact) {
+    // Resolve user from contact (email/phone)
+    if (!targetUserId && contact) {
       const lookup = contact.includes('@')
         ? { email: contact.toLowerCase().trim() }
         : { phone: contact.trim() };
-      resolvedUser = await prisma.user.findFirst({ where: lookup });
-      resolvedUserId = resolvedUser?.id;
+      const user = await prisma.user.findFirst({ where: lookup, select: { id: true } });
+      targetUserId = user?.id;
     }
 
-    // Resolve from temp token
-    if (!resolvedUserId && temp_token) {
+    // Resolve from short-lived temp token (used in login flow)
+    if (!targetUserId && temp_token) {
       try {
         const decoded = verifyJwt(temp_token);
-        resolvedUserId = decoded.id;
+        targetUserId = decoded.id;
       } catch {
-        return error(res, 'INVALID_TOKEN', 'Invalid or expired session. Please log in again.', 401);
+        return res.status(ERRORS.TOKEN_EXPIRED.httpStatus).json(buildError(ERRORS.TOKEN_EXPIRED));
       }
     }
 
-    if (!resolvedUserId) {
-      return error(res, 'VALIDATION_ERROR', 'user_id, contact or temp_token required', 422);
+    if (!targetUserId) {
+      return res.status(ERRORS.USER_NOT_FOUND.httpStatus).json(buildError(ERRORS.USER_NOT_FOUND));
     }
 
-    const stored = await prisma.loginOtp.findFirst({
-      where: {
-        userId: resolvedUserId,
-        type,
-        consumedAt: null,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const stored = await getOtp(targetUserId, type);
 
     if (!stored) {
-      return error(res, 'OTP_NOT_FOUND', 'OTP not found or already used. Request a new one.', 400);
-    }
-
-    // Check expiry
-    if (Date.now() > new Date(stored.expiresAt).getTime()) {
-      await prisma.loginOtp.update({
-        where: { id: stored.id },
-        data: { consumedAt: new Date() }
-      });
-      return error(res, 'OTP_EXPIRED', 'OTP has expired. Please request a new one.', 400);
+      return res.status(ERRORS.BAD_REQUEST.httpStatus).json(buildError(ERRORS.BAD_REQUEST, 'OTP not found or already used.'));
     }
 
     // Max 5 attempts
     if (stored.attempts >= 5) {
-      await prisma.loginOtp.update({
-        where: { id: stored.id },
-        data: { consumedAt: new Date() }
-      });
-      return error(res, 'OTP_MAX_ATTEMPTS', 'Too many failed attempts. Request a new OTP.', 429);
+      await delOtp(targetUserId, type);
+      return res.status(ERRORS.RATE_LIMIT_EXCEEDED.httpStatus).json(buildError(ERRORS.RATE_LIMIT_EXCEEDED, 'Too many failed OTP attempts.'));
     }
 
     // Verify OTP
     if (stored.otp !== String(otp).trim()) {
-      const nextAttempts = Number(stored.attempts || 0) + 1;
-      await prisma.loginOtp.update({
-        where: { id: stored.id },
-        data: { attempts: nextAttempts }
-      });
-      return error(res, 'INVALID_OTP', `Invalid OTP. ${Math.max(0, 5 - nextAttempts)} attempts remaining.`, 400);
+      const nextAttempts = Number(stored.attempts) + 1;
+      await setOtp(targetUserId, type, stored.otp, OTP_EXPIRY_MINS); // Update attempts in Redis
+      return res.status(ERRORS.OTP_INVALID.httpStatus).json(buildError(ERRORS.OTP_INVALID, `${Math.max(0, 5 - nextAttempts)} attempts remaining.`));
     }
 
-    // OTP valid — mark consumed
-    await prisma.loginOtp.update({
-      where: { id: stored.id },
-      data: { consumedAt: new Date() }
-    });
+    // OTP valid — clear from Redis
+    await delOtp(targetUserId, type);
 
     // Load user
-    const user = resolvedUser || await prisma.user.findUnique({ where: { id: resolvedUserId } });
+    const user = await prisma.user.findUnique({ where: { id: targetUserId } });
     if (!user) {
-      return error(res, 'NOT_FOUND', 'User not found', 404);
+      return res.status(ERRORS.USER_NOT_FOUND.httpStatus).json(buildError(ERRORS.USER_NOT_FOUND));
     }
 
     // Update last login
@@ -261,8 +219,8 @@ exports.verifyOtp = async (req, res) => {
         email:             user.email,
         full_name:         user.full_name, // Assuming snake_case in schema based on select in auth middleware
         role:              user.role,
-        compliance_status: user.complianceStatus, // PRD v8 uses camelCase in Prisma
-        is_active:         user.isActive,         // PRD v8 uses camelCase in Prisma
+        compliance_status: user.complianceStatus, // Prisma client uses camelCase fields
+        is_active:         user.isActive,         // Prisma client uses camelCase fields
       },
     }, 'OTP verified successfully.');
 

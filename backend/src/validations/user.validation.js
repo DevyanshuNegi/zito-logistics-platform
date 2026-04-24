@@ -1,18 +1,8 @@
-// src/validations/user.validation.js
-//
-// Joi schemas for all user-facing auth and profile endpoints.
-// PRD §3   — User Roles & Permissions
-// PRD §11  — Security (JWT, bcrypt, OTP 2FA)
-// PRD §14  — Compliance & KYC Framework
-// PRD §16  — Data Lock System
-// ─────────────────────────────────────────────────────────────────────────────
 
 const Joi  = require('joi');
 const { J } = require('../middleware/validate');
 
 const { ROLES } = require('../constants/roles');
-
-/* ── Reusable primitives ───────────────────────────────────── */
 
 const password = Joi.string()
   .min(8)
@@ -26,43 +16,27 @@ const password = Joi.string()
 
 const email = Joi.string().email({ tlds: { allow: false } }).lowercase().trim();
 
-/* ============================================================
-   REGISTER
-   POST /api/v1/auth/register
-   PRD §3 — any role can self-register; Admin assigns final role
-   ============================================================ */
-
 const registerSchema = Joi.object({
   full_name: Joi.string().min(2).max(100).trim().required(),
   email:     email.required(),
   phone:     J.phone.required(),
   password:  password.required(),
 
-  // Role is optional at registration; defaults to 'customer' in controller
   role: Joi.string()
     .valid(...Object.values(ROLES))
     .default(ROLES.CUSTOMER),
 
-  // Optional linking fields — used when Admin creates a sub-account
   transporter_id: J.uuid.optional(),
   agent_id:       J.uuid.optional(),
   agency_id:      J.uuid.optional(),
 });
 
-/* ============================================================
-   LOGIN  (Step 1 — password check, triggers OTP)
-   POST /api/v1/auth/login
-   ============================================================ */
 
 const loginSchema = Joi.object({
   email:    email.required(),
   password: Joi.string().required(),
 });
 
-/* ============================================================
-   SEND OTP
-   POST /api/v1/auth/send-otp
-   ============================================================ */
 
 const sendOtpSchema = Joi.object({
   contact: Joi.alternatives()
@@ -119,12 +93,6 @@ const resetPasswordSchema = Joi.object({
     .messages({ 'any.only': 'Passwords do not match.' }),
 });
 
-/* ============================================================
-   UPDATE PROFILE  (PATCH /api/v1/user/profile)
-   Locked fields are enforced in checkDataLock middleware —
-   schema still accepts them so error messages are clear.
-   PRD §16.4 — Data Lock
-   ============================================================ */
 
 const updateProfileSchema = Joi.object({
   full_name:    Joi.string().min(2).max(100).trim(),
@@ -134,11 +102,6 @@ const updateProfileSchema = Joi.object({
   date_of_birth: Joi.date().iso().max('now'),
 }).min(1).messages({ 'object.min': 'At least one field must be provided.' });
 
-/* ============================================================
-   ADMIN — CREATE USER
-   POST /api/v1/admin/users
-   PRD §3.1 — Super Admin can create any role
-   ============================================================ */
 
 const adminCreateUserSchema = Joi.object({
   full_name:      Joi.string().min(2).max(100).trim().required(),

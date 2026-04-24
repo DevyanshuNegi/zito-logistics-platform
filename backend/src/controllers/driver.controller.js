@@ -9,6 +9,8 @@ const { success, error } = require('../utils/response');
 const { paginate, paginatedResponse } = require('../utils/helpers');
 const { BOOKING_STATUS } = require('../constants/bookingStatus');
 const { getIO } = require('../services/notification.service');
+const barcodeService = require('../services/barcode.service');
+const alertService = require('../services/alert.service');
 
 const SOS_MARKER = '[SOS_FROZEN]';
 
@@ -80,11 +82,104 @@ exports.setAvailability = async (req, res) => {
     const { is_available } = req.body;
     const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+
+    // PRD §44.1 — Driver must START SHIFT before going online
+    if (is_available === true || is_available === 'true') {
+      const activeShift = await prisma.driverShift.findFirst({
+        where: { driverId: driver.id, endTime: null }
+      });
+      if (!activeShift) {
+        return error(res, 'SHIFT_REQUIRED', 'You must start a shift before going online.', 403);
+      }
+    }
+
     const updated = await prisma.driver.update({
       where: { id: driver.id },
       data: { isAvailable: !!is_available }
     });
     return success(res, { is_available: updated.isAvailable }, `Availability set to ${updated.isAvailable}`);
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+exports.startShift = async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
+    if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+
+    const activeShift = await prisma.driverShift.findFirst({
+      where: { driverId: driver.id, endTime: null }
+    });
+    if (activeShift) return error(res, 'SHIFT_ALREADY_ACTIVE', 'You already have an active shift.', 400);
+
+    const shift = await prisma.driverShift.create({
+      data: {
+        driverId: driver.id,
+        startTime: new Date(),
+        attendanceStatus: 'present'
+      }
+    });
+
+    if (req.auditLog) await req.auditLog('SHIFT_STARTED', { shift_id: shift.id, driver_id: driver.id });
+    return success(res, { shift }, 'Shift started successfully. You can now toggle availability.');
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
+exports.endShift = async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
+    if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
+
+    const activeShift = await prisma.driverShift.findFirst({
+      where: { driverId: driver.id, endTime: null }
+    });
+    if (!activeShift) return error(res, 'NO_ACTIVE_SHIFT', 'No active shift found.', 400);
+
+    const endTime = new Date();
+    const startTime = new Date(activeShift.startTime);
+
+    // PRD §44.1 — Calculate total, trip, and idle hours
+    const completedBookings = await prisma.booking.findMany({
+      where: {
+        assignedDriverId: driver.id,
+        status: 'completed',
+        completedAt: { gte: startTime, lte: endTime },
+        pickedUpAt: { not: null }
+      }
+    });
+
+    // Trip hours: Sum of (completedAt - pickedUpAt) for trips completed during this shift
+    const tripMs = completedBookings.reduce((sum, b) => {
+      return sum + (new Date(b.completedAt) - new Date(b.pickedUpAt));
+    }, 0);
+
+    const totalMs = endTime - startTime;
+    const totalHours = totalMs / (1000 * 60 * 60);
+    const tripHours = tripMs / (1000 * 60 * 60);
+    const idleHours = Math.max(0, totalHours - tripHours);
+
+    const shift = await prisma.driverShift.update({
+      where: { id: activeShift.id },
+      data: { 
+        endTime,
+        totalHours: Number(totalHours.toFixed(2)),
+        tripHours: Number(tripHours.toFixed(2)),
+        idleHours: Number(idleHours.toFixed(2)),
+        attendanceStatus: 'present'
+      }
+    });
+
+    // PRD §44.1 — Automatically go offline when shift ends
+    await prisma.driver.update({
+      where: { id: driver.id },
+      data: { isAvailable: false }
+    });
+
+    if (req.auditLog) await req.auditLog('SHIFT_ENDED', { shift_id: shift.id, driver_id: driver.id });
+    return success(res, { shift }, 'Shift ended. You are now offline.');
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -189,10 +284,51 @@ exports.rejectTrip = async (req, res) => {
   }
 };
 
+/**
+ * PRD §44.4 — Vehicle Breakdown Reporting
+ * Allows driver to report a breakdown and triggers critical escalation.
+ */
+exports.reportBreakdown = async (req, res) => {
+  try {
+    const { booking_id, lat, lng, note } = req.body;
+    if (!booking_id) return error(res, 'VALIDATION_ERROR', 'booking_id is required', 422);
+
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
+    const booking = await prisma.booking.findUnique({ where: { id: booking_id } });
+
+    if (!booking || booking.assignedDriverId !== driver.id) {
+      return error(res, 'NOT_FOUND', 'Active trip not found', 404);
+    }
+
+    // PRD §44.4 — Automatic escalation to agency via Internal Alert System
+    const alert = await alertService.createAlert({
+      type: 'VEHICLE_BREAKDOWN',
+      severity: 'critical',
+      message: `CRITICAL: Breakdown reported for trip ${booking.reference} by ${req.user.full_name}.`,
+      agencyId: booking.agencyId,
+      entityType: 'booking',
+      entityId: booking.id,
+      metadata: { lat, lng, note, reported_at: new Date() }
+    });
+
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        specialInstructions: `${booking.specialInstructions || ''}\n[BREAKDOWN_REPORTED] at ${lat},${lng}. Note: ${note || 'No details'}`
+      }
+    });
+
+    if (req.auditLog) await req.auditLog('BREAKDOWN_REPORTED', { booking_id: booking.id, alert_id: alert.id });
+    return success(res, { alert_id: alert.id }, 'Breakdown reported and operations team notified.');
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
 // PRD §6 — Status lifecycle
 exports.updateTripStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, barcode, pod_photo_url, lat, lng, notes } = req.body;
     const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
@@ -200,6 +336,21 @@ exports.updateTripStatus = async (req, res) => {
     if (!booking || booking.assignedDriverId !== driver.id) return error(res, 'NOT_FOUND', 'Trip not found', 404);
     if ((booking.specialInstructions || '').includes(SOS_MARKER)) {
       return error(res, 'BOOKING_FROZEN', 'Trip is frozen due to SOS. Wait for admin.', 409);
+    }
+
+    // PRD §12 — No Scan = No Movement Enforcement
+    if ((status === 'picked_up' || status === 'delivered') && !barcode) {
+      return error(res, 'SCAN_REQUIRED', `A barcode scan is mandatory to mark the trip as ${status.replace('_', ' ')}.`, 422);
+    }
+
+    if (barcode) {
+      await barcodeService.validateAndProcessScan({
+        barcode,
+        scanType: status === 'picked_up' ? barcodeService.SCAN_TYPES.PICKUP : barcodeService.SCAN_TYPES.DELIVERY,
+        userId: req.user.id,
+        bookingId: booking.id,
+        lat, lng
+      });
     }
 
     // PRD §12.1 — High-value proof chain check
@@ -211,12 +362,20 @@ exports.updateTripStatus = async (req, res) => {
     const transitions = {
       accepted:   ['picked_up'],
       picked_up:  ['in_transit'],
-      in_transit: ['delivered'],
+      in_transit: ['arrived_at_destination'],
+      arrived_at_destination: ['delivered'],
       delivered:  ['completed'],
     };
 
     if (!transitions[booking.status]?.includes(status)) {
       return error(res, 'INVALID_STATUS', `Cannot transition from ${booking.status} to ${status}`, 400);
+    }
+
+    // PRD §12.1 — If arrived at destination and cargo is high-value, trigger OTP send
+    if (status === 'arrived_at_destination' && booking.isHighValue) {
+      const otpController = require('./otp.controller');
+      // We send the OTP to the customer associated with the booking
+      await otpController.sendOtp({ body: { user_id: booking.customerId, type: 'delivery' } }, { status: () => ({ json: () => {} }) });
     }
 
     if (status === 'completed') {
@@ -227,15 +386,15 @@ exports.updateTripStatus = async (req, res) => {
     }
 
     const timestamps = {
-      picked_up:  { pickedUpAt:  new Date() },
+      picked_up:  { pickedUpAt:  new Date(), pickupLat: lat ? Number(lat) : null, pickupLng: lng ? Number(lng) : null },
       in_transit: { inTransitAt: new Date() },
-      delivered:  { deliveredAt:  new Date() },
+      delivered:  { deliveredAt:  new Date(), podPhotoUrl: pod_photo_url, deliveryLat: lat ? Number(lat) : null, deliveryLng: lng ? Number(lng) : null },
       completed:  { completedAt:  new Date() },
     };
 
     const updated = await prisma.booking.update({
       where: { id: booking.id },
-      data: { status, ...timestamps[status] }
+      data: { status, ...timestamps[status], specialInstructions: notes ? `${booking.specialInstructions || ''}\nNote: ${notes}` : booking.specialInstructions }
     });
 
     // Update driver total trips on completion
@@ -256,9 +415,12 @@ exports.updateTripStatus = async (req, res) => {
 // ── Documents ──────────────────────────────────────────────────────────────
 exports.getDocuments = async (req, res) => {
   try {
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({
+      where: { userId: req.user.id },
+      include: { compliance: true }
+    });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
-    return success(res, { driver });
+    return success(res, { driver, compliance: driver.compliance });
   } catch (err) {
     return error(res, 'SERVER_ERROR', err.message, 500);
   }
@@ -345,28 +507,38 @@ exports.updateLocation = async (req, res) => {
     const { lat, lng } = req.body;
     if (!lat || !lng) return error(res, 'VALIDATION_ERROR', 'lat and lng required', 422);
 
-    const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
     if (!driver) return error(res, 'NOT_FOUND', 'Driver profile not found', 404);
 
-    await driver.update({ current_lat: lat, current_lng: lng, location_updated: new Date() });
+    await prisma.driver.update({
+      where: { id: driver.id },
+      data: {
+        currentLat: Number(lat),
+        currentLng: Number(lng),
+        locationUpdated: new Date()
+      }
+    });
 
     // Broadcast over socket to admins and booking participants
     const io = getIO && getIO();
     if (io) {
-      const payload = { driver_id: driver.id, user_id: driver.user_id, lat, lng, updated_at: new Date() };
+      const payload = { driver_id: driver.id, user_id: req.user.id, lat, lng, updated_at: new Date() };
       io.to('global:admin').emit('driver:location', payload);
       io.to(`driver:${driver.id}`).emit('driver:location', payload);
       io.to(`user:${driver.user_id}`).emit('driver:location', payload);
 
       // Also push to any active booking room
-      const activeBooking = await Booking.findOne({
-        where: { assigned_driver_id: driver.id, status: ['assigned','accepted','picked_up','in_transit','delivered'] },
-        attributes: ['id', 'customer_id', 'reference']
+      const activeBooking = await prisma.booking.findFirst({
+        where: { 
+          assignedDriverId: driver.id, 
+          status: { in: ['assigned','accepted','picked_up','in_transit','delivered'] } 
+        },
+        select: { id: true, customerId: true, reference: true }
       });
       if (activeBooking) {
         io.to(`booking:${activeBooking.id}`).emit('driver:location', { ...payload, booking_id: activeBooking.id, reference: activeBooking.reference });
-        if (activeBooking.customer_id) {
-          io.to(`user:${activeBooking.customer_id}`).emit('driver:location', { ...payload, booking_id: activeBooking.id, reference: activeBooking.reference });
+        if (activeBooking.customerId) {
+          io.to(`user:${activeBooking.customerId}`).emit('driver:location', { ...payload, booking_id: activeBooking.id, reference: activeBooking.reference });
         }
       }
     }

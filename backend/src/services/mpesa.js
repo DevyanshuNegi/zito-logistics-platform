@@ -41,4 +41,30 @@ const stkPush = async ({ phone, amount, bookingReference }) => {
   return response.data;
 };
 
-module.exports = { stkPush, getAccessToken };
+/**
+ * B2C Disbursement — PRD §15
+ * Send funds from Zito Business account to Driver's phone
+ */
+const b2cDisbursement = async ({ phone, amount, remarks, occasion }) => {
+  const token = await getAccessToken();
+  const response = await axios.post(
+    `${MPESA_BASE_URL}/mpesa/b2c/v1/paymentrequest`,
+    {
+      InitiatorName: process.env.MPESA_INITIATOR_NAME || 'testapi',
+      SecurityCredential: process.env.MPESA_INITIATOR_PASSWORD || 'password',
+      CommandID: 'SalaryPayment', // or 'BusinessPayment'
+      Amount: amount,
+      PartyA: SHORTCODE,
+      PartyB: phone,
+      Remarks: remarks || 'Zito Driver Payout',
+      QueueTimeOutURL: CALLBACK_URL,
+      ResultURL: CALLBACK_URL,
+      Occasion: occasion || 'Payout'
+    },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  return response.data;
+};
+
+module.exports = { stkPush, getAccessToken, b2cDisbursement };

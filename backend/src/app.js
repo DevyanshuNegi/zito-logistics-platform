@@ -50,6 +50,7 @@ const complianceRoutes  = require('./routes/compliance.routes');
 const paymentExportRoutes = require('./routes/paymentExport.routes');
 const tripChargeExportRoutes = require('./routes/tripChargeExport.routes');
 const profileRoutes     = require('./routes/profile.routes');
+const warehouseRoutes   = require('./routes/warehouse.routes');
 
 const app = express();
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -187,6 +188,8 @@ app.use('/api/v1/compliance',   complianceRoutes);
 app.use('/api/v1/export',       paymentExportRoutes);
 app.use('/api/v1/export',       tripChargeExportRoutes);
 app.use('/api/v1/profile',      profileRoutes);
+app.use('/api/v1/warehouse',    warehouseRoutes);
+app.use('/api/v1/warehouse-partner', warehouseRoutes);
 
 // Expose getter for socket.io (set in server.js)
 app.set('getIO', () => app.get('io'));

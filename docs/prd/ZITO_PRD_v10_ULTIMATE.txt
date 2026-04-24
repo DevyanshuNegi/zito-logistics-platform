@@ -1,0 +1,1044 @@
+ZITO
+SUPER APP PLATFORM
+PRODUCT REQUIREMENTS DOCUMENT
+Version 10 — ULTIMATE
+Enterprise-Grade | Africa-Scale | Investor-Ready
+Classification: CONFIDENTIAL
+© 2024 ZITO Logistics Technologies. All Rights Reserved.1. 🎯 Product Vision
+ZITO is a unified logistics super platform built for Africa-scale operations. It consolidates fragmented transport, warehousing, and last-mile delivery services into a single intelligent platform, enabling operators, transporters, drivers, warehouses, and customers to collaborate in real time.
+Core Services
+FTL (Full Truck Load) — long-haul freight transport
+PTL / LCL (Partial Load) — consolidated cargo shipments
+Courier / Last-mile delivery — direct-to-door delivery
+Warehouse & storage services — managed storage with full inventory control
+Fleet & transporter management — vehicle lifecycle and driver coordination
+Multi-country logistics — Africa-ready, offline-capable operations
+2. 👤 User & Role System
+ZITO supports multiple user types within a single unified identity. One account may hold multiple roles simultaneously, governed by the RBAC system.
+User Roles
+One user → multiple roles allowed. Permissions enforced at API and UI level.
+3. 🔐 Authentication System
+Unified Login
+All users authenticate through a single entry point with role-based routing post-login.
+identifier = phone OR email
+Login Methods
+Phone OTP (primary method)
+Email + Password
+Email OTP (fallback)
+Account Lifecycle
+pending → verified → active → suspended → rejected
+Rule: Only ACTIVE accounts may log in. Any other status results in a blocked session with a descriptive error.
+OTP Handling & Security Rules:
+OTP validity: configurable (e.g., 2–5 minutes)
+Resend OTP allowed after cooldown (e.g., 30 seconds)
+Maximum resend attempts limit (e.g., 3–5 attempts)
+Maximum verification attempts limit (e.g., 5 tries)
+Rules:
+Expired OTP must be rejected
+Multiple failed attempts → temporary account lock
+OTP must be single-use only
+Fallback:
+If OTP fails repeatedly → allow alternative login method (email/password)
+Session Continuity & Recovery:
+If app is closed or network lost, user should resume last step
+Incomplete flows (signup, booking) must be recoverable
+Rules:
+Session must persist for defined duration
+Critical flows must not restart unnecessarily
+Unsaved data should be preserved locally (where applicable)
+4. 📝 Signup & KYC Flow
+phone → OTP → email → OTP → password → document upload → admin approval → active
+Documents required: National ID, Business Registration (Corporate), Driver's License (Driver), Vehicle Registration (Transporter).
+Compliance & Re-Validation:
+Driving license expiry tracking (drivers)
+Vehicle insurance & permit expiry tracking (transporters)
+System must trigger alerts before expiry (e.g., 15 days prior)
+Expired documents → automatic suspension of driver/vehicle
+Re-verification required before reactivation
+5. 🗺️ Location System
+All addresses require map-based selection (lat/lng mandatory)
+No manual-only text entry permitted
+PostGIS enabled for spatial queries and geo-fencing
+Supports offline map caching for low-connectivity regions
+Address Validation Enhancements:
+Mandatory fields:
+Contact name
+Contact phone number
+Landmark / nearby reference
+Rules:
+Address must be complete before booking confirmation
+System should assist users with address suggestions where possible
+6. 🚚 Booking Engine
+Lifecycle
+created → searching → assigned → accepted → arrived → picked → in_transit → arrived_at_destination → delivery_verification → delivered → completed → cancelled
+Features
+Multi-stop routing with optimized path calculation
+Dynamic pricing based on distance, vehicle type, and demand
+Auto assignment via driver matching engine
+Auto cancel/retry with configurable timeouts
+Real-time status updates via WebSocket
+Trip Start Validation:
+Driver must confirm arrival at pickup location
+OTP or scan verification required before trip start
+Trip cannot begin without pickup confirmation
+Rule:
+Prevents remote/fake trip initiation and ensures accurate billing
+Cancellation & Refund Rules:
+Cancellation Stages:
+Before driver assignment → full refund
+After assignment but before pickup → partial charge may apply
+After pickup → no refund or conditional refund
+After delivery failure → refund based on service type and condition
+Rules:
+Cancellation must capture reason
+Refund amount must follow predefined policy matrix
+Refund must be processed via original payment method or wallet
+Controls:
+Admin override allowed with approval
+All cancellations and refunds must be logged
+Additional Delivery State:
+arrived_at_destination
+Rules:
+Driver must confirm arrival before delivery proof capture
+Improves tracking accuracy and customer visibility
+7. 🧠 Driver Matching Engine
+Matching Factors
+Fallback Logic
+expand radius → retry → notify dispatch → manual assign
+8. 🚗 Driver System
+Online / offline toggle with session tracking
+GPS tracking every 2–5 seconds
+Performance metrics: completion rate, rating, acceptance rate
+Fraud detection: location spoofing, ghost trips, tampered ODO
+Earnings wallet with daily/weekly payout cycles
+Driver Payout & Settlement Logic:
+Earnings accumulate in driver wallet based on completed trips
+Payout cycles configurable (daily / weekly / manual)
+Payout request may require approval by Accounts/Admin (configurable)
+Payout Flow:
+trip completed → earnings credited to wallet → payout requested → approved → transferred to bank/M-Pesa
+Rules:
+Minimum payout threshold may be enforced
+Failed payouts must be retried or flagged for manual intervention
+All payouts must be logged with transaction reference
+Driver Work & Fatigue Control:
+Maximum working hours per shift must be defined
+Mandatory rest period between shifts
+Rules:
+Driver cannot accept trips beyond allowed working hours
+Alerts for fatigue risk
+9. 🚛 Fleet & Vehicle System
+Dual GPS Tracking
+Driver: mobile GPS Vehicle: hardware GPS device
+Validation: if driver position deviates from vehicle position beyond threshold → alert raised.
+Fleet Features
+Driver assignment and reassignment
+Maintenance schedule tracking
+Insurance validity tracking
+Compliance documentation
+Vehicle performance analytics
+10. 🏬 Warehouse System
+Structure
+Warehouse → Zone → Rack → Bin
+Geo-located warehouses with coverage radius
+Capacity management with real-time availability
+Slot booking for inbound and outbound operations
+Multi-agency warehouse sharing supported
+11. 📦 Inventory System
+Parcel States
+received → stored → sorted → dispatched → delivered → missing → damaged
+Tracking
+Real-time location mapping
+Scan-based movement control (no scan = no movement)
+Batch tracking for consolidated shipments
+Automated alerts on state exceptions
+Inventory Ownership & Multi-Client Control:
+Each parcel must be tagged with an owner (Customer / B2B Client)
+System must support multi-client inventory within same warehouse
+Features:
+Ownership-based inventory segregation
+Client-wise stock visibility and reporting
+Billing linked to inventory ownership
+Rules:
+Warehouse operations must maintain strict ownership separation
+No mixing of inventory without ownership mapping
+Inventory Handling Logic:
+Support FIFO (First In First Out)
+Support FEFO (First Expiry First Out) for applicable goods
+Rules:
+Dispatch priority must follow defined inventory strategy
+12. 📡 Barcode & Scan System
+Core Rule
+No scan = No movement (enforced at every checkpoint)
+Scan Points
+QR + Barcode dual support
+Offline scanning with sync-on-reconnect
+Full audit log of every scan event
+Delivery Proof System:
+OTP verification at time of delivery
+Digital signature capture from receiver
+Photo proof capture (optional but recommended)
+Timestamp and GPS validation at delivery location
+Rule:
+Delivery is marked as completed only after successful proof capture
+Vehicle Load Mapping & Validation:
+Each parcel must be mapped to a specific vehicle during loading
+Mandatory scan while loading parcels into vehicle
+Vehicle-wise parcel tracking during transit
+Mandatory scan during unloading at destination
+Rules:
+Parcel cannot be moved without load confirmation
+System must track which parcel is in which vehicle at all times
+Waybill / LR Integration with Scan System:
+Every parcel must be linked to a Waybill (PTL/Courier) or LR (FTL)
+All scan events must reference:
+Waybill / LR ID
+Parcel ID
+Vehicle ID
+Driver ID
+Tracking Chain:
+Parcel → Waybill/LR → Vehicle → Driver → Destination
+Rules:
+No parcel movement allowed without valid Waybill/LR linkage
+Scan records must maintain full traceability for audit and tracking
+13. 🚨 Loss Detection System
+Batch mismatch: scanned items vs expected count
+Missing location: item expected but no scan recorded
+No movement alerts: stale items exceeding SLA time
+Location mismatch: item scanned at wrong facility
+Escalation triggers to agency managers and super admin
+14. 📄 LR & Waybill System
+Lifecycle
+created → in transit → delivered → closed
+15. 💳 Payment & Wallet System
+Supported Methods
+M-Pesa (primary mobile money)
+Card (Visa/Mastercard)
+Cash (agency-managed)
+Wallet (user + driver wallets)
+Financial Controls
+Escrow system for booking amounts
+Automated refunds on cancellations
+Driver payouts on completion
+B2B credit billing with cycle management
+Bank Payment & Transfer Support:
+Supported Bank Operations:
+- Bank Transfer (NEFT/RTGS equivalent per country)
+- Direct bank deposit (offline/online)
+- Corporate bank payments for B2B clients
+Receivable (Customer → Platform):
+- Customers can pay via bank transfer
+- System must support payment reference upload or auto reconciliation
+- Payment verification required before service activation (for bank mode)
+Payable (Platform → Users):
+- Driver payouts via bank transfer
+- Vendor / transporter payments via bank
+- Warehouse partner settlement via bank
+Rules:
+- Bank payments may require manual or automated reconciliation
+- Large transactions should default to bank mode
+- Payment status must reflect: pending → verified → completed
+Integration:
+- Support integration with local African banking APIs (future)
+- Support multi-currency settlement via bank channels
+Audit:
+- All bank transactions must be logged with reference number and proof
+Partial & Split Payment Support:
+Allow advance payment (e.g., percentage-based booking confirmation)
+Remaining balance payable at delivery or billing cycle
+Support split payments across multiple methods (wallet, card, cash, mobile money)
+Rules:
+Booking confirmation may require minimum advance
+Delivery completion allowed only after payment conditions are satisfied
+Escrow Management & Release Rules:
+All booking payments are held in escrow until service completion
+Escrow release conditions:
+Successful delivery confirmation (with proof)
+No active disputes
+Payment conditions fulfilled (for partial payments)
+Dispute Handling:
+If dispute is raised → escrow is placed on hold
+Release only after dispute resolution
+Partial Payment Handling:
+Advance remains in escrow until delivery
+Remaining payment must be cleared before final release
+Audit:
+All escrow movements must be logged and traceable
+Payment Failure & Retry Handling:
+Payment States:
+- initiated → pending → success → failed → reversed
+Rules:
+Failed payments must allow retry without creating duplicate transactions
+Pending payments must auto-expire after defined time
+System must prevent service activation until payment is confirmed
+Recovery:
+User must be able to retry or switch payment method
+Failed transactions must be logged and visible to user and admin
+16. 🧾 Invoice & Billing System
+Invoice Types
+Billing Flow
+service complete → invoice generated → payment requested → receipt issued
+17. 🏬 Warehouse Billing
+storage_fee = space_units × days_stored × rate_per_unit
+Handling charges (inbound/outbound)
+Value-added service charges
+Monthly consolidated billing for B2B clients
+18. 📊 Multi-Service Billing
+All services consumed in a single order — transport, warehouse, and courier — are consolidated into one invoice. This reduces billing overhead for corporate clients.
+Transport + Warehouse + Courier = Single Invoice
+19. 🧠 Rate Card System
+Dynamic Pricing Control Panel:
+Admin can update pricing in real-time
+Zone-wise pricing overrides
+Emergency surge controls
+Competitor-based pricing adjustment
+Rules:
+Changes must reflect instantly (or within defined delay)
+All changes must be versioned and auditable
+20. 🏢 B2B Contract System
+Custom contract pricing per client
+Credit billing with defined credit limits
+Monthly/quarterly billing cycles
+Dedicated account manager assignment
+SLA-backed delivery commitments
+21. ⏱️ SLA System
+Configurable delivery timelines by service type
+Automated delay detection and alerts
+Penalty calculation for SLA breaches
+Priority shipment fast-tracking
+SLA-based escalation routing
+22. 🔔 Notification System
+SMS → Email → Push → WhatsApp (in priority order)
+Booking confirmations and status updates
+Driver assignment notifications
+Payment confirmations and receipts
+Delivery proof and completion alerts
+Staff alerts: missing parcels, delays, fraud flags
+Notification Retry & Fallback Logic:
+If primary channel fails (e.g., SMS), system retries via next channel (Email → Push → WhatsApp)
+Rules:
+Configurable retry attempts
+Failure logs must be maintained
+User Error Handling & Feedback:
+Clear error messages for all failures (OTP, payment, booking)
+Retry options must be provided for recoverable errors
+Network failure handling with retry and fallback
+Examples:
+OTP failed → allow resend
+Payment failed → allow retry or switch method
+Network error → retry with exponential backoff
+23. 🌍 Africa-Ready System
+Offline Conflict Resolution:
+When syncing offline data, system must detect conflicts
+Priority rules must define which update is valid
+Rules:
+Latest valid scan wins OR server authority override
+Duplicate scan entries must be merged or rejected
+Conflict logs must be maintained
+24. 📊 Admin & Operations System
+Super Admin View
+All agencies and branches
+All users, drivers, and vehicles
+System-wide analytics and KPIs
+Global alerts and incident dashboard
+Agency Admin View
+Branch-specific operations
+Local driver pool management
+Warehouse and inventory control
+Branch payment reconciliation
+25. 🚨 Incident Management
+Customer complaint ticketing system
+Escalation flow with SLA timers
+Driver dispute resolution
+Insurance claim initiation
+Resolution tracking and closure
+Dispute Financial Impact Handling:
+Any dispute raised may impact associated payments and invoices
+Rules:
+Active dispute → payment or escrow must be placed on hold
+Dispute resolution outcomes:
+Refund (full/partial)
+Adjustment in invoice
+Release of held payment
+Integration:
+Must link with billing, escrow, and payment systems
+Audit:
+All financial changes due to disputes must be logged with reason and approval
+26. 📡 Real-Time System
+WebSocket-based live tracking for drivers and shipments
+Event streaming for booking state changes
+Live dashboard feeds for operations teams
+Push-based driver location updates every 2–5 seconds
+Customer ETA Visibility:
+Real-time ETA updates
+Delay prediction alerts
+27A 📈 Analytics
+27B CUSTOMER RETENTION & ENGAGEMENT SYSTEM
+Features:
+Promo codes and discount campaigns
+Loyalty points / reward system
+Referral program (customer invites customer)
+Repeat booking incentives
+Engagement:
+Targeted notifications based on usage
+Reactivation campaigns for inactive users
+Analytics:
+Customer lifetime value (CLV)
+Retention rate tracking
+28. 🔐 Security
+JWT authentication with refresh token rotation
+Role-Based Access Control (RBAC) at API and UI level
+Full audit logs: who, what, when, where
+Rate limiting and DDoS protection
+Data encryption at rest and in transit (TLS 1.3)
+PII anonymization for GDPR/data protection compliance
+Data Deletion Policy:
+All critical data (bookings, invoices, waybills, payments) must use soft delete only
+Soft-deleted records must remain accessible for audit and recovery
+Hard delete allowed only for non-critical data with Super Admin approval
+Audit logs must never be deleted or modified
+Idempotency & Duplicate Request Protection:
+All critical operations must be idempotent:
+Booking creation
+Payment processing
+Trip creation
+Refund requests
+Driver assignment
+Wallet transactions
+Implementation:
+Each request must include a unique idempotency key
+Server must store and validate request keys
+Rules:
+Any Retry Duplicate requests must not create multiple records across these modules
+System must return same response for repeated requests
+Expired keys should be cleaned periodically
+Use Cases:
+User clicks “Book” multiple times
+Network retry sends same payment request
+API timeout causes client retry
+29. ⚙️ System Architecture
+Configuration & Version Management:
+All business rules (rate cards, SLA, surge pricing) must be configurable via admin panel
+System must maintain version history of all configuration changes
+Each change must record: user, timestamp, previous value, new value
+Ability to rollback to previous configuration versions
+Examples:
+Rate card updates
+SLA changes
+Surge pricing logic updates
+30. 🔄 Backup & Disaster Recovery
+Automated daily database backups with 30-day retention
+Point-in-time recovery (PITR) for PostgreSQL
+Multi-region failover configuration
+RTO: 4 hours | RPO: 1 hour
+Documented disaster recovery runbooks
+PART II — AGENCY, STAFF & OPERATIONS
+Sections 31–43: Extended Operational Infrastructure
+31. 🏢 Agency (Branch) Management System
+An Agency is a physical branch or operational hub. Each agency handles local logistics operations independently while reporting to Super Admin centrally.
+Example Agencies
+Nairobi HQ
+Mombasa Branch
+Eldoret Hub
+Kampala East
+Agency Data Structure
+Agency Responsibilities
+Handle local bookings and dispatch
+Manage warehouse operations in the branch
+Coordinate local driver pool
+Handle customer support queries
+Manage cash collections where applicable
+Multi-Agency Access Control
+Super Admin → controls all agencies Agency Admin → controls specific branch only
+32. 👨‍💼 Staff Management System
+Staff are internal users who operate within agencies. They are distinct from customer-facing users and have role-specific access to operational systems.
+Staff Roles
+Staff Data Structure
+33. 🔐 Role-Based Access Control (Advanced RBAC)
+Access Matrix
+34. 🧾 Operations Control System
+Manual booking override by authorized staff
+Driver reassignment without cancellation
+Order modification (route, stops, vehicle class)
+Force cancellation with reason logging
+Route control and redirection
+Bulk booking management for B2B clients
+Driver No-Show Handling:
+If driver does not arrive within SLA:
+Auto reassign new driver
+Notify customer
+Penalize driver if repeated
+Rules:
+System must track no-show frequency
+Impacts driver rating and incentives
+35. 💰 Accounting & Finance Control
+Managed By
+Accounts team staff
+Agency-level finance officers
+Super Admin (override)
+Features
+Invoice approval workflow with dual authorization
+Payment verification before service release
+B2B credit control with limit enforcement
+Expense tracking and categorization
+Daily/monthly reconciliation reports
+Cash collection tracking by agency
+Payment Reconciliation System:
+Auto-match payments with invoices using reference IDs
+Detect mismatches (amount / duplicate / missing)
+Support manual reconciliation override by Accounts team
+Sources:
+Bank payments
+Wallet payments
+Mobile money (M-Pesa)
+Rules:
+Unmatched payments must be flagged
+Reconciliation reports must be generated daily
+Cash Handling & Control System:
+All cash collections must be assigned to specific staff/agency
+Daily cash reconciliation required
+Cash deposit tracking (collection → deposit → verified)
+Rules:
+Cash mismatch alerts must be triggered
+No cash transaction without staff mapping
+Audit trail mandatory for all cash handling
+36. 📊 Customer Support System
+Ticket Lifecycle
+customer issue → ticket created → assigned to agent → in progress → resolved → closed
+Features
+Ticket categorization: delivery, payment, damage, missing
+Priority levels: low, medium, high, urgent
+SLA-based response timers per priority
+Escalation to supervisor on SLA breach
+Customer satisfaction rating on closure
+37. 📞 Customer Care Panel
+Support staff have access to a dedicated panel with limited read/write capabilities to assist customers efficiently.
+Staff Capabilities
+View full booking history and current status
+Track real-time shipment location
+Modify limited booking details (contact, instructions)
+Initiate refund requests for approval
+Log and escalate customer complaints
+Access customer communication history
+38. 🚨 Admin Control Dashboard
+Super Admin View
+All agencies, users, and operations globally
+System health monitoring and alerts
+Revenue analytics across all branches
+Driver and fleet performance overview
+Fraud detection alerts and flagged accounts
+Agency Admin View
+Branch operations and booking queue
+Local driver availability map
+Warehouse occupancy and inventory
+Branch payment reconciliation
+Staff performance metrics
+39. 🔔 Internal Alert System
+40. 🧠 Internal Audit System
+Every action performed by staff is logged with full context for accountability and compliance.
+Audit Log Structure
+who (staff_id) → did what (action) → on what (entity_id) → when (timestamp) → where (agency_id)
+Example Audit Events
+Staff X updated booking Y at 14:32 (Nairobi HQ)
+Manager A approved invoice B at 09:15 (Mombasa Branch)
+Driver reassigned from D1 to D2 by dispatcher Z
+Admin suspended user account ID 4521
+Audit Features
+Tamper-proof append-only log storage
+Searchable and filterable audit interface
+Export to CSV/PDF for compliance reporting
+Retention period: 7 years minimum
+41. 🏢 Multi-Agency Operations Flow
+Customer books → Nearest agency assigned → Warehouse/	 handled locally → Delivery completed → Reporting to HQ
+Cross-Agency Operations
+Shipments moving between agency zones are handed off with scan confirmation
+Inter-agency billing handled automatically
+Customer visibility maintained throughout agency handoffs
+Super Admin monitors all cross-agency movements
+42. 💼 Staff Login System
+Separate Login Portals
+Access Rules
+Staff cannot access customer app features
+Customers cannot access admin or staff panels
+Drivers have a separate driver-only mobile interface
+Session tokens are role-scoped and non-transferable
+43. 🎯 Implementation Status & Readiness
+44. ADVANCED OPERATIONS & CONTROL LAYER (MANDATORY)
+44.1 DRIVER SHIFT & ATTENDANCE SYSTEM
+Data Fields:
+shift_id
+driver_id
+shift_start_time
+shift_end_time
+total_hours
+trip_hours
+idle_hours
+attendance_status
+Rules:
+Driver must START SHIFT before going online
+No booking allowed without an active shift
+44.2 DRIVER PAYROLL ENGINE
+Capabilities:
+Trip-based earnings calculation
+Hourly / daily salary model
+Incentive calculation
+Penalty deduction
+Automated payout calculation engine
+44.3 FUEL MANAGEMENT SYSTEM
+Data Fields:
+vehicle_id
+trip_id
+fuel_expected
+fuel_actual
+fuel_cost
+variance
+Features:
+Fuel logs per trip
+Abnormal fuel usage alerts
+Fuel theft detection
+44.4 VEHICLE BREAKDOWN & RESCUE FLOW
+Flow:
+driver_report_issue → alert_agency → assign_backup_vehicle → load_transfer → trip_continue
+Features:
+Breakdown reporting option in driver app
+Automatic escalation to agency
+Backup vehicle/driver assignment
+44.5 RETURN (RTO) SYSTEM
+Lifecycle:
+delivery_failed → return_initiated → return_in_transit → warehouse_received → closed
+Applicable To:
+Courier
+PTL shipments
+Warehouse returns
+44.6 DAMAGE & CLAIM MANAGEMENT
+Features:
+Damage scan event
+Photo proof upload
+Claim request submission
+Approval workflow
+Insurance integration
+44.7 FRAUD DETECTION ENGINE
+Capabilities:
+GPS spoof detection
+Fake trip detection
+Abnormal route detection
+Duplicate booking detection
+44.8 DEMAND–SUPPLY ENGINE (SURGE PRICING)
+Logic:
+Demand vs supply ratio → surge multiplier
+Zone-based surge activation
+Peak-hour surge pricing
+44.9 DRIVER INCENTIVE & PENALTY SYSTEM
+Features:
+Peak-hour bonus
+Trip completion incentives
+Cancellation penalties
+Rating-based rewards
+44.10 OPERATIONS ESCALATION SYSTEM
+Escalation Flow:
+Level 1 → Level 2 → Manager → Super Admin
+Includes:
+SLA timers
+Automatic escalation
+44.11 SYSTEM HEALTH MONITORING
+Monitoring Includes:
+API failure alerts
+Database performance monitoring
+Queue failure alerts
+System uptime monitoring
+44.12 DATA RECONCILIATION SYSTEM
+Reconciliation Types:
+Invoice vs payment reconciliation
+Shipment vs scan reconciliation
+Warehouse vs inventory reconciliation
+44.13 AUDIT LOCK SYSTEM
+Control:
+is_locked = true
+Applies To:
+Invoices
+Waybills
+LR documents
+Rule:
+Once locked → cannot be edited
+44.14 ADMIN ACTION CONTROL SYSTEM
+High-Risk Actions:
+Refunds above threshold
+Manual booking cancellation after dispatch
+Driver payout override
+Invoice modification
+Wallet balance adjustments
+Approval Workflow:
+Action initiated
+Marked as “Approval Required”
+Sent to Manager / Super Admin
+Approved / Rejected
+Executed only after approval
+Control Rules:
+Dual approval for financial operations
+All actions logged with user, time, reason
+Alerts for suspicious actions
+Role-based restrictions
+Audit Requirement:
+All actions must be logged and immutable
+44.15 SESSION & ACCESS CONTROL SYSTEM
+Session Management:
+Auto logout after inactivity
+Secure session tokens
+Forced logout by Super Admin
+Optional single-device login
+Session invalidation after password change
+Access Control:
+Device tracking
+IP tracking and login history
+Suspicious login detection
+OTP verification for unusual activity
+Security Rules:
+Account lock after multiple failed attempts
+Role-based session limits
+Re-authentication for critical actions
+Audit & Monitoring:
+Log all login/logout activity
+Track user ID, IP, device, timestamp
+Alerts for suspicious behavior
+44.16 STAFF PERFORMANCE & PRODUCTIVITY SYSTEM
+Performance Metrics:
+Bookings processed
+Tickets handled
+Average response time
+Resolution time
+Error rate
+Escalations triggered
+Operational Tracking:
+Active session tracking
+Idle time monitoring
+Workload distribution
+Agency performance comparison
+Dashboard:
+Individual staff performance
+Agency-level reports
+Daily / weekly / monthly analytics
+Ranking system
+Alerts:
+High error rate alerts
+Low productivity alerts
+Manager notifications
+44.17 ROUTE OPTIMIZATION ENGINE
+Core Capabilities:
+Shortest path calculation
+Traffic-aware routing
+Multi-stop optimization
+Fuel-efficient routing
+Advanced Features:
+Dynamic route recalculation
+Priority-based routing
+Zone clustering
+Route deviation alerts
+Performance Requirement:
+< 2 seconds route calculation
+High-volume route support
+44.18 CAPACITY PLANNING ENGINE
+Capabilities:
+Warehouse capacity tracking
+Fleet availability tracking
+Booking vs capacity monitoring
+Forecasting:
+Demand prediction
+Warehouse occupancy trends
+Fleet requirement forecasting
+Controls:
+Prevent overbooking
+Capacity alerts
+Auto-suggest alternatives
+44.19 CUSTOMER SELF-SERVICE SYSTEM
+Features:
+Real-time shipment tracking
+Invoice & receipt download
+Payment history
+Address management
+Profile updates
+Support:
+Raise tickets
+Track status
+Upload documents
+B2B Features:
+Outstanding invoices
+Credit usage
+Account statements
+44.20 MARKETPLACE / AGGREGATOR MODE
+Capabilities:
+Third-party transporter onboarding
+Warehouse partner onboarding
+Verification & approval system
+Operations:
+Booking acceptance by partners
+Service availability by location
+Pricing:
+Fixed pricing
+Bidding system
+Rate negotiation
+Control:
+Performance monitoring
+Suspension capability
+Policy enforcement
+Revenue Model:
+Commission per transaction
+Service fees
+Premium listings
+44.21 DRIVER DEMAND HEATMAP SYSTEM
+Objective:
+Provide real-time visibility of high-demand zones to optimize driver distribution and reduce idle time.
+Core Features:
+- Real-time heatmap showing high-demand areas based on active bookings
+- Zone-wise demand intensity visualization (low, medium, high)
+- Driver guidance to move toward high-demand zones
+Data Inputs:
+- Active booking requests
+- Available driver count per zone
+- Historical demand patterns
+- Time-based demand trends (peak hours)
+Driver App Integration:
+- Heatmap visible in driver application
+- Suggested “move-to” zones for higher earning potential
+- Optional navigation assistance to high-demand areas
+Admin Controls:
+- Ability to define zones manually or auto-generated via clustering
+- Configure demand thresholds for heat levels
+- Override system suggestions if required
+Rules:
+- Heatmap must update in near real-time
+- Suggestions must not override active assignments
+- System should avoid overcrowding of drivers in one zone
+Benefits:
+- Improved driver earnings
+- Reduced customer wait time
+- Better supply-demand balance across regions
+45. API DESIGN
+All platform functionalities must be exposed via REST APIs.
+Core API Modules:
+Authentication APIs (login, OTP, session)
+Booking APIs (create, update, cancel, track)
+Driver APIs (status, jobs, earnings)
+Payment APIs (initiate, verify, refund)
+Warehouse APIs (inventory, scan, dispatch)
+Admin APIs (users, reports, control)
+API Standards:
+JSON request/response format
+Secure via JWT authentication
+Rate-limited endpoints
+Versioned APIs (/v1, /v2)
+Error Handling:
+Standard HTTP status codes
+Structured error responses
+46. CORE DATA MODELS
+Primary Entities:
+User
+- id, role, status, contact details
+Booking
+- id, customer_id, status, route, price
+Driver
+- id, status, rating, vehicle_id
+Vehicle
+- id, type, capacity, status
+Warehouse
+- id, location, capacity
+Parcel
+- id, owner_id, status, location
+Invoice
+- id, booking_id, amount, status
+Payment
+- id, method, status, reference
+Wallet
+- id, user_id, balance
+47. INFRASTRUCTURE & SCALING
+Multi-region deployment (Africa coverage)
+Load balancing across services
+Auto-scaling based on demand
+CDN for static assets
+Failover and redundancy systems
+Reliability Targets:
+High availability (99.9%+)
+Disaster recovery readiness
+48. REVENUE MODEL
+Revenue Streams:
+Commission per booking (FTL/PTL/Courier)
+Warehouse storage fees
+B2B subscription plans
+Transaction/service fees
+Premium partner listings
+Additional:
+Value-added services (insurance, priority delivery)
+49. GO-TO-MARKET STRATEGY
+Launch Strategy:
+Initial launch in Nairobi
+Expand to Mombasa, Eldoret, Kampala
+Growth Channels:
+Existing 400+ customer base
+Agent network activation
+Transporter onboarding
+Warehouse partnerships
+Focus:
+B2B logistics clients
+High-frequency users
+50. PARTNER ONBOARDING & GROWTH SYSTEM
+To scale supply (drivers, transporters, warehouses), the platform must include structured onboarding pipelines.
+Driver Onboarding:
+- Assisted onboarding via agents
+- Referral system (driver invites driver)
+- Incentive-based joining bonuses
+Transporter Onboarding:
+- Bulk fleet onboarding
+- Contract-based onboarding for logistics companies
+- Dedicated onboarding dashboard
+Warehouse Onboarding:
+- Self-registration + verification
+- Capacity and service listing
+Growth Features:
+- Referral rewards system
+- Regional onboarding campaigns
+- Agent-based acquisition model
+Tracking:
+- Onboarding funnel analytics (registered → verified → active)
+FINAL VERDICT
+Enterprise-Grade Logistics + ERP + Warehouse Platform
+Africa-Scale Ready  •  Investor-Ready  •  Production-Ready
+
+[TABLE]
+Role | Description | Primary Access
+Customer | End-user booking shipments | Booking, Tracking, Payment
+Driver | Assigned delivery agent | Jobs, GPS, Delivery
+Transporter | Fleet owner / operator | Fleet, Vehicles, Earnings
+Warehouse Partner | Storage facility operator | Inventory, Billing
+Agency Staff | Branch operations team | Ops, Support, Finance
+Admin | System-level administrator | All modules
+Super Admin | Global platform control | Unrestricted
+Corporate (B2B) | Enterprise client account | Booking, Invoicing, Reports
+
+[TABLE]
+Factor | Weight | Description
+Distance to pickup | High | Nearest available driver preferred
+Availability status | Critical | Must be online & unassigned
+Driver rating | Medium | Minimum threshold enforced
+Acceptance rate | Medium | Low-acceptance drivers deprioritized
+
+[TABLE]
+Checkpoint | Scan Type | Action
+Pickup | QR / Barcode | Item registered, trip started
+Warehouse Entry | QR / Barcode | Stock received, location assigned
+Storage | Bin barcode | Item placed, bin updated
+Dispatch | QR / Barcode | Stock released, trip created
+Delivery | QR / Barcode | Delivery confirmed, proof captured
+
+[TABLE]
+Document Type | Service | Description
+LR (Lorry Receipt) | FTL | Full truck load consignment document
+Waybill | PTL / Courier | Partial/courier shipment document
+
+[TABLE]
+Type | Trigger | Recipients
+Transport Invoice | Trip completion | Customer, B2B Client
+Warehouse Invoice | Storage period end | Warehouse client
+Courier Invoice | Delivery confirmation | Customer
+Combined Invoice | Multi-service order | Corporate client
+
+[TABLE]
+Rate Type | Formula | Applies To
+Per KM Rate | distance × per_km_rate | All vehicles
+Base Fare | Fixed starting charge | Courier, Motorbike
+Vehicle-Based Pricing | rate by vehicle class | FTL, PTL
+Zone Pricing | origin/destination zones | Inter-city, Cross-border
+Warehouse Rate | space × days × rate | Storage services
+
+[TABLE]
+Feature | Description
+Offline Mode | Core flows work without connectivity, sync on reconnect
+Retry Logic | Exponential backoff for failed API calls
+Multi-Currency | KES, UGX, TZS, NGN, GHS, ZAR and more
+Multi-Language | Swahili, English, French, Amharic and more
+USSD Support | Fallback for feature phones
+Low-Bandwidth UI | Compressed assets, lazy loading
+
+[TABLE]
+Module | Key Metrics
+Revenue | Daily/monthly revenue, by service, by agency
+Driver Performance | Completion rate, rating, on-time %, acceptance rate
+Delivery Success | On-time delivery %, SLA adherence, failed deliveries
+Warehouse | Utilization %, dwell time, turnover rate
+Customer | Repeat rate, NPS, complaint frequency
+
+[TABLE]
+Layer | Technology
+Backend Framework | NestJS (TypeScript)
+ORM / DB Layer | Prisma + PostgreSQL + PostGIS
+Queue System | BullMQ (Redis-backed)
+Real-Time | WebSockets (Socket.io)
+File Storage | Cloudflare R2
+Cache | Redis (session, rate limit, queues)
+Deployment | Render (staging) → AWS (production)
+CDN | Cloudflare
+
+[TABLE]
+Field | Type | Description
+agency_id | UUID | Unique branch identifier
+agency_name | String | Display name of branch
+Location | lat/lng | PostGIS geographic point
+Address | String | Physical street address
+manager_id | UUID | Assigned agency manager
+Status | Enum | active | suspended | inactive
+
+[TABLE]
+Role | Function | Key Permissions
+Operations Staff | Booking & dispatch control | Manage bookings, assign drivers
+Accounts Team | Billing & payment management | Approve invoices, reconcile payments
+Customer Support | Customer query resolution | View bookings, contact customers
+Warehouse Staff | Inventory handling | Scan, store, dispatch parcels
+Dispatch Manager | Driver and route coordination | Reassign drivers, override routes
+Agency Manager | Branch-level overall control | All agency permissions
+
+[TABLE]
+Field | Type | Description
+staff_id | UUID | Unique staff identifier
+Name | String | Full name
+Email | String | Work email address
+Phone | String | Work phone number
+Role | Enum | Assigned staff role
+agency_id | UUID | Home branch assignment
+Permissions | JSON | Granular permission set
+Status | Enum | active | suspended | inactive
+
+[TABLE]
+Module | Super Admin | Admin | Agency Admin | Accounts | Operations | Support | Warehouse
+All Bookings | ✅ Full | ✅ Full | Agency only | View only | Agency only | View only | ❌
+Payments | ✅ Full | ✅ Full | Agency only | ✅ Full | ❌ | ❌ | ❌
+Warehouse | ✅ Full | ✅ Full | Agency only | ❌ | View only | ❌ | ✅ Full
+Reports | ✅ Full | ✅ Full | Agency only | Financial | Ops only | ❌ | WH only
+User Mgmt | ✅ Full | ✅ Full | Agency staff | ❌ | ❌ | ❌ | ❌
+Driver Mgmt | ✅ Full | ✅ Full | Agency only | ❌ | ✅ Full | ❌ | ❌
+System Config | ✅ Full | ✅ Full | ❌ | ❌ | ❌ | ❌ | ❌
+
+[TABLE]
+Alert Type | Trigger | Recipients
+Missing Parcel | Item not scanned within SLA window | Warehouse, Agency Manager
+Payment Failure | Transaction declined or reversed | Accounts, Agency Manager
+Delayed Delivery | Trip exceeds SLA timeline | Operations, Support
+Fraud Detection | Location spoof or ghost trip detected | Super Admin, Agency Admin
+Low Capacity | Warehouse occupancy > 90% | Warehouse Manager
+Driver Offline | Active trip driver goes offline | Dispatch Manager
+
+[TABLE]
+Portal | URL | Audience
+Admin Panel | /admin | Super Admin, Admin
+Staff Portal | /staff | Agency Staff, Managers
+Customer App | /app | Customers, Drivers
+
+[TABLE]
+Domain | Status | Coverage
+Logistics (FTL/PTL/Courier) | ✅ Complete | 100%
+Warehouse Management | ✅ Complete | 100%
+Billing & Invoicing | ✅ Complete | 100%
+Real-Time Tracking | ✅ Complete | 100%
+Admin & Operations | ✅ Complete | 100%
+Agency Management | ✅ Complete | 100%
+Staff & RBAC | ✅ Complete | 100%
+Africa-Scale Features | ✅ Complete | 100%
+Security & Compliance | ✅ Complete | 100%
+Analytics & Reporting | ✅ Complete | 100%
