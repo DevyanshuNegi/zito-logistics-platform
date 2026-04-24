@@ -12,6 +12,7 @@ const SCAN_TYPES = {
   STORAGE: 'storage',
   DISPATCH: 'dispatch',
   DELIVERY: 'delivery',
+  RETURN_RECEIVE: 'return_receive',
 };
 
 /**
@@ -38,12 +39,13 @@ const validateAndProcessScan = async (params) => {
   // PRD §11 & §12: Parcel States & Scan points
   // received → stored → sorted → dispatched → delivered
 
-  if ([SCAN_TYPES.WH_ENTRY, SCAN_TYPES.STORAGE, SCAN_TYPES.DISPATCH].includes(scanType)) {
+  if ([SCAN_TYPES.WH_ENTRY, SCAN_TYPES.STORAGE, SCAN_TYPES.DISPATCH, SCAN_TYPES.RETURN_RECEIVE].includes(scanType)) {
     if (parcel) {
       const parcelStatusMap = {
         [SCAN_TYPES.WH_ENTRY]: 'received',
         [SCAN_TYPES.STORAGE]: 'stored',
         [SCAN_TYPES.DISPATCH]: 'dispatched',
+        [SCAN_TYPES.RETURN_RECEIVE]: 'warehouse_received',
       };
 
       // PRD §12.2 Enforcement: Cannot dispatch parcel without Waybill linkage
@@ -93,6 +95,19 @@ const validateAndProcessScan = async (params) => {
       });
       // If only validating parcel scan without booking context, return early
       if (!bookingId) return { success: true, timestamp, entity: updatedEntity };
+    }
+
+    // PRD §44.5 — Handle return scan logic for bookings
+    if (scanType === SCAN_TYPES.RETURN_RECEIVE && bookingId) {
+      const currentBooking = await prisma.booking.findUnique({ where: { id: bookingId } });
+      updatedEntity = await prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: 'warehouse_received',
+          specialInstructions: `${currentBooking.specialInstructions || ''}\n[SCAN] Received back at warehouse: ${timestamp.toISOString()}`
+        }
+      });
+      return { success: true, timestamp, entity: updatedEntity };
     }
 
     if (!bookingId) throw new Error('Booking ID is required for transport scan points');

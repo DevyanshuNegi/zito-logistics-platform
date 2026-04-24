@@ -103,7 +103,7 @@ export class UsersService {
 
     if (!existing) throw new NotFoundException('User not found');
 
-    const isAdmin = performingUser?.roles?.some(r =>
+    const isAdmin = performingUser?.roles?.some((r: any) =>
       ['super_admin', 'operations_admin', 'finance_admin'].includes(r),
     );
 

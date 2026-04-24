@@ -32,7 +32,11 @@ export class AuditService {
         },
       });
     } catch (error) {
-      console.error('CRITICAL: Audit log failed to write:', error.message);
+      if (error instanceof Error) {
+        console.error('CRITICAL: Audit log failed to write:', error.message);
+      } else {
+        console.error('CRITICAL: Audit log failed to write:', error);
+      }
     }
   }
 }

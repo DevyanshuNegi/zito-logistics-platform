@@ -325,6 +325,42 @@ exports.reportBreakdown = async (req, res) => {
   }
 };
 
+/**
+ * PRD §44.5 — Return (RTO) System Lifecycle
+ * Initiated when a delivery attempt fails.
+ */
+exports.reportDeliveryFailure = async (req, res) => {
+  try {
+    const { booking_id, reason, note } = req.body;
+    if (!booking_id || !reason) return error(res, 'VALIDATION_ERROR', 'booking_id and reason are required', 422);
+
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } });
+    const booking = await prisma.booking.findUnique({ where: { id: booking_id } });
+
+    if (!booking || booking.assignedDriverId !== driver.id) {
+      return error(res, 'NOT_FOUND', 'Active trip not found', 404);
+    }
+
+    // Transition to return_initiated stage
+    const updated = await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: 'return_initiated',
+        rejectionReason: reason,
+        specialInstructions: `${booking.specialInstructions || ''}\n[DELIVERY_FAILED] Reason: ${reason}. Note: ${note || 'No additional details'}`
+      }
+    });
+
+    if (req.auditLog) {
+      await req.auditLog('RTO_INITIATED', { booking_id: booking.id, reason, driver_id: driver.id });
+    }
+
+    return success(res, { booking: updated }, 'Delivery failure reported. Return process initiated.');
+  } catch (err) {
+    return error(res, 'SERVER_ERROR', err.message, 500);
+  }
+};
+
 // PRD §6 — Status lifecycle
 exports.updateTripStatus = async (req, res) => {
   try {
@@ -358,12 +394,15 @@ exports.updateTripStatus = async (req, res) => {
       return error(res, 'OTP_REQUIRED', 'Consignee OTP verification required for high-value cargo', 403);
     }
 
-    // PRD §6 — valid transitions
+    // PRD §6 & §44.5 — valid transitions including RTO lifecycle
     const transitions = {
       accepted:   ['picked_up'],
       picked_up:  ['in_transit'],
-      in_transit: ['arrived_at_destination'],
-      arrived_at_destination: ['delivered'],
+      in_transit: ['arrived_at_destination', 'return_initiated'],
+      arrived_at_destination: ['delivered', 'return_initiated'],
+      return_initiated: ['return_in_transit'],
+      return_in_transit: ['warehouse_received'],
+      warehouse_received: ['closed'],
       delivered:  ['completed'],
     };
 
