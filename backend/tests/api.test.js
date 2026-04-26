@@ -21,13 +21,15 @@ const API_BASE = '/api/v1';
 // Helper: Create test user
 async function createTestUser(role, email, password = 'Test123!') {
   const user = await prisma.user.create({
-    full_name: `Test ${role}`,
-    email,
-    phone: `+254700${Math.floor(Math.random() * 999999)}`,
-    password_hash: password,
-    role,
-    compliance_status: 'approved',
-    is_active: true
+    data: {
+      full_name: `Test ${role}`,
+      email,
+      phone: `+254700${Math.floor(Math.random() * 999999)}`,
+      password_hash: password,
+      role,
+      compliance_status: 'approved',
+      is_active: true
+    }
   });
   return user;
 }
@@ -63,8 +65,9 @@ describe('ZITO API regression smoke tests', () => {
 
   afterAll(async () => {
     // Cleanup test data
-    await Booking.destroy({ where: {}, force: true });
-    await prisma.user.deleteMany({ where: { email: { [require('sequelize').Op.like]: '%@test.com' } }, force: true });
+    await prisma.booking.deleteMany({});
+    await prisma.user.deleteMany({ where: { email: { contains: '@test.com' } } });
+    await prisma.$disconnect();
   });
 
   // ==================== 1. HEALTH & AUTH ====================
@@ -109,11 +112,21 @@ describe('ZITO API regression smoke tests', () => {
       expect(res.status).toBe(200);
     });
 
-    test('driver lands on /portal/driver', async () => {
+    test('driver lands on /portal/driver and starts shift (PRD §44.1)', async () => {
+      // Check dashboard
       const res = await request(app)
         .get(`${API_BASE}/driver/dashboard`)
         .set('Authorization', `Bearer ${authTokens.driver}`);
       expect(res.status).toBe(200);
+
+      // Start mandatory shift before online toggle
+      const shiftRes = await request(app)
+        .post(`${API_BASE}/drivers/shift/start`)
+        .set('Authorization', `Bearer ${authTokens.driver}`)
+        .send({ attendance_status: 'present' });
+      
+      expect([200, 201]).toContain(shiftRes.status);
+      expect(shiftRes.body.data).toHaveProperty('shift_id');
     });
 
     test('agent lands on /portal/agent', async () => {
@@ -261,6 +274,15 @@ describe('ZITO API regression smoke tests', () => {
         .set('Authorization', `Bearer ${authTokens.driver}`);
       
       expect([200, 201]).toContain(res.status);
+    });
+
+    test('GET /drivers/payroll - Driver earnings (PRD §44.2)', async () => {
+      const res = await request(app)
+        .get(`${API_BASE}/drivers/payroll`)
+        .set('Authorization', `Bearer ${authTokens.driver}`);
+      
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveProperty('trip_earnings');
     });
   });
 

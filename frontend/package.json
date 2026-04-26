@@ -3,7 +3,6 @@
   "private": true,
   "version": "8.0.0",
   "description": "ZITO Platform — Web Portal (Next.js 14)",
-  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

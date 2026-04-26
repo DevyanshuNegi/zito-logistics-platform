@@ -17,10 +17,11 @@ Stale top-level repo references to older PRD versions have been updated to point
 
 ## Repo Areas Already Carrying This PRD Forward
 - Backend APIs: auth, OTP, users, bookings, booking offers, compliance, contracts, payments, admin ops, help, complaints, agency, transporter, and vehicle flows.
+- Logistics Modules: LR/Waybill (PRD §14), Warehouse (PRD §10) with Controller, and Inventory (PRD §11).
 - Frontend portals: bookings, compliance, contracts, driver/transporter/customer views, payments, reports, audit log, complaints, notifications, and settings.
 - Mobile flows: auth, customer booking/history/tracking, driver trips/earnings/SOS, and transporter dashboard/fleet/bookings/finance.
 
 ## Follow-up Audit Hotspots
-- No obvious dedicated end-to-end modules were found yet for warehouse operations, inventory control, barcode/scan workflows, LR/waybill handling, or loss-detection flows beyond supporting schema/data-model pieces.
+- No obvious dedicated end-to-end modules were found yet for loss-detection flows beyond supporting schema/data-model pieces.
 - Expanded back-office areas in the new PRD such as staff management, internal alerts, customer care, retention/engagement, fuel/payroll/attendance, and partner onboarding should be reviewed as separate implementation workstreams.
 - Keep executable engineering tests for safety, but do not use old PRD versions as the functional source of truth anymore.
