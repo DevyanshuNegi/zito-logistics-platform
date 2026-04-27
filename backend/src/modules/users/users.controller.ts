@@ -8,11 +8,12 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiQuery } from '@ne
 import { UserRole } from '@prisma/client';
 
 import { UsersService } from './users.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+// PRD §33 — Guards live in modules/auth/guards/ per file structure
+import { JwtAuthGuard }  from '../auth/guards/jwt-auth.guard';
+import { RolesGuard }    from '../auth/guards/roles.guard';
+import { Roles }         from '../auth/decorators/roles.decorator';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UploadKycDto } from './dto/upload-kyc.dto';
+import { UploadKycDto }  from './dto/upload-kyc.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
 // PRD §4 — Inline Multer type (avoids @types/multer dependency)
@@ -39,14 +40,14 @@ export class UsersController {
     return this.usersService.findOne(req.user.id);
   }
 
-  // PRD §4 — Update own profile fields (name, email, phone)
+  // PRD §4 — Update own profile (fullName, email, phone); role/status locked
   @Patch('me')
   @ApiOperation({ summary: 'Update own profile (PRD §4)' })
   updateProfile(@Req() req: any, @Body() dto: UpdateUserDto) {
     return this.usersService.update(req.user.id, dto);
   }
 
-  // PRD §4 — Upload KYC document; sets compliance status to PENDING
+  // PRD §4 — Upload KYC; sets account status to VERIFIED after upload
   @Post('me/kyc')
   @ApiOperation({ summary: 'Upload KYC document (PRD §4)' })
   @ApiConsumes('multipart/form-data')
@@ -68,7 +69,7 @@ export class UsersController {
 
   // ─── ADMIN — User Management (PRD §42) ────────────────────────────────────
 
-  // PRD §42 — List users: ADMIN sees all, AGENCY_STAFF sees their agency only
+  // PRD §42 — AGENCY_STAFF scoped to own agency; ADMIN sees all
   @Get()
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.AGENCY_STAFF)
@@ -93,7 +94,7 @@ export class UsersController {
     });
   }
 
-  // PRD §42 — Get a specific user by ID (ADMIN/SUPER_ADMIN only)
+  // PRD §42 — Get specific user by ID
   @Get(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -102,7 +103,7 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
-  // PRD §42 — Admin update any user profile (not role — use /role endpoint)
+  // PRD §42 — Admin update any user profile
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -111,7 +112,7 @@ export class UsersController {
     return this.usersService.update(id, dto);
   }
 
-  // PRD §2 — SUPER_ADMIN only: change user role (high-risk operation)
+  // PRD §2 — SUPER_ADMIN only: change role
   @Patch(':id/role')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
@@ -120,7 +121,7 @@ export class UsersController {
     return this.usersService.updateRole(id, dto.role);
   }
 
-  // PRD §3 — Activate user after KYC approval
+  // PRD §3 — Activate account after KYC approval
   @Patch(':id/activate')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -129,7 +130,7 @@ export class UsersController {
     return this.usersService.setStatus(id, 'ACTIVE' as any);
   }
 
-  // PRD §3 — Suspend user; blocks login and all platform activity immediately
+  // PRD §3 — Suspend account; blocks login immediately
   @Patch(':id/suspend')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -138,7 +139,7 @@ export class UsersController {
     return this.usersService.setStatus(id, 'SUSPENDED' as any);
   }
 
-  // PRD §4 — Admin view user KYC documents for verification
+  // PRD §4 — Admin view user KYC documents
   @Get(':id/kyc')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -147,7 +148,7 @@ export class UsersController {
     return this.usersService.getKycDocuments(id);
   }
 
-  // PRD §4 — Admin approve or reject a specific KYC document
+  // PRD §4 — Admin approve or reject a KYC document
   @Patch(':id/kyc/:documentId/verify')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)

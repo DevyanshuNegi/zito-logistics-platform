@@ -1,31 +1,54 @@
-import { Controller, Post, Body, Get, Param, Patch, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Patch,
+  Param,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { SupportService } from './support.service';
+import { CreateTicketDto } from './dto/create-ticket.dto';
+import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('support')
+@UseGuards(JwtAuthGuard)
 export class SupportController {
   constructor(private readonly supportService: SupportService) {}
 
+  // CREATE
   @Post()
-  create(@Body() createTicketDto: any, @Req() req: any) {
-    const user = req.user;
-    createTicketDto.customerId = user.id; // ensure correct name
-    return this.supportService.create(createTicketDto);
+  create(@Req() req: any, @Body() dto: CreateTicketDto) {
+    return this.supportService.create(req.user.id, dto);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'SUPPORT_STAFF')
+  // CUSTOMER VIEW
+  @Get('my')
+  getMy(@Req() req: any) {
+    return this.supportService.findMyTickets(req.user.id);
+  }
+
+  // ADMIN VIEW
   @Get()
-  findAll() {
+  getAll() {
     return this.supportService.findAll();
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'SUPPORT_STAFF')
-  @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: string) {
-    return this.supportService.resolveTicket(id);
+  // ASSIGN
+  @Patch(':id/assign')
+  assign(@Param('id') id: string, @Req() req: any) {
+    return this.supportService.assign(id, req.user.id);
+  }
+
+  // UPDATE STATUS
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTicketDto,
+    @Req() req: any,
+  ) {
+    return this.supportService.update(id, dto);
   }
 }
-

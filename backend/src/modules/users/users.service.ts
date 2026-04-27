@@ -1,12 +1,15 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserRole, AccountStatus } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
-export class UploadKycDto {
-  documentType: string;
-}
+import { UploadKycDto } from './dto/upload-kyc.dto';
 
-// PRD §4 — Inline Multer file type (avoids @types/multer dependency)
+// PRD §4 — Inline Multer type (avoids @types/multer dependency)
 interface MulterFile {
   originalname: string;
   mimetype: string;
@@ -14,7 +17,7 @@ interface MulterFile {
   buffer: Buffer;
 }
 
-// PRD §42 — Filter options for admin user listing
+// PRD §42 — Admin user list filter options
 interface FindAllOptions {
   page: number;
   limit: number;
@@ -23,18 +26,33 @@ interface FindAllOptions {
   agencyId?: string;
 }
 
+// PRD §4 — KYC document types required per role
+export const KYC_REQUIRED_DOCS: Record<string, string[]> = {
+  CUSTOMER:          ['NATIONAL_ID'],
+  DRIVER:            ['NATIONAL_ID', 'DRIVERS_LICENSE'],
+  TRANSPORTER:       ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
+  CORPORATE:         ['NATIONAL_ID', 'BUSINESS_REG'],
+  WAREHOUSE_PARTNER: ['NATIONAL_ID', 'BUSINESS_REG'],
+};
+
+// PRD §4 — Compliance: alert 15 days before expiry
+const EXPIRY_ALERT_DAYS = 15;
+const MAX_FILE_SIZE     = 5 * 1024 * 1024;
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   // ─── FIND ONE ─────────────────────────────────────────────────────────────
 
-  // PRD §4 — Get user profile and account status
+  // PRD §4 — Get profile + account status (used by pending-approval screen)
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
         id:        true,
+        fullName:  true,
         email:     true,
         phone:     true,
         role:      true,
@@ -50,10 +68,9 @@ export class UsersService {
 
   // ─── FIND ALL ─────────────────────────────────────────────────────────────
 
-  // PRD §42 — Admin list users with pagination, role, status, agency filters
+  // PRD §42 — Admin list: paginated, filterable by role, status, agency
   async findAll({ page, limit, role, status, agencyId }: FindAllOptions) {
-    const skip = (page - 1) * limit;
-
+    const skip  = (page - 1) * limit;
     const where: any = {};
     if (role)     where.role     = role;
     if (status)   where.status   = status;
@@ -67,6 +84,7 @@ export class UsersService {
         orderBy: { createdAt: 'desc' },
         select: {
           id:        true,
+          fullName:  true,
           email:     true,
           phone:     true,
           role:      true,
@@ -80,80 +98,74 @@ export class UsersService {
 
     return {
       data,
-      meta: {
-        total,
-        page,
-        limit,
-        lastPage: Math.ceil(total / limit),
-      },
+      meta: { total, page, limit, lastPage: Math.ceil(total / limit) },
     };
   }
 
   // ─── UPDATE PROFILE ───────────────────────────────────────────────────────
 
-  // PRD §4 — Update own profile (name, email, phone — locked: role, status)
+  // PRD §4 — Only fullName, email, phone are user-editable; role/status locked
   async update(id: string, dto: UpdateUserDto) {
-    await this.findOne(id); // ensure exists
+    await this.findOne(id);
     return this.prisma.user.update({
       where: { id },
       data: {
-        ...(dto.email && { email: dto.email.toLowerCase().trim() }),
-        ...(dto.phone && { phone: dto.phone.trim() }),
+        
+        ...(dto.email    && { email: dto.email.toLowerCase().trim() }),
+        ...(dto.phone    && { phone: dto.phone.trim() }),
       },
     });
   }
 
   // ─── ROLE ─────────────────────────────────────────────────────────────────
 
-  // PRD §2 — SUPER_ADMIN only: change a user's role
+  // PRD §2 — SUPER_ADMIN only: change user role
   async updateRole(id: string, role: UserRole) {
     await this.findOne(id);
-    return this.prisma.user.update({
-      where: { id },
-      data: { role },
-    });
+    return this.prisma.user.update({ where: { id }, data: { role } });
   }
 
   // ─── STATUS ───────────────────────────────────────────────────────────────
 
-  // PRD §3 — Account lifecycle: ACTIVE, SUSPENDED, REJECTED, PENDING
+  // PRD §3 — Account lifecycle: pending → verified → active → suspended → rejected
   async setStatus(id: string, status: AccountStatus) {
     await this.findOne(id);
-    return this.prisma.user.update({
-      where: { id },
-      data: { status },
-    });
+    return this.prisma.user.update({ where: { id }, data: { status } });
   }
 
   // ─── KYC ──────────────────────────────────────────────────────────────────
 
-  // PRD §4 — Upload KYC document; sets compliance status to PENDING
+  // PRD §4 — Upload KYC document; sets status to VERIFIED after upload
+  // Schema field: `type` (not documentType)
   async uploadKycDocument(userId: string, file: MulterFile, dto: UploadKycDto) {
     await this.findOne(userId);
 
-    // PRD §4 — Validate file type
-    const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new ForbiddenException('Invalid file type. Allowed: JPEG, PNG, PDF');
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Invalid file type. Allowed: JPEG, PNG, PDF');
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      throw new BadRequestException('File too large. Maximum size is 5MB');
     }
 
-    // PRD §4 — Max file size: 5MB
-    const MAX_SIZE = 5 * 1024 * 1024;
-    if (file.size > MAX_SIZE) {
-      throw new ForbiddenException('File too large. Maximum size is 5MB');
-    }
-
-    // Store file reference — actual upload to S3/cloud handled by storage service
     const fileUrl = `kyc/${userId}/${dto.documentType}/${Date.now()}_${file.originalname}`;
 
-    return this.prisma.kycDocument.create({
+    const doc = await this.prisma.kycDocument.create({
       data: {
         userId,
-        type: dto.documentType,
+        type:       dto.documentType,   // schema field is `type`
         fileUrl,
-        status:       'PENDING',
+        expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+        status:     'PENDING',
       },
     });
+
+    // PRD §3 — Set user to VERIFIED after first document upload
+    await this.prisma.user.update({
+      where: { id: userId },
+      data:  { status: AccountStatus.VERIFIED },
+    });
+
+    return doc;
   }
 
   // PRD §4 — Get all KYC documents for a user
@@ -177,24 +189,59 @@ export class UsersService {
     });
     if (!doc) throw new NotFoundException('KYC document not found');
 
+    // Schema has: status, verifiedAt, verifiedBy — no rejectionReason field
     const updated = await this.prisma.kycDocument.update({
       where: { id: documentId },
       data: {
         status,
         verifiedAt: status === 'APPROVED' ? new Date() : null,
+        // verifiedBy: set to reviewer ID if needed — pass via params
       },
     });
 
-    // PRD §3 — If all docs approved, activate user account
+    // PRD §4 — If all required docs approved → activate account
     if (status === 'APPROVED') {
-      const pendingDocs = await this.prisma.kycDocument.count({
-        where: { userId, status: { not: 'APPROVED' } },
+      const user        = await this.prisma.user.findUnique({ where: { id: userId } });
+      const requiredDocs = KYC_REQUIRED_DOCS[user?.role ?? ''] ?? ['NATIONAL_ID'];
+      const approvedDocs = await this.prisma.kycDocument.findMany({
+        where:  { userId, status: 'APPROVED' },
+        select: { type: true },               // schema field is `type`
       });
-      if (pendingDocs === 0) {
+      const approvedTypes = approvedDocs.map((d) => d.type);
+      const allApproved   = requiredDocs.every((r) => approvedTypes.includes(r));
+      if (allApproved) {
         await this.setStatus(userId, AccountStatus.ACTIVE);
       }
     }
 
     return updated;
+  }
+
+  // PRD §4 — Compliance: auto-suspend expired docs (drivers/transporters)
+  async checkExpiringDocuments(): Promise<void> {
+    const alertDate = new Date();
+    alertDate.setDate(alertDate.getDate() + EXPIRY_ALERT_DAYS);
+
+    // PRD §4 — Expired docs → auto suspend driver/transporter
+    const expiredDocs = await this.prisma.kycDocument.findMany({
+      where: {
+        status:     'APPROVED',
+        expiryDate: { lte: new Date() },
+      },
+      include: { user: { select: { id: true, role: true } } },
+    });
+
+    for (const doc of expiredDocs) {
+      if (
+        doc.user.role === UserRole.DRIVER ||
+        doc.user.role === UserRole.TRANSPORTER
+      ) {
+        await this.setStatus(doc.user.id, AccountStatus.SUSPENDED);
+        await this.prisma.kycDocument.update({
+          where: { id: doc.id },
+          data:  { status: 'EXPIRED' },
+        });
+      }
+    }
   }
 }

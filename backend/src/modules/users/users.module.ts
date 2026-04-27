@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
-import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
-import { PrismaService } from '../../prisma/prisma.service';
-import { AuthModule } from '../auth/auth.module';
+import { UsersService }    from './users.service';
 
+// PrismaService is provided globally via app.module.ts
 @Module({
-  imports: [AuthModule],
   controllers: [UsersController],
-  providers: [UsersService, PrismaService],
-  exports: [UsersService],
+  providers:   [UsersService],
+  exports:     [UsersService],
 })
 export class UsersModule {}
