@@ -15,13 +15,13 @@ export class ShiftController {
   @Post('start')
   @HttpCode(HttpStatus.CREATED)
   async start(@Req() req: any, @Body() dto: ShiftDto) {
-    const shift = await this.shiftService.startShift(req.user.id, dto);
+    const shiftResult = await this.shiftService.startShift(req.user.id);
     
     return {
-      message: 'Shift started successfully',
+      message: shiftResult.message,
       data: {
-        ...shift,
-        shift_id: shift.id, // Explicit mapping for PRD field compliance and test compatibility
+        ...shiftResult,
+        shift_id: shiftResult.shift.id, // Explicit mapping for PRD field compliance and test compatibility
       },
     };
   }

@@ -1,111 +1,199 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ShiftDto } from './shift.dto';
-import { AttendanceStatus } from '@prisma/client';
+
+// Schema reality check:
+// - Table: driverShift (not shift)
+// - Fields: shiftStartTime, shiftEndTime, totalHours, status (String)
+// - Driver fields: isOnline, isAvailable, isBlacklisted (no complianceStatus, no status)
+// - BookingStatus enum values used for active trip check
+
+const MAX_SHIFT_HOURS = 12;
+const MIN_REST_HOURS = 8;
+
+const ACTIVE_TRIP_STATUSES = [
+  'ACCEPTED',
+  'ARRIVED',
+  'PICKED',
+  'IN_TRANSIT',
+  'ARRIVED_AT_DESTINATION',
+  'DELIVERY_VERIFICATION',
+];
 
 @Injectable()
 export class ShiftService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Starts a new driver shift.
-   * PRD §44.1: Driver must START SHIFT before going online.
-   */
-  async startShift(driverId: string, dto: ShiftDto) {
-    const existingShift = await this.prisma.driverShift.findFirst({
-      where: {
-        driverId: driverId,
-        shiftEndTime: null,
-      },
+  async startShift(driverId: string) {
+    const driver = await this.prisma.driver.findUnique({
+      where: { id: driverId },
     });
-
-    if (existingShift) {
-      throw new BadRequestException('An active shift is already in progress for this driver.');
+    if (!driver) throw new NotFoundException('Driver not found');
+    if (driver.isBlacklisted) {
+      throw new ForbiddenException('Driver is blacklisted and cannot start a shift');
     }
 
-    return this.prisma.driverShift.create({
-      data: {
-        driverId: driverId,
-        shiftStartTime: new Date(),
-        attendanceStatus: dto.attendance_status ?? AttendanceStatus.PRESENT,
-        totalHours: 0,
-        tripHours: 0,
-        idleHours: 0,
-      },
-    });
-  }
-
-  /**
-   * Ends an active driver shift and calculates performance metrics.
-   * PRD §44.1: Calculates total_hours, trip_hours, idle_hours for the session.
-   */
-  async endShift(driverId: string) {
+    // Block if already has an active shift
     const activeShift = await this.prisma.driverShift.findFirst({
-      where: {
-        driverId: driverId,
-        shiftEndTime: null,
-      },
+      where: { driverId, status: 'ACTIVE' },
     });
-
-    if (!activeShift) {
-      throw new NotFoundException('No active shift found to end.');
+    if (activeShift) {
+      throw new BadRequestException('Driver already has an active shift');
     }
 
-    const shiftEndTime = new Date();
-    const durationMs = shiftEndTime.getTime() - activeShift.shiftStartTime.getTime();
-    const totalHours = parseFloat((durationMs / (1000 * 60 * 60)).toFixed(2));
-
-    // PRD §44.1: Sum trip durations from bookings completed within this shift window.
-    const shiftBookings = await this.prisma.booking.findMany({
-      where: {
-        driverId: driverId,
-        status: 'COMPLETED',
-        deliveredAt: {
-          gte: activeShift.shiftStartTime,
-          lte: shiftEndTime,
-        },
-      },
+    // Enforce minimum rest between shifts
+    const lastShift = await this.prisma.driverShift.findFirst({
+      where: { driverId, status: 'ENDED' },
+      orderBy: { shiftEndTime: 'desc' },
     });
-
-    // PRD §44.1: Calculate trip_hours. 
-    // If actual_pickup_at is missing, use a 1-hour proxy per completed booking for operational estimation.
-    let tripDurationMs = 0;
-    for (const booking of shiftBookings) {
-      const startTime = (booking as any).actualPickupAt || (booking as any).startedAt;
-      const endTime = (booking as any).deliveredAt;
-      
-      if (startTime && endTime) {
-        tripDurationMs += (new Date(endTime).getTime() - new Date(startTime).getTime());
-      } else {
-        tripDurationMs += (1000 * 60 * 60); 
+    if (lastShift?.shiftEndTime) {
+      const hoursSince =
+        (Date.now() - lastShift.shiftEndTime.getTime()) / (1000 * 60 * 60);
+      if (hoursSince < MIN_REST_HOURS) {
+        const remaining = Math.ceil(MIN_REST_HOURS - hoursSince);
+        throw new BadRequestException(
+          `Minimum rest period not met. ${remaining}h remaining before next shift.`,
+        );
       }
     }
 
-    const tripHours = parseFloat(Math.min(totalHours, tripDurationMs / (1000 * 60 * 60)).toFixed(2));
-    const idleHours = parseFloat(Math.max(0, totalHours - tripHours).toFixed(2));
-
-    return this.prisma.driverShift.update({
-      where: { id: activeShift.id },
+    const shift = await this.prisma.driverShift.create({
       data: {
-        shiftEndTime: shiftEndTime,
-        totalHours: totalHours,
-        tripHours: tripHours,
-        idleHours: idleHours,
+        driverId,
+        shiftStartTime: new Date(),
+        status: 'ACTIVE',
+        attendanceStatus: 'PRESENT',
       },
     });
+
+    await this.prisma.driver.update({
+      where: { id: driverId },
+      data: { isOnline: true, isAvailable: true },
+    });
+
+    return {
+      message: 'Shift started successfully',
+      shift,
+      maxHoursAllowed: MAX_SHIFT_HOURS,
+      shiftEndsAt: new Date(
+        shift.shiftStartTime.getTime() + MAX_SHIFT_HOURS * 60 * 60 * 1000,
+      ),
+    };
   }
 
-  /**
-   * PRD §44.1 Rule: No booking allowed without an active shift.
-   * Used by ShiftActiveGuard.
-   */
-  async isShiftActive(driverId: string): Promise<boolean> {
+  async endShift(driverId: string) {
     const activeShift = await this.prisma.driverShift.findFirst({
+      where: { driverId, status: 'ACTIVE' },
+    });
+    if (!activeShift) throw new NotFoundException('No active shift found');
+
+    // Block end if driver has an active trip
+    const activeTrip = await this.prisma.booking.findFirst({
       where: {
-        driverId: driverId,
-        shiftEndTime: null,
+        driverId,
+        status: { in: ACTIVE_TRIP_STATUSES as any },
       },
     });
-    return !!activeShift;
+    if (activeTrip) {
+      throw new BadRequestException(
+        'Cannot end shift with an active trip in progress. Complete the trip first.',
+      );
+    }
+
+    const endTime = new Date();
+    const totalHours =
+      (endTime.getTime() - activeShift.shiftStartTime.getTime()) /
+      (1000 * 60 * 60);
+
+    const shift = await this.prisma.driverShift.update({
+      where: { id: activeShift.id },
+      data: {
+        shiftEndTime: endTime,
+        totalHours: parseFloat(totalHours.toFixed(2)),
+        status: 'ENDED',
+      },
+    });
+
+    await this.prisma.driver.update({
+      where: { id: driverId },
+      data: { isOnline: false, isAvailable: false },
+    });
+
+    return {
+      message: 'Shift ended successfully',
+      shift,
+      totalHours: shift.totalHours,
+    };
+  }
+
+  async getActiveShift(driverId: string) {
+    const shift = await this.prisma.driverShift.findFirst({
+      where: { driverId, status: 'ACTIVE' },
+    });
+
+    if (!shift) return { active: false, shift: null };
+
+    const hoursElapsed =
+      (Date.now() - shift.shiftStartTime.getTime()) / (1000 * 60 * 60);
+    const hoursRemaining = Math.max(0, MAX_SHIFT_HOURS - hoursElapsed);
+    const isFatigueRisk = hoursElapsed >= 10;
+
+    // Auto-end if max hours exceeded
+    if (hoursElapsed >= MAX_SHIFT_HOURS) {
+      await this.endShift(driverId);
+      return {
+        active: false,
+        shift: null,
+        message: 'Shift auto-ended: maximum hours reached',
+      };
+    }
+
+    return {
+      active: true,
+      shift,
+      hoursElapsed: parseFloat(hoursElapsed.toFixed(2)),
+      hoursRemaining: parseFloat(hoursRemaining.toFixed(2)),
+      isFatigueRisk,
+      fatigueAlert: isFatigueRisk
+        ? `You have been driving for ${Math.floor(hoursElapsed)} hours. Please plan your rest.`
+        : null,
+    };
+  }
+
+  async getShiftHistory(driverId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [shifts, total] = await Promise.all([
+      this.prisma.driverShift.findMany({
+        where: { driverId },
+        orderBy: { shiftStartTime: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.driverShift.count({ where: { driverId } }),
+    ]);
+    return { shifts, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  // Called by ShiftActiveGuard before trip acceptance
+  async assertActiveShift(driverId: string): Promise<void> {
+    const shift = await this.prisma.driverShift.findFirst({
+      where: { driverId, status: 'ACTIVE' },
+    });
+    if (!shift) {
+      throw new ForbiddenException(
+        'Driver must start a shift before accepting trip assignments',
+      );
+    }
+    const hoursElapsed =
+      (Date.now() - shift.shiftStartTime.getTime()) / (1000 * 60 * 60);
+    if (hoursElapsed >= MAX_SHIFT_HOURS) {
+      throw new ForbiddenException(
+        'Maximum shift hours reached. End this shift and rest before continuing.',
+      );
+    }
   }
 }

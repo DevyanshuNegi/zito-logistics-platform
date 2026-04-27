@@ -12,11 +12,11 @@ export class StaffController {
 
   @Post()
   create(@Body() createStaffDto: any) {
-    return this.staffService.create(createStaffDto);
+    return this.staffService.createStaff('agencyId_placeholder', createStaffDto, 'adminId_placeholder');
   }
 
   @Get()
   findAll() {
-    return this.staffService.findAll();
+    return this.staffService.listStaff('agencyId_placeholder');
   }
 }
