@@ -1,0 +1,1 @@
+const fs=require('fs'); const path=require('path'); const routes = ['app/(driver)/scan.tsx']; routes.forEach(r => { fs.writeFileSync(path.join(process.cwd(), r), 'export default function Scan() { return <></>; }'); });
