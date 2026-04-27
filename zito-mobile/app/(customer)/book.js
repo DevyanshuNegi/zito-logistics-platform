@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker } from 'react-native-maps';
+import * as Location from 'expo-location';
 import SearchablePicker from '../../src/components/SearchablePicker';
 import VehicleTypePicker from '../../src/components/VehicleTypePicker';
 import { api } from '../../src/api/client';

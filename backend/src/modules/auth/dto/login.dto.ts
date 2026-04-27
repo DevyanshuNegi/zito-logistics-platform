@@ -1,21 +1,33 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsString, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
+/**
+ * PRD §3: Unified Login DTO.
+ * Supports authentication via email, phone, or a generic contact identifier.
+ */
 export class LoginDto {
-  @ApiProperty({
-    example: 'user@example.com',
-    description: 'The email of the user',
-  })
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  @IsNotEmpty({ message: 'Email is required' })
-  email!: string;
-
-  @ApiProperty({
-    example: 'password123',
-    description: 'The password of the user',
-  })
+  @ApiProperty({ example: 'user@example.com', description: 'Email address for login', required: false })
   @IsString()
-  @IsNotEmpty({ message: 'Password is required' })
-  @MinLength(6, { message: 'Password must be at least 6 characters long' })
-  password!: string;
+  @IsOptional()
+  email?: string;
+
+  @ApiProperty({ example: '+254700000000', description: 'Phone number for login', required: false })
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @ApiProperty({ example: 'user@example.com', description: 'Generic identifier (email or phone)', required: false })
+  @IsString()
+  @IsOptional()
+  contact?: string;
+
+  @ApiProperty({ example: 'password123', description: 'Required for email_password method', required: false })
+  @IsString()
+  @IsOptional()
+  password?: string;
+
+  @ApiProperty({ example: 'email_password', description: 'Login method: email_password or otp', required: false })
+  @IsString()
+  @IsOptional()
+  method?: string;
 }

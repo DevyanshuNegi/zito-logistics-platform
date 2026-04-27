@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Patch, UseGuards, Req } from '@nestjs/common';
 import { FleetService } from './fleet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -23,7 +23,9 @@ export class FleetController {
 
   @Roles('DRIVER', 'ADMIN')
   @Post(':id/breakdown')
-  reportBreakdown(@Param('id') id: string, @Body('details') details: string) {
-    return this.fleetService.reportBreakdown(id, details);
+  reportBreakdown(@Param('id') id: string, @Body('details') details: string, @Req() req: any) {
+    const driverId = req.user?.id || 'temp-driver-id';
+    return this.fleetService.reportBreakdown(id, driverId, details);
   }
 }
+

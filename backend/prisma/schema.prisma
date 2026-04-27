@@ -32,13 +32,13 @@ enum AccountStatus {
 }
 
 enum BookingStatus {
-  PENDING
+  CREATED
   SEARCHING
   APPROVED
   ASSIGNED
   ACCEPTED
   ARRIVED
-  PICKED_UP
+  PICKED
   IN_TRANSIT
   ARRIVED_AT_DESTINATION
   DELIVERY_VERIFICATION
@@ -269,6 +269,8 @@ model Driver {
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+
+  @@index([currentLatitude, currentLongitude])
 }
 
 model DriverShift {
@@ -365,6 +367,8 @@ model Vehicle {
 
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
+
+  @@index([deviceGpsLat, deviceGpsLng])
 }
 
 model FuelLog {
@@ -421,7 +425,7 @@ model MaintenanceLog {
 model Booking {
   id              String        @id @default(uuid())
   reference       String        @unique
-  status          BookingStatus @default(PENDING)
+  status          BookingStatus @default(CREATED)
   serviceType     ServiceType   @default(COURIER)
 
   customerId      String
@@ -450,6 +454,12 @@ model Booking {
 
   idempotencyKey   String?       @unique
 
+  cargoType           String?
+  cargoWeightKg       Float?
+  cargoDescription    String?
+  specialInstructions String?
+  isScheduled         Boolean       @default(false)
+
   stops          BookingStop[]
   parcels        InventoryItem[]
   waybills       Waybill[]
@@ -462,7 +472,6 @@ model Booking {
   breakdowns     VehicleBreakdown[]
   supportTickets SupportTicket[]
   rtoReturn      RtoReturn?
-
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -529,6 +538,24 @@ model Contract {
   expiresAt       DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+model LoginOtp {
+  id          String   @id @default(uuid())
+  contact     String
+  otp         String
+  expiresAt   DateTime
+  resendCount Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([contact])
+}
+
+model LoginAttempt {
+  identifier    String    @id
+  count         Int       @default(0)
+  lastAttemptAt DateTime  @default(now())
+  lockExpiresAt DateTime?
 }
 
 model Warehouse {

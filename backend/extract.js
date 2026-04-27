@@ -1,0 +1,1 @@
+const fs = require('fs'); const text = fs.readFileSync('prd_plan.txt', 'utf8'); console.log(text.replace(/Phase \d/g, '\n\n$&').substring(9000, 12000));

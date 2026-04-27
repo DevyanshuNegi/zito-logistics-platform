@@ -13,7 +13,17 @@ export class StaffService {
 
   async findAll() {
     return this.prisma.staff.findMany({
-      include: { user: true, agency: true },
+      include: { agency: true },
     });
   }
+
+  async findOne(id: string) {
+    const staff = await this.prisma.staff.findUnique({
+      where: { id },
+      include: { agency: true },
+    });
+    if (!staff) throw new NotFoundException('Staff member not found');
+    return staff;
+  }
 }
+

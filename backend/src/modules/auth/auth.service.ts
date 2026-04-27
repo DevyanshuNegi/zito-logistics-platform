@@ -1,9 +1,11 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
-import { AccountStatus } from '@prisma/client';
+import { RegisterDto } from './dto/register.dto';
+import { KycDocumentDto } from './dto/kyc-document.dto';
+import { AccountStatus, UserRole } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -13,20 +15,124 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
+  async register(dto: RegisterDto) {
+    const { email, phone, password, fullName, role, agencyId } = dto;
+
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          email ? { email } : undefined,
+          { phone }
+        ].filter(Boolean) as any,
+      },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('User with this email or phone number already exists');
+    }
+
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : undefined;
+
+    const user = await this.prisma.user.create({
+      data: {
+        fullName,
+        email,
+        phone,
+        password: hashedPassword,
+        role: role || UserRole.CUSTOMER,
+        status: AccountStatus.PENDING,
+        agencyId,
+        driverProfile: role === UserRole.DRIVER ? { create: {} } : undefined,
+      },
+    });
+
+    return {
+      message: 'Registration successful. Account pending verification.',
+      data: {
+        id: user.id,
+        status: user.status,
+      },
+    };
+  }
+
+  async uploadKycDocument(userId: string, dto: KycDocumentDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    return this.prisma.kycDocument.create({
+      data: {
+        userId: user.id,
+        type: dto.type,
+        fileUrl: dto.fileUrl,
+        expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+      },
+    });
+  }
+
+  async verifyUserStatus(userId: string, adminId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    // PRD §4: Move user to VERIFIED status
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { status: AccountStatus.VERIFIED },
+    });
+
+    // Automatically verify associated pending documents
+    await this.prisma.kycDocument.updateMany({
+      where: { userId: userId, status: 'PENDING' },
+      data: {
+        status: 'VERIFIED',
+        verifiedAt: new Date(),
+        verifiedBy: adminId,
+      },
+    });
+
+    return {
+      message: 'User verified successfully. Account is now ready for activation.',
+      data: { id: updatedUser.id, status: updatedUser.status },
+    };
+  }
+
+  async activateUserStatus(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (user.status !== AccountStatus.VERIFIED) {
+      throw new ConflictException('User must be VERIFIED before they can be activated');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { status: AccountStatus.ACTIVE },
+    });
+
+    return {
+      message: 'Account activated successfully. The user can now log in.',
+      data: { id: updatedUser.id, status: updatedUser.status },
+    };
+  }
+
   async login(body: LoginDto) {
     if (!body) {
       throw new UnauthorizedException('Request body missing');
     }
 
     // PRD §3: Unified Login - identifier can be phone OR email
-    const identifier = (body as any).email || (body as any).phone || (body as any).contact;
-    const password = (body as any).password;
-    const method = (body as any).method;
+      const { email, phone, contact, password, method } = body;
+      const identifier = contact || email || phone;
 
     // PRD §3: Check for temporary account lock before proceeding
     const lock = await (this.prisma as any).loginAttempt.findUnique({ where: { identifier } });
     if (lock && lock.lockExpiresAt && lock.lockExpiresAt > new Date()) {
-      throw new UnauthorizedException(`Account temporarily locked. Please try again after ${lock.lockExpiresAt.toLocaleTimeString()}.`);
+      throw new UnauthorizedException({
+        message: 'Account temporarily locked',
+        data: {
+          lockExpiresAt: lock.lockExpiresAt,
+          reason: 'Too many failed verification attempts',
+        },
+      });
     }
 
     // 1. Find user by identifier (PRD v10 Unified Login)
@@ -47,14 +153,11 @@ export class AuthService {
         message: `Account is ${user.status.toLowerCase()}`,
         data: { status: user.status }
       });
-    } else if (!(user as any).isActive && !(user as any).status) {
-      // Fallback if status field isn't present but isActive is
-      throw new UnauthorizedException('Account is not active');
     }
 
     // 2. Compare password (required for Email + Password method, PRD §3)
     if (method === 'email_password' || (password && !method)) {
-      const isMatch = await bcrypt.compare(password, user.password);
+      const isMatch = await bcrypt.compare(password, user.password || '');
       if (!isMatch) {
         throw new UnauthorizedException('Invalid credentials');
       }
@@ -103,23 +206,57 @@ export class AuthService {
       data: {
         temp_token: tempToken,
         contact: identifier,
+        user: {
+          fullName: user.fullName,
+        },
       }
     };
   }
 
-  async verifyOtp(contact: string, otp: string) {
+  async verifyOtp(tempToken: string, otp: string) {
+    // PRD §3: Session Continuity - Verify the temporary token generated during login
+    let contact: string;
+    try {
+      const decoded = this.jwtService.verify(tempToken);
+      if (decoded.purpose !== 'otp') throw new Error();
+      contact = decoded.contact;
+    } catch (e) {
+      throw new UnauthorizedException('Invalid or expired session token. Please login again.');
+    }
+
     // PRD §3: Check if the identifier is currently locked
     const lock = await (this.prisma as any).loginAttempt.findUnique({ where: { identifier: contact } });
     if (lock && lock.lockExpiresAt && lock.lockExpiresAt > new Date()) {
-      throw new UnauthorizedException('Account locked due to too many failed attempts.');
+      throw new UnauthorizedException({
+        message: 'Account locked',
+        data: {
+          lockExpiresAt: lock.lockExpiresAt,
+          reason: 'Too many failed verification attempts',
+        },
+      });
+    }
+
+    // PRD §3 Account Lifecycle: Identify user and verify status BEFORE OTP validation
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ email: contact }, { phone: contact }]
+      }
+    });
+    if (!user) throw new UnauthorizedException('User no longer exists');
+
+    if (user.status !== AccountStatus.ACTIVE) {
+      throw new UnauthorizedException({
+        message: `Account is ${user.status.toLowerCase()}`,
+        data: { status: user.status }
+      });
     }
 
     const otpRecord = await (this.prisma as any).loginOtp.findFirst({
-      where: { contact, otp, expiresAt: { gt: new Date() } },
+      where: { contact, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!otpRecord) {
+    if (!otpRecord || otpRecord.otp !== otp) {
       // PRD §3: Track failed verification attempts
       const attempt = await (this.prisma as any).loginAttempt.upsert({
         where: { identifier: contact },
@@ -128,25 +265,25 @@ export class AuthService {
       });
 
       if (attempt.count >= 5) {
+        const lockExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15-minute lock
         await (this.prisma as any).loginAttempt.update({
           where: { identifier: contact },
-          data: { lockExpiresAt: new Date(Date.now() + 15 * 60 * 1000) }, // 15-minute lock
+          data: { lockExpiresAt },
         });
-        throw new UnauthorizedException('Maximum attempts reached. Account locked for 15 minutes.');
+        throw new UnauthorizedException({
+          message: 'Maximum attempts reached',
+          data: {
+            lockExpiresAt,
+            reason: 'Account locked for 15 minutes due to repeated failures',
+          },
+        });
       }
-      throw new UnauthorizedException(`Invalid or expired OTP. ${5 - attempt.count} attempt(s) remaining.`);
-    }
-
-    const user = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ email: contact }, { phone: contact }]
-      }
-    });
-    if (!user) throw new UnauthorizedException('User no longer exists');
-
-    // PRD v10 Lifecycle Rule: Block if not active
-    if (user.status !== AccountStatus.ACTIVE) {
-      throw new UnauthorizedException('Account is not active or has been suspended');
+      throw new UnauthorizedException({
+        message: 'Invalid or expired OTP',
+        data: {
+          attemptsRemaining: 5 - attempt.count,
+        },
+      });
     }
 
     // Cleanup used OTP
@@ -172,7 +309,8 @@ export class AuthService {
         user: { 
           id: user.id, 
           email: user.email, 
-          role: user.role 
+          role: user.role,
+          fullName: user.fullName,
         },
       }
     };

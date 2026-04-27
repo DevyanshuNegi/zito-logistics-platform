@@ -1,20 +1,29 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
-  getUnread(@CurrentUser() user: any) {
-    return this.notificationsService.getUnread(user.id);
+  getUnread(@Req() req: any) {
+    const user = req.user;
+    return this.notificationsService.getUserNotifications(user.id);
   }
 
-  @Post('test')
-  testSend(@Body() data: any) {
-    return this.notificationsService.send(data);
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Post()
+  send(@Body() data: any) {
+    return this.notificationsService.create(data);
+  }
+
+  @Patch(':id/read')
+  markRead(@Param('id') id: string) {
+    return this.notificationsService.markAsRead(id);
   }
 }
+

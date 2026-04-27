@@ -1,16 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateTicketDto } from './dto/create-ticket.dto';
 
 @Injectable()
 export class SupportService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createTicketDto: CreateTicketDto, customerId: string) {
+  async create(createTicketDto: any) {
     return this.prisma.supportTicket.create({
       data: {
-        ...createTicketDto,
-        customerId,
+        raisedBy: createTicketDto.customerId,
+        category: createTicketDto.subject || 'GENERAL',
+        description: createTicketDto.message,
         status: 'OPEN',
       },
     });
@@ -18,17 +18,15 @@ export class SupportService {
 
   async findAll() {
     return this.prisma.supportTicket.findMany({
-      include: { customer: true, assignedTo: true, booking: true },
+      include: { raiser: true, handler: true, booking: true },
     });
   }
 
-  async updateStatus(id: string, status: any) {
-    const ticket = await this.prisma.supportTicket.findUnique({ where: { id } });
-    if (!ticket) throw new NotFoundException('Ticket not found');
-
+  async resolveTicket(id: string) {
     return this.prisma.supportTicket.update({
       where: { id },
-      data: { status },
+      data: { status: 'RESOLVED', closedAt: new Date() },
     });
   }
 }
+

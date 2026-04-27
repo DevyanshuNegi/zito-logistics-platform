@@ -16,25 +16,26 @@ export class FleetService {
 
   async findAll() {
     return this.prisma.vehicle.findMany({
-      include: { driver: true },
+      include: { driver: true }, // wait does Vehicle have a driver?
     });
   }
 
   async updateLocation(id: string, lat: number, lng: number) {
     return this.prisma.vehicle.update({
       where: { id },
-      data: { currentLatitude: lat, currentLongitude: lng, lastLocationAt: new Date() },
+      data: { deviceGpsLat: lat, deviceGpsLng: lng, lastGpsAt: new Date() },
     });
   }
 
-  async reportBreakdown(id: string, details: string) {
+  async reportBreakdown(id: string, driverId: string, details: string) {
     return this.prisma.vehicleBreakdown.create({
       data: {
         vehicleId: id,
-        details,
-        reportedAt: new Date(),
+        driverId: driverId,
+        description: details,
         status: 'REPORTED',
       },
     });
   }
 }
+

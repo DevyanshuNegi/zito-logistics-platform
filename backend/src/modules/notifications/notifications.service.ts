@@ -5,23 +5,30 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async send(data: any) {
-    // Scaffold real integrations (Africa's Talking, SendGrid, FCM)
+  async create(data: any) {
     return this.prisma.notification.create({
       data: {
         userId: data.userId,
-        title: data.title || 'Notification',
+        title: data.title,
         message: data.message,
-        type: data.type || 'SYSTEM',
-        isRead: false,
+        channel: data.type || 'SYSTEM',
+        status: 'PENDING',
       },
     });
   }
 
-  async getUnread(userId: string) {
+  async getUserNotifications(userId: string) {
     return this.prisma.notification.findMany({
-      where: { userId, isRead: false },
+      where: { userId, readAt: null },
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  async markAsRead(id: string) {
+    return this.prisma.notification.update({
+      where: { id },
+      data: { readAt: new Date(), status: 'READ' }, // Status can be 'READ' or whatever
+    });
+  }
 }
+
