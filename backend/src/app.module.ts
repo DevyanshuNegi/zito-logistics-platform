@@ -11,10 +11,16 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { SupportModule } from './modules/support/support.module';
+import { WarehouseModule } from './modules/warehouse/warehouse.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
+import { WaybillModule } from './modules/waybill/waybill.module';
+import { ScanModule } from './modules/scan/scan.module';
+import { LossDetectionModule } from './modules/loss-detection/loss-detection.module';
+import { RtoModule } from './modules/rto/rto.module';
 
 @Module({
   imports: [
-    PrismaModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule
+    PrismaModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule
   ],
 })
 export class AppModule {}

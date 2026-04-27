@@ -1,0 +1,1 @@
+export default function Page() { return <div>src/app/(warehouse)/dashboard</div>; }
