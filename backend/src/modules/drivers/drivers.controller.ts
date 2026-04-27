@@ -1,29 +1,44 @@
-import { Controller, Get, Patch, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Put, Patch, UseGuards, Req } from '@nestjs/common';
 import { DriversService } from './drivers.service';
-import { UpdateDriverDto } from './dto/update-driver.dto';
+import { CreateDriverDto } from './dto/create-driver.dto';
+import { UpdateDriverStatusDto } from './dto/update-driver-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('drivers')
+@UseGuards(JwtAuthGuard)
 export class DriversController {
   constructor(private readonly driversService: DriversService) {}
 
+  @Post('register')
   @Roles('DRIVER')
-  @Patch('location')
-  updateLocation(@CurrentUser() user: any, @Body() updateDriverDto: UpdateDriverDto) {
-    return this.driversService.updateLocation(user.id, updateDriverDto);
+  @UseGuards(RolesGuard)
+  async register(@Req() req: any, @Body() dto: CreateDriverDto) {
+    return this.driversService.registerDriver(req.user.id, dto);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF')
-  @Get('available')
-  findAvailable(
-    @Query('lat') lat: number,
-    @Query('lng') lng: number,
-    @Query('radius') radius?: number,
+  @Get('me')
+  @Roles('DRIVER')
+  @UseGuards(RolesGuard)
+  async getProfile(@Req() req: any) {
+    return this.driversService.getMyProfile(req.user.id);
+  }
+
+  @Patch('me/status')
+  @Roles('DRIVER')
+  @UseGuards(RolesGuard)
+  async updateStatus(@Req() req: any, @Body() dto: UpdateDriverStatusDto) {
+    return this.driversService.updateStatus(req.user.id, dto);
+  }
+
+  @Put('me/location')
+  @Roles('DRIVER')
+  @UseGuards(RolesGuard)
+  async updateLocation(
+    @Req() req: any, 
+    @Body() dto: { currentLatitude: number; currentLongitude: number }
   ) {
-    return this.driversService.findAvailableDrivers(Number(lat), Number(lng), radius ? Number(radius) : 10);
+    return this.driversService.updateLocation(req.user.id, dto.currentLatitude, dto.currentLongitude);
   }
 }
