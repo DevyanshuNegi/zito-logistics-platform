@@ -1,7 +1,11 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class CancelBookingDto {
-  @IsOptional()
   @IsString()
-  reason?: string;
+  @IsNotEmpty()
+  reason: string;
+
+  @IsString()
+  @IsOptional()
+  penaltyOverrideNote?: string;
 }

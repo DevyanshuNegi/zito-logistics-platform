@@ -1,16 +1,25 @@
 import {
-  IsString,
-  IsNumber,
-  IsOptional,
   IsEnum,
-  ValidateNested,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
   IsArray,
+  ValidateNested,
+  IsUUID,
+  Min,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ServiceType } from '@prisma/client';
+import { ServiceType, VehicleType } from '@prisma/client';
 
-class BookingStopDto {
+export class BookingStopDto {
+  @IsNumber()
+  sequence: number;
+
   @IsString()
+  @IsNotEmpty()
   address: string;
 
   @IsNumber()
@@ -19,59 +28,66 @@ class BookingStopDto {
   @IsNumber()
   longitude: number;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   landmark?: string;
 
   @IsString()
+  @IsNotEmpty()
   contactName: string;
 
   @IsString()
+  @IsNotEmpty()
   contactPhone: string;
 
-  @IsEnum(['PICKUP', 'DELIVERY', 'STOP'])
-  stopType: 'PICKUP' | 'DELIVERY' | 'STOP';
+  // PICKUP | DROPOFF | INTERMEDIATE
+  @IsString()
+  stopType: string;
 }
 
 export class CreateBookingDto {
-  @IsOptional()
-  @IsString()
-  agencyId?: string;
-
   @IsEnum(ServiceType)
   serviceType: ServiceType;
 
-  @IsOptional()
-  @IsString()
-  vehicleId?: string;
+  // Must match VehicleType enum — used to look up RateCard
+  @IsEnum(VehicleType)
+  vehicleType: VehicleType;
 
-  @IsNumber()
-  estimatedDistKm: number;
-
-  // Pricing fields (PRD §19)
-  @IsOptional()
-  @IsNumber()
-  totalPrice?: number;
-
-  @IsOptional()
-  @IsNumber()
-  baseFare?: number;
-
-  @IsOptional()
-  @IsNumber()
-  distanceFare?: number;
-
-  @IsOptional()
-  @IsNumber()
-  stopFare?: number;
-
-  @IsOptional()
-  @IsNumber()
-  surgeMultiplier?: number;
-
-  // Stops (CRITICAL PRD §6)
+  // Minimum 2 stops: first = pickup, last = delivery
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => BookingStopDto)
   stops: BookingStopDto[];
+
+  @IsString()
+  @IsOptional()
+  cargoType?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  cargoWeightKg?: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  cargoDescription?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  specialInstructions?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isScheduled?: boolean;
+
+  // Client-generated UUID — idempotency enforcement
+  @IsUUID()
+  @IsNotEmpty()
+  idempotencyKey: string;
+
+  @IsUUID()
+  @IsOptional()
+  agencyId?: string;
 }

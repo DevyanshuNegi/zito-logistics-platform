@@ -1,184 +1,136 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { EscrowStatus } from '@prisma/client';
 
-export type EscrowStatus = 'HELD' | 'RELEASED' | 'REFUNDED' | 'DISPUTED';
+// Schema reality:
+// Escrow fields: id, bookingId, amount, status(EscrowStatus), heldAt, releasedAt, refundedAt, releaseNote
+// EscrowStatus enum: HELD | RELEASED | DISPUTED | REFUNDED
+// NO: paymentId, releasedBy, refundAmount, disputeId, PARTIALLY_REFUNDED, DISPUTE_HOLD
 
 @Injectable()
 export class EscrowService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async holdPayment(bookingId: string, amount: number, userId: string) {
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+  // Hold payment when booking is confirmed
+  async hold(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, totalPrice: true },
+    });
     if (!booking) throw new NotFoundException('Booking not found');
 
     const existing = await this.prisma.escrow.findUnique({ where: { bookingId } });
     if (existing) throw new ConflictException('Escrow already exists for this booking');
 
-    const escrow = await this.prisma.escrow.create({
+    return this.prisma.escrow.create({
       data: {
         bookingId,
-        amount,
-        status: 'HELD',
+        amount: booking.totalPrice,
+        status: EscrowStatus.HELD,
         heldAt: new Date(),
       },
     });
-
-    await this.prisma.auditLog.create({
-      data: {
-        userId,
-        action: 'PAYMENT_INITIATED',
-        entityType: 'ESCROW',
-        entityId: escrow.id,
-        details: { bookingId, amount, status: 'HELD' },
-      },
-    });
-
-    return escrow;
   }
 
-  async releaseOnDelivery(bookingId: string, releasedByAdminId: string) {
-    const escrow = await this.getEscrowOrThrow(bookingId);
+  // Release to driver on delivery — called after DELIVERED + payment confirmed
+  async release(bookingId: string, note?: string) {
+    const escrow = await this.getOrThrow(bookingId);
 
-    if (escrow.status === 'DISPUTED') {
-      throw new BadRequestException('Escrow is on dispute hold. Resolve the dispute before releasing.');
+    if (escrow.status === EscrowStatus.DISPUTED) {
+      throw new BadRequestException('Escrow is disputed. Resolve dispute before releasing.');
     }
-    if (escrow.status === 'RELEASED') {
+    if (escrow.status === EscrowStatus.RELEASED) {
       throw new ConflictException('Escrow already released');
     }
-    if (escrow.status === 'REFUNDED') {
+    if (escrow.status === EscrowStatus.REFUNDED) {
       throw new ConflictException('Escrow already refunded');
     }
 
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    // Verify booking is deliverable
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { status: true },
+    });
     if (!['DELIVERED', 'COMPLETED'].includes(booking.status)) {
       throw new BadRequestException(
-        `Cannot release escrow � booking status is ${booking.status}. Must be DELIVERED or COMPLETED.`,
+        `Cannot release escrow — booking is ${booking.status}. Must be DELIVERED or COMPLETED.`,
       );
     }
 
-    const updated = await this.prisma.escrow.update({
+    return this.prisma.escrow.update({
       where: { bookingId },
       data: {
-        status: 'RELEASED',
+        status: EscrowStatus.RELEASED,
         releasedAt: new Date(),
-        releaseNote: `Released by ${releasedByAdminId}`,
+        releaseNote: note ?? 'Released on delivery confirmation',
       },
     });
-
-    await this.prisma.auditLog.create({
-      data: {
-        userId: releasedByAdminId,
-        action: 'PAYMENT_COMPLETED',
-        entityType: 'ESCROW',
-        entityId: escrow.id,
-        details: { bookingId, amount: escrow.amount },
-      },
-    });
-
-    return updated;
   }
 
-  async refundFull(bookingId: string, reason: string, adminId: string) {
-    const escrow = await this.getEscrowOrThrow(bookingId);
-    if (['RELEASED', 'REFUNDED'].includes(escrow.status)) {
-      throw new ConflictException(`Cannot refund � escrow status is ${escrow.status}`);
+  // Full refund — for cancellations before trip starts
+  async refund(bookingId: string, note: string) {
+    const escrow = await this.getOrThrow(bookingId);
+
+    if (escrow.status === EscrowStatus.RELEASED) {
+      throw new ConflictException('Cannot refund — payment already released to driver');
+    }
+    if (escrow.status === EscrowStatus.REFUNDED) {
+      throw new ConflictException('Already refunded');
     }
 
-    const updated = await this.prisma.escrow.update({
+    return this.prisma.escrow.update({
       where: { bookingId },
       data: {
-        status: 'REFUNDED',
+        status: EscrowStatus.REFUNDED,
         refundedAt: new Date(),
-        releaseNote: `Full refund: ${reason}`,
+        releaseNote: note,
       },
     });
-
-    await this.prisma.auditLog.create({
-      data: {
-        userId: adminId,
-        action: 'REFUND_ISSUED',
-        entityType: 'ESCROW',
-        entityId: escrow.id,
-        details: { bookingId, refundAmount: escrow.amount, reason },
-      },
-    });
-
-    return updated;
   }
 
-  async refundPartial(bookingId: string, refundAmount: number, reason: string, adminId: string) {
-    const escrow = await this.getEscrowOrThrow(bookingId);
-    if (refundAmount > escrow.amount) {
-      throw new BadRequestException('Refund amount exceeds held amount');
+  // Mark as disputed — freezes release until admin resolves
+  async dispute(bookingId: string, reason: string) {
+    const escrow = await this.getOrThrow(bookingId);
+
+    if (escrow.status === EscrowStatus.RELEASED) {
+      throw new BadRequestException('Cannot dispute — payment already released');
+    }
+    if (escrow.status === EscrowStatus.REFUNDED) {
+      throw new BadRequestException('Cannot dispute — payment already refunded');
     }
 
-    const updated = await this.prisma.escrow.update({
+    return this.prisma.escrow.update({
       where: { bookingId },
       data: {
-        status: 'REFUNDED',
-        refundedAt: new Date(),
-        releaseNote: `Partial refund (${refundAmount}): ${reason}`,
+        status: EscrowStatus.DISPUTED,
+        releaseNote: `Disputed: ${reason}`,
       },
     });
-
-    await this.prisma.auditLog.create({
-      data: {
-        userId: adminId,
-        action: 'REFUND_ISSUED',
-        entityType: 'ESCROW',
-        entityId: escrow.id,
-        details: { bookingId, refundAmount, totalHeld: escrow.amount, reason },
-      },
-    });
-
-    return updated;
   }
 
-  async holdForDispute(bookingId: string, disputeId: string, adminId: string) {
-    const escrow = await this.getEscrowOrThrow(bookingId);
-    if (escrow.status === 'RELEASED') {
-      throw new BadRequestException('Cannot dispute � payment already released');
+  // Resolve dispute — admin decides: release or refund
+  async resolveDispute(bookingId: string, outcome: 'RELEASE' | 'REFUND', adminNote: string) {
+    const escrow = await this.getOrThrow(bookingId);
+
+    if (escrow.status !== EscrowStatus.DISPUTED) {
+      throw new BadRequestException('Escrow is not in disputed state');
     }
 
-    const updated = await this.prisma.escrow.update({
-      where: { bookingId },
-      data: { 
-        status: 'DISPUTED',
-        releaseNote: `Dispute hold linked to ${disputeId}`
-      },
-    });
-
-    await this.prisma.auditLog.create({
-      data: {
-        userId: adminId,
-        action: 'DISPUTE_HOLD',
-        entityType: 'ESCROW',
-        entityId: escrow.id,
-        details: { bookingId, disputeId },
-      },
-    });
-
-    return updated;
-  }
-
-  async resolveDisputeHold(bookingId: string, outcome: 'RELEASE' | 'REFUND', adminId: string, refundAmount?: number) {
-    const escrow = await this.getEscrowOrThrow(bookingId);
-    if (escrow.status !== 'DISPUTED') {
-      throw new BadRequestException('Escrow is not in dispute hold');
-    }
-
-    if (outcome === 'RELEASE') {
-      return this.releaseOnDelivery(bookingId, adminId);
-    } else {
-      return this.refundPartial(bookingId, refundAmount ?? escrow.amount, 'Dispute resolved � refund', adminId);
-    }
+    return outcome === 'RELEASE'
+      ? this.release(bookingId, `Dispute resolved — ${adminNote}`)
+      : this.refund(bookingId, `Dispute resolved — refunded — ${adminNote}`);
   }
 
   async getStatus(bookingId: string) {
-    return this.getEscrowOrThrow(bookingId);
+    return this.getOrThrow(bookingId);
   }
 
-  private async getEscrowOrThrow(bookingId: string) {
+  private async getOrThrow(bookingId: string) {
     const escrow = await this.prisma.escrow.findUnique({ where: { bookingId } });
     if (!escrow) throw new NotFoundException(`No escrow found for booking ${bookingId}`);
     return escrow;

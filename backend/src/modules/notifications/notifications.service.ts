@@ -1,50 +1,48 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
-// PRD §22 — Notification retry + fallback
-// Channel priority: SMS → Email → Push → WhatsApp
-// Failed channel → retry → next channel
-// All failures logged
+// Schema reality:
+// Notification fields: id, userId, title, message, channel, status, retryCount, readAt, entityType, entityId
+// NO bookingId field — use entityId/entityType instead
+// Model is prisma.notification (NOT notificationLog)
 
 type Channel = 'SMS' | 'EMAIL' | 'PUSH' | 'WHATSAPP';
 
 interface NotificationPayload {
   userId: string;
   title: string;
-  body: string;
-  data?: Record<string, any>;
-  channels?: Channel[];  // override channel order if needed
-  bookingId?: string;
+  message: string;
+  channels?: Channel[];
+  entityType?: string;
+  entityId?: string;
   priority?: 'HIGH' | 'NORMAL';
 }
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly DEFAULT_CHANNEL_ORDER: Channel[] = ['SMS', 'EMAIL', 'PUSH', 'WHATSAPP'];
+  private readonly DEFAULT_CHANNELS: Channel[] = ['SMS', 'EMAIL', 'PUSH'];
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY_MS = 1000;
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // Main dispatch: tries each channel in order until one succeeds
   async send(payload: NotificationPayload): Promise<{ success: boolean; channel: Channel | null }> {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.userId },
       select: { phone: true, email: true, fullName: true },
     });
-
     if (!user) {
       this.logger.warn(`Notification skipped — user ${payload.userId} not found`);
       return { success: false, channel: null };
     }
 
-    const channels = payload.channels ?? this.DEFAULT_CHANNEL_ORDER;
+    const channels = payload.channels ?? this.DEFAULT_CHANNELS;
 
     for (const channel of channels) {
       const success = await this.sendViaChannel(channel, user, payload);
       if (success) {
-        await this.logNotification(payload, channel, 'SUCCESS');
+        await this.logNotification(payload, channel, 'SENT');
         return { success: true, channel };
       }
       await this.logNotification(payload, channel, 'FAILED');
@@ -54,13 +52,90 @@ export class NotificationsService {
     return { success: false, channel: null };
   }
 
-  // Send to multiple users (e.g. admin broadcast)
   async sendBulk(userIds: string[], payload: Omit<NotificationPayload, 'userId'>) {
-    const results = await Promise.allSettled(
-      userIds.map((userId) => this.send({ ...payload, userId })),
-    );
-    return results;
+    return Promise.allSettled(userIds.map((uid) => this.send({ ...payload, userId: uid })));
   }
+
+  // ── Typed event dispatchers ──────────────────────────────────────────────
+
+  async notifyBookingCreated(customerId: string, bookingRef: string, bookingId: string) {
+    return this.send({
+      userId: customerId,
+      title: 'Booking Created',
+      message: `Your booking ${bookingRef} has been created and is awaiting assignment.`,
+      channels: ['PUSH', 'EMAIL'],
+      entityType: 'BOOKING',
+      entityId: bookingId,
+    });
+  }
+
+  async notifyDriverAssigned(customerId: string, driverUserId: string, bookingRef: string, bookingId: string) {
+    await this.send({
+      userId: customerId,
+      title: 'Driver Assigned',
+      message: `A driver has been assigned to booking ${bookingRef}. They are on their way.`,
+      channels: ['PUSH', 'SMS'],
+      entityType: 'BOOKING',
+      entityId: bookingId,
+    });
+    await this.send({
+      userId: driverUserId,
+      title: 'New Trip Assigned',
+      message: `You have been assigned booking ${bookingRef}. Accept within the time window.`,
+      channels: ['PUSH', 'SMS'],
+      entityType: 'BOOKING',
+      entityId: bookingId,
+    });
+  }
+
+  async notifyStatusChanged(customerId: string, bookingRef: string, status: string, bookingId: string) {
+    const messages: Record<string, string> = {
+      ACCEPTED:               `Driver accepted your booking ${bookingRef} and is en route to pickup.`,
+      ARRIVED:                `Driver has arrived at your pickup location for booking ${bookingRef}.`,
+      PICKED:                 `Your cargo has been collected for booking ${bookingRef}.`,
+      IN_TRANSIT:             `Your cargo is in transit for booking ${bookingRef}.`,
+      ARRIVED_AT_DESTINATION: `Driver has arrived at the delivery location for booking ${bookingRef}.`,
+      DELIVERED:              `Your cargo has been delivered for booking ${bookingRef}. Please rate your experience.`,
+      COMPLETED:              `Booking ${bookingRef} is complete. Thank you for using ZITO.`,
+      CANCELLED:              `Booking ${bookingRef} has been cancelled.`,
+    };
+    const message = messages[status] ?? `Booking ${bookingRef} status updated to ${status}.`;
+    return this.send({
+      userId: customerId,
+      title: `Booking ${status}`,
+      message,
+      channels: ['PUSH', 'SMS'],
+      entityType: 'BOOKING',
+      entityId: bookingId,
+    });
+  }
+
+  async notifySOS(adminUserIds: string[], driverName: string, bookingId: string, lat: number, lng: number) {
+    return this.sendBulk(adminUserIds, {
+      title: '🚨 SOS ALERT',
+      message: `Driver ${driverName} triggered SOS. Location: ${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+      channels: ['SMS', 'PUSH', 'EMAIL'],
+      priority: 'HIGH',
+      entityType: 'BOOKING',
+      entityId: bookingId,
+    });
+  }
+
+  async notifyDocumentExpiry(userId: string, documentName: string, daysRemaining: number) {
+    const expired = daysRemaining <= 0;
+    return this.send({
+      userId,
+      title: expired ? 'Document Expired' : 'Document Expiry Alert',
+      message: expired
+        ? `Your ${documentName} has expired. Renew immediately to continue receiving assignments.`
+        : `Your ${documentName} expires in ${daysRemaining} days. Please renew to avoid suspension.`,
+      channels: ['SMS', 'EMAIL'],
+      entityType: 'COMPLIANCE',
+      entityId: userId,
+    });
+  }
+
+  // ── Channel dispatchers ──────────────────────────────────────────────────
 
   private async sendViaChannel(
     channel: Channel,
@@ -71,20 +146,16 @@ export class NotificationsService {
     while (attempt < this.MAX_RETRIES) {
       try {
         switch (channel) {
-          case 'SMS':
-            return await this.sendSms(user.phone, payload.body);
-          case 'EMAIL':
-            return await this.sendEmail(user.email, payload.title, payload.body);
-          case 'PUSH':
-            return await this.sendPush(payload.userId, payload.title, payload.body, payload.data);
-          case 'WHATSAPP':
-            return await this.sendWhatsApp(user.phone, payload.body);
+          case 'SMS':    return await this.sendSms(user.phone, payload.message);
+          case 'EMAIL':  return await this.sendEmail(user.email, payload.title, payload.message);
+          case 'PUSH':   return await this.sendPush(payload.userId, payload.title, payload.message);
+          case 'WHATSAPP': return false; // Phase 2
         }
       } catch (err) {
         attempt++;
-        this.logger.warn(`[${channel}] Attempt ${attempt} failed for user ${payload.userId}: ${err.message}`);
+        this.logger.warn(`[${channel}] Attempt ${attempt} failed: ${err.message}`);
         if (attempt < this.MAX_RETRIES) {
-          await this.sleep(this.RETRY_DELAY_MS * attempt); // exponential backoff
+          await this.sleep(this.RETRY_DELAY_MS * attempt);
         }
       }
     }
@@ -93,176 +164,91 @@ export class NotificationsService {
 
   private async sendSms(phone: string, message: string): Promise<boolean> {
     if (!phone) return false;
-    // Africa's Talking SMS integration
-    // In Phase 1: stub until AT API key is provisioned
     if (process.env.AT_API_KEY) {
-      // const AT = require('africastalking')({ apiKey: process.env.AT_API_KEY, username: process.env.AT_USERNAME });
-      // await AT.SMS.send({ to: [phone], message, from: process.env.AT_SENDER_ID });
+      // Africa's Talking — wire in Phase 2
     }
-    this.logger.debug(`[SMS] → ${phone}: ${message.slice(0, 60)}...`);
-    return true; // stub returns true in dev
+    this.logger.debug(`[SMS] → ${phone}: ${message.slice(0, 80)}`);
+    return true;
   }
 
   private async sendEmail(email: string, subject: string, body: string): Promise<boolean> {
     if (!email) return false;
-    // Resend / SendGrid integration
     if (process.env.RESEND_API_KEY) {
-      // const { Resend } = require('resend');
-      // const resend = new Resend(process.env.RESEND_API_KEY);
-      // await resend.emails.send({ from: 'noreply@zito.co.ke', to: email, subject, html: body });
+      // Resend — wire in Phase 2
     }
     this.logger.debug(`[EMAIL] → ${email}: ${subject}`);
     return true;
   }
 
-  private async sendPush(userId: string, title: string, body: string, data?: Record<string, any>): Promise<boolean> {
-    // Firebase FCM push notification
-    // Requires device token stored per user in DB
+  private async sendPush(userId: string, title: string, body: string): Promise<boolean> {
     if (process.env.FCM_SERVER_KEY) {
-      // const token = await this.getDeviceToken(userId);
-      // if (!token) return false;
-      // await admin.messaging().send({ token, notification: { title, body }, data });
+      // Firebase FCM — wire in Phase 2
     }
-    this.logger.debug(`[PUSH] → userId:${userId}: ${title}`);
+    this.logger.debug(`[PUSH] → ${userId}: ${title}`);
     return true;
   }
 
-  private async sendWhatsApp(phone: string, message: string): Promise<boolean> {
-    if (!phone) return false;
-    // WhatsApp Business API — Phase 2
-    this.logger.debug(`[WHATSAPP] → ${phone}: ${message.slice(0, 60)}...`);
-    return false; // not available in Phase 1 — causes fallback to fail gracefully
-  }
-
-  private async logNotification(
-    payload: NotificationPayload,
-    channel: Channel,
-    status: 'SUCCESS' | 'FAILED',
-  ) {
+  private async logNotification(payload: NotificationPayload, channel: Channel, status: string) {
     try {
       await this.prisma.notification.create({
         data: {
           userId: payload.userId,
-          channel,
           title: payload.title,
-          message: payload.body.slice(0, 500),
+          message: payload.message.slice(0, 500),
+          channel,
           status,
-          entityType: 'BOOKING',
-          entityId: payload.bookingId,
-          createdAt: new Date(),
+          entityType: payload.entityType ?? null,
+          entityId: payload.entityId ?? null,
         },
       });
     } catch {
-      // Never let notification logging break the flow
+      // Never crash main flow on log failure
     }
   }
 
-  // ── User notification management ────────────────────────────────────────
+  // ── User-facing notification queries ────────────────────────────────────
 
-  async getUserNotifications(userId: string, page: number, limit: number) {
+  async getUserNotifications(
+    userId: string,
+    page = 1,
+    limit = 20,
+  ) {
     const skip = (page - 1) * limit;
-    const [data, total] = await Promise.all([
+    const [notifications, total, unreadCount] = await Promise.all([
       this.prisma.notification.findMany({
         where: { userId },
+        orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
       }),
       this.prisma.notification.count({ where: { userId } }),
+      this.prisma.notification.count({ where: { userId, readAt: null } }),
     ]);
-
-    return {
-      data,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+    return { notifications, total, unreadCount, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  async markAsRead(id: string, userId: string) {
+  async markAsRead(notificationId: string, userId: string) {
+    // Verify ownership before marking
     const notification = await this.prisma.notification.findFirst({
-      where: { id, userId }, // Ensure user owns the notification
+      where: { id: notificationId, userId },
     });
-    
-    if (!notification) {
-      throw new Error('Notification not found or unauthorized');
-    }
+    if (!notification) return null;
 
     return this.prisma.notification.update({
-      where: { id },
+      where: { id: notificationId },
       data: { readAt: new Date() },
     });
   }
 
   async markAllAsRead(userId: string) {
-    return this.prisma.notification.updateMany({
+    const result = await this.prisma.notification.updateMany({
       where: { userId, readAt: null },
       data: { readAt: new Date() },
     });
-  }
-
-  // ── Typed event dispatchers ─────────────────────────────────────────────
-
-  async notifyBookingCreated(customerId: string, bookingRef: string, bookingId: string) {
-    return this.send({
-      userId: customerId,
-      title: 'Booking Created',
-      body: `Your booking ${bookingRef} has been created and is pending assignment.`,
-      bookingId,
-      channels: ['PUSH', 'EMAIL'],
-    });
-  }
-
-  async notifyDriverAssigned(customerId: string, driverId: string, bookingRef: string, bookingId: string) {
-    await this.send({
-      userId: customerId,
-      title: 'Driver Assigned',
-      body: `A driver has been assigned to your booking ${bookingRef}. They are on their way.`,
-      bookingId,
-      channels: ['PUSH', 'SMS'],
-    });
-    await this.send({
-      userId: driverId,
-      title: 'New Trip Assigned',
-      body: `You have been assigned booking ${bookingRef}. Please accept within the allocated time.`,
-      bookingId,
-      channels: ['PUSH', 'SMS'],
-    });
-  }
-
-  async notifyDelivered(customerId: string, bookingRef: string, bookingId: string) {
-    return this.send({
-      userId: customerId,
-      title: 'Cargo Delivered',
-      body: `Your cargo from booking ${bookingRef} has been delivered. Please rate your experience.`,
-      bookingId,
-      channels: ['PUSH', 'SMS', 'EMAIL'],
-    });
-  }
-
-  async notifySOSTrigger(adminIds: string[], driverName: string, bookingId: string, location: { lat: number; lng: number }) {
-    return this.sendBulk(adminIds, {
-      title: '🚨 SOS ALERT',
-      body: `Driver ${driverName} has triggered an SOS emergency. Location: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
-      bookingId,
-      priority: 'HIGH',
-      channels: ['SMS', 'PUSH', 'EMAIL'],
-    });
-  }
-
-  async notifyDocumentExpiry(userId: string, documentName: string, daysRemaining: number) {
-    return this.send({
-      userId,
-      title: 'Document Expiry Alert',
-      body: `Your ${documentName} ${daysRemaining <= 0 ? 'has expired' : `expires in ${daysRemaining} days`}. Please renew to continue receiving assignments.`,
-      channels: ['SMS', 'EMAIL'],
-    });
+    return { marked: result.count };
   }
 
   private sleep(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((r) => setTimeout(r, ms));
   }
 }

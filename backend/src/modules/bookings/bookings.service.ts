@@ -1,330 +1,327 @@
 import {
   Injectable,
-  NotFoundException,
   BadRequestException,
+  NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BookingStatus, ServiceType, UserRole } from '@prisma/client';
+import { BookingStatus, ServiceType, VehicleStatus } from '@prisma/client';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { UpdateStatusDto, DRIVER_ALLOWED_TRANSITIONS } from './dto/update-status.dto';
 import { AssignDriverDto } from './dto/assign-driver.dto';
+import { CancelBookingDto } from './dto/cancel-booking.dto';
+import { RateBookingDto } from './dto/rate-booking.dto';
+import * as crypto from 'crypto';
 
-// ─── Reference Generator ──────────────────────────────────────────────────────
-function generateReference(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let suffix = '';
-  for (let i = 0; i < 6; i++) {
-    suffix += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return `ZTO-${suffix}`;
-}
+// ─── Status transition rules ──────────────────────────────────────────────────
+// PRD §6 — complete 15-state lifecycle
+// Only certain transitions are valid per role
+// Admin can force any status (override mode)
 
-// ─── Status Transition Rules (PRD §6) ────────────────────────────────────────
-// Defines which statuses each role can transition TO from a given current status
+const CANCELLABLE_BY_CUSTOMER: BookingStatus[] = [
+  BookingStatus.CREATED,
+  BookingStatus.SEARCHING,
+  BookingStatus.APPROVED,
+  BookingStatus.ASSIGNED,
+  BookingStatus.ACCEPTED,
+];
 
-const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
-  CREATED:                [BookingStatus.SEARCHING, BookingStatus.APPROVED, BookingStatus.CANCELLED],
-  SEARCHING:              [BookingStatus.APPROVED, BookingStatus.CANCELLED],
-  APPROVED:               [BookingStatus.ASSIGNED, BookingStatus.CANCELLED],
-  ASSIGNED:               [BookingStatus.ACCEPTED, BookingStatus.CANCELLED, BookingStatus.REJECTED],
-  ACCEPTED:               [BookingStatus.ARRIVED],
-  ARRIVED:                [BookingStatus.PICKED],
-  PICKED:                 [BookingStatus.IN_TRANSIT],
-  IN_TRANSIT:             [BookingStatus.ARRIVED_AT_DESTINATION],
-  ARRIVED_AT_DESTINATION: [BookingStatus.DELIVERY_VERIFICATION],
-  DELIVERY_VERIFICATION:  [BookingStatus.DELIVERED],
-  DELIVERED:              [BookingStatus.PAYMENT_PENDING, BookingStatus.COMPLETED],
-  PAYMENT_PENDING:        [BookingStatus.COMPLETED],
-  COMPLETED:              [],
-  CANCELLED:              [],
-  REJECTED:               [],
-};
-
-
-// Which roles can set which statuses
-const STATUS_ROLE_PERMISSIONS: Partial<Record<BookingStatus, UserRole[]>> = {
-  [BookingStatus.APPROVED]:               [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF],
-  [BookingStatus.ASSIGNED]:               [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF],
-  [BookingStatus.ACCEPTED]:               [UserRole.DRIVER],
-  [BookingStatus.ARRIVED]:                [UserRole.DRIVER],
-  [BookingStatus.PICKED]:              [UserRole.DRIVER],
-  [BookingStatus.IN_TRANSIT]:             [UserRole.DRIVER],
-  [BookingStatus.ARRIVED_AT_DESTINATION]: [UserRole.DRIVER],
-  [BookingStatus.DELIVERY_VERIFICATION]:  [UserRole.DRIVER],
-  [BookingStatus.DELIVERED]:              [UserRole.DRIVER],
-  [BookingStatus.COMPLETED]:              [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF],
-  [BookingStatus.CANCELLED]:              [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.CUSTOMER, UserRole.AGENCY_STAFF],
-  [BookingStatus.REJECTED]:               [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER],
-};
+// Cancellation penalty threshold — PRD §20
+const PENALTY_THRESHOLD_STATUS = BookingStatus.ACCEPTED;
+const PENALTY_PERCENT = 0.10; // 10% of total price
 
 @Injectable()
 export class BookingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ─── CREATE BOOKING (PRD §6) ──────────────────────────────────────────────
-  /**
-   * Customer, Agent, or Admin creates a booking.
-   * Idempotency key prevents duplicate bookings on retry.
-   * PRD §6: Multi-stop support, service type, cargo details.
-   */
-  async create(dto: CreateBookingDto, creatorId: string, idempotencyKey?: string) {
-    // PRD §28: Idempotency — return existing if key already used
-    if (idempotencyKey) {
-      const existing = await this.prisma.booking.findUnique({
-        where: { idempotencyKey },
-        include: { stops: true },
-      });
-      if (existing) return existing;
+  // ─── CREATE ────────────────────────────────────────────────────────────────
+
+  async create(customerId: string, dto: CreateBookingDto) {
+    // Idempotency: if booking with this key already exists, return it
+    const existing = await this.prisma.booking.findUnique({
+      where: { idempotencyKey: dto.idempotencyKey },
+      include: { stops: { orderBy: { sequence: 'asc' } } },
+    });
+    if (existing) return { booking: existing, idempotent: true };
+
+    // Validate stops — need at least 2 (pickup + delivery)
+    if (!dto.stops || dto.stops.length < 2) {
+      throw new BadRequestException('At least 2 stops required: pickup and delivery');
     }
 
-    // Ensure at least pickup + delivery stops provided
-    if (!dto.stops || dto.stops.length < 2) {
-      throw new BadRequestException('At least 2 stops required (pickup and delivery)');
-    }
+    // Calculate pricing from RateCard
+    const pricing = await this.calculatePrice(dto);
 
     // Generate unique reference
-    let reference: string;
-    let attempts = 0;
-    do {
-      reference = generateReference();
-      attempts++;
-      if (attempts > 10) throw new BadRequestException('Failed to generate unique reference');
-    } while (await this.prisma.booking.findUnique({ where: { reference } }));
+    const reference = await this.generateReference();
 
     const booking = await this.prisma.booking.create({
       data: {
         reference,
-        customerId:     creatorId,
-        agencyId:       dto.agencyId,
-        serviceType:    dto.serviceType ?? ServiceType.COURIER,
-        status:         BookingStatus.CREATED,
-        totalPrice:     dto.totalPrice ?? 0,
-        baseFare:       dto.baseFare ?? 0,
-        distanceFare:   dto.distanceFare ?? 0,
-        stopFare:       dto.stopFare ?? 0,
-        surgeMultiplier: dto.surgeMultiplier ?? 1.0,
-        estimatedDistKm: dto.estimatedDistKm ?? 0,
-        idempotencyKey,
+        customerId,
+        agencyId: dto.agencyId ?? null,
+        serviceType: dto.serviceType,
+        status: BookingStatus.CREATED,
+        idempotencyKey: dto.idempotencyKey,
+        cargoType: dto.cargoType ?? null,
+        cargoWeightKg: dto.cargoWeightKg ?? null,
+        cargoDescription: dto.cargoDescription ?? null,
+        specialInstructions: dto.specialInstructions ?? null,
+        isScheduled: dto.isScheduled ?? false,
+        baseFare: pricing.baseFare,
+        distanceFare: pricing.distanceFare,
+        stopFare: pricing.stopFare,
+        surgeMultiplier: pricing.surgeMultiplier,
+        totalPrice: pricing.totalPrice,
+        estimatedDistKm: pricing.estimatedDistKm,
         stops: {
-          create: dto.stops.map((stop, index) => ({
-            sequence:    index + 1,
-            address:     stop.address,
-            latitude:    stop.latitude,
-            longitude:   stop.longitude,
-            landmark:    stop.landmark,
-            contactName:  stop.contactName,
-            contactPhone: stop.contactPhone,
-            stopType:    stop.stopType,
+          create: dto.stops.map((s) => ({
+            sequence: s.sequence,
+            address: s.address,
+            latitude: s.latitude,
+            longitude: s.longitude,
+            landmark: s.landmark ?? null,
+            contactName: s.contactName,
+            contactPhone: s.contactPhone,
+            stopType: s.stopType,
           })),
         },
       },
-      include: { stops: { orderBy: { sequence: 'asc' } } },
-    });
-
-    // PRD §40: Audit log
-    await this.auditLog(creatorId, 'BOOKING_CREATED', 'booking', booking.id, {
-      reference: booking.reference,
-      serviceType: booking.serviceType,
-    });
-
-    return booking;
-  }
-
-  // ─── GET BOOKING (PRD §6) ─────────────────────────────────────────────────
-  async findOne(id: string, requesterId?: string, requesterRole?: UserRole) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id },
       include: {
-        stops:    { orderBy: { sequence: 'asc' } },
-        driver:   {
-          select: {
-            id: true,
-            rating: true,
-            currentLatitude: true,
-            currentLongitude: true,
-            user: { select: { fullName: true, phone: true } },
-          },
-        },
-        vehicle:  { select: { plateNumber: true, type: true, make: true, model: true } },
-        payments: { orderBy: { createdAt: 'desc' }, take: 1 },
-        invoice:  { select: { id: true, number: true, status: true, totalAmount: true } },
+        stops: { orderBy: { sequence: 'asc' } },
+        driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
+        vehicle: { select: { id: true, plateNumber: true, type: true } },
       },
     });
 
-    if (!booking) throw new NotFoundException(`Booking not found`);
+    await this.writeAudit(customerId, 'BOOKING_CREATED', 'BOOKING', booking.id, {
+      reference: booking.reference,
+      serviceType: booking.serviceType,
+      totalPrice: booking.totalPrice,
+    });
 
-    // PRD §23: Scope — customers can only see their own bookings
-    if (
-      requesterRole === UserRole.CUSTOMER &&
-      booking.customerId !== requesterId
-    ) {
-      throw new ForbiddenException('You can only view your own bookings');
-    }
-
-    return booking;
+    return { booking, idempotent: false };
   }
 
-  // ─── LIST BOOKINGS ────────────────────────────────────────────────────────
+  // ─── LIST (Customer) ───────────────────────────────────────────────────────
 
-  // Customer: own bookings only
-  async findByCustomer(customerId: string, page = 1, limit = 20, status?: BookingStatus) {
-    const where: any = { customerId };
-    if (status) where.status = status;
+  async listForCustomer(customerId: string, filters: {
+    status?: BookingStatus;
+    page?: number;
+    limit?: number;
+  }) {
+    const { status, page = 1, limit = 20 } = filters;
+    const skip = (page - 1) * limit;
 
-    const [data, total] = await Promise.all([
+    const where = {
+      customerId,
+      ...(status && { status }),
+    };
+
+    const [bookings, total] = await Promise.all([
       this.prisma.booking.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
+        skip,
         take: limit,
         include: {
-          stops:  { orderBy: { sequence: 'asc' } },
-          driver: { select: { user: { select: { fullName: true } } } },
-        },
-      }),
-      this.prisma.booking.count({ where }),
-    ]);
-
-    return { data, meta: { total, page, limit, lastPage: Math.ceil(total / limit) } };
-  }
-
-  // Driver: assigned trips only
-  async findByDriver(driverId: string, page = 1, limit = 20, status?: BookingStatus) {
-    const where: any = { driverId };
-    if (status) where.status = status;
-
-    const [data, total] = await Promise.all([
-      this.prisma.booking.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-        include: { stops: { orderBy: { sequence: 'asc' } } },
-      }),
-      this.prisma.booking.count({ where }),
-    ]);
-
-    return { data, meta: { total, page, limit, lastPage: Math.ceil(total / limit) } };
-  }
-
-  // Admin: all bookings with full filters
-  async findAll(
-    page = 1,
-    limit = 20,
-    filters: {
-      status?: BookingStatus;
-      serviceType?: ServiceType;
-      agencyId?: string;
-      driverId?: string;
-      customerId?: string;
-      from?: string;
-      to?: string;
-    } = {},
-  ) {
-    const where: any = {};
-    if (filters.status)      where.status      = filters.status;
-    if (filters.serviceType) where.serviceType = filters.serviceType;
-    if (filters.agencyId)    where.agencyId    = filters.agencyId;
-    if (filters.driverId)    where.driverId    = filters.driverId;
-    if (filters.customerId)  where.customerId  = filters.customerId;
-    if (filters.from || filters.to) {
-      where.createdAt = {};
-      if (filters.from) where.createdAt.gte = new Date(filters.from);
-      if (filters.to)   where.createdAt.lte = new Date(filters.to);
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.booking.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: Math.min(limit, 100),
-        include: {
-          stops:  { orderBy: { sequence: 'asc' } },
-          driver: { select: { user: { select: { fullName: true, phone: true } } } },
+          stops: { orderBy: { sequence: 'asc' }, take: 2 },
+          driver: { include: { user: { select: { fullName: true, phone: true } } } },
           vehicle: { select: { plateNumber: true, type: true } },
         },
       }),
       this.prisma.booking.count({ where }),
     ]);
 
-    return { data, meta: { total, page, limit, lastPage: Math.ceil(total / limit) } };
+    return { bookings, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  // ─── UPDATE STATUS (PRD §6) ───────────────────────────────────────────────
-  /**
-   * Validates transition rules before updating status.
-   * Every transition is audit-logged.
-   */
-  async updateStatus(
-    id: string,
-    newStatus: BookingStatus,
-    actorId: string,
-    actorRole: UserRole,
-    reason?: string,
-  ) {
-    const booking = await this.prisma.booking.findUnique({ where: { id } });
+  // ─── LIST (Admin) ──────────────────────────────────────────────────────────
+
+  async listForAdmin(filters: {
+    status?: BookingStatus;
+    serviceType?: ServiceType;
+    customerId?: string;
+    driverId?: string;
+    agencyId?: string;
+    page?: number;
+    limit?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
+    const { status, serviceType, customerId, driverId, agencyId, page = 1, limit = 20, dateFrom, dateTo } = filters;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      ...(status && { status }),
+      ...(serviceType && { serviceType }),
+      ...(customerId && { customerId }),
+      ...(driverId && { driverId }),
+      ...(agencyId && { agencyId }),
+      ...(dateFrom || dateTo) && {
+        createdAt: {
+          ...(dateFrom && { gte: new Date(dateFrom) }),
+          ...(dateTo && { lte: new Date(dateTo) }),
+        },
+      },
+    };
+
+    const [bookings, total] = await Promise.all([
+      this.prisma.booking.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: Math.min(limit, 100),
+        include: {
+          stops: { orderBy: { sequence: 'asc' }, take: 2 },
+          driver: { include: { user: { select: { fullName: true, phone: true } } } },
+          vehicle: { select: { plateNumber: true, type: true } },
+          escrow: { select: { status: true, amount: true } },
+        },
+      }),
+      this.prisma.booking.count({ where }),
+    ]);
+
+    return { bookings, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  // ─── GET DETAIL ────────────────────────────────────────────────────────────
+
+  async getById(bookingId: string, requesterId: string, requesterRole: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        stops: { orderBy: { sequence: 'asc' } },
+        driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
+        vehicle: true,
+        payments: true,
+        escrow: true,
+        supportTickets: { orderBy: { createdAt: 'desc' }, take: 5 },
+        waybills: true,
+      },
+    });
+
     if (!booking) throw new NotFoundException('Booking not found');
 
-    // PRD §6: Validate allowed transition
-    const allowed = ALLOWED_TRANSITIONS[booking.status] ?? [];
-    if (!allowed.includes(newStatus)) {
+    // Scope check: customers can only see their own bookings
+    if (requesterRole === 'CUSTOMER' && booking.customerId !== requesterId) {
+      throw new ForbiddenException('Access denied');
+    }
+    // Drivers can only see their assigned bookings
+    if (requesterRole === 'DRIVER') {
+      const driver = await this.prisma.driver.findUnique({ where: { userId: requesterId } });
+      if (!driver || booking.driverId !== driver.id) {
+        throw new ForbiddenException('Access denied');
+      }
+    }
+
+    return booking;
+  }
+
+  // ─── UPDATE STATUS (Driver) ────────────────────────────────────────────────
+
+  async updateStatusByDriver(bookingId: string, driverId: string, dto: UpdateStatusDto) {
+    const booking = await this.findOrThrow(bookingId);
+
+    // Validate driver is assigned to this booking
+    const driver = await this.prisma.driver.findUnique({ where: { id: driverId } });
+    if (!driver || booking.driverId !== driverId) {
+      throw new ForbiddenException('You are not assigned to this booking');
+    }
+
+    // Validate transition
+    const allowedNext = DRIVER_ALLOWED_TRANSITIONS[booking.status];
+    if (!allowedNext || allowedNext !== dto.status) {
       throw new BadRequestException(
-        `Cannot transition from ${booking.status} to ${newStatus}`,
+        `Invalid transition: ${booking.status} → ${dto.status}. Expected next: ${allowedNext ?? 'none'}`,
       );
     }
 
-    // PRD §6: Validate role permission for this status
-    const permittedRoles = STATUS_ROLE_PERMISSIONS[newStatus];
-    if (permittedRoles && !permittedRoles.includes(actorRole)) {
-      throw new ForbiddenException(
-        `Role ${actorRole} cannot set status to ${newStatus}`,
-      );
-    }
-
-    const updateData: any = { status: newStatus };
-
-    // Set deliveredAt timestamp when marked DELIVERED
-    if (newStatus === BookingStatus.DELIVERED) {
-      updateData.deliveredAt = new Date();
+    // Delivery requires OTP verification + proof
+    if (dto.status === BookingStatus.DELIVERED) {
+      if (!dto.deliveryProofUrl) {
+        throw new BadRequestException('Proof of delivery photo is required');
+      }
+      if (booking.deliveryOtp && dto.deliveryOtp !== booking.deliveryOtp) {
+        throw new BadRequestException('Invalid delivery OTP');
+      }
     }
 
     const updated = await this.prisma.booking.update({
-      where: { id },
-      data: updateData,
-      include: { stops: { orderBy: { sequence: 'asc' } } },
+      where: { id: bookingId },
+      data: {
+        status: dto.status,
+        ...(dto.status === BookingStatus.DELIVERED && {
+          deliveredAt: new Date(),
+          deliveryProofUrl: dto.deliveryProofUrl,
+        }),
+      },
     });
 
-    // PRD §40: Audit every status transition
-    await this.auditLog(actorId, 'BOOKING_STATUS_UPDATED', 'booking', id, {
+    await this.writeAudit(driver.userId, 'BOOKING_STATUS_CHANGED', 'BOOKING', bookingId, {
       from: booking.status,
-      to: newStatus,
-      reason,
+      to: dto.status,
+      note: dto.note,
     });
 
     return updated;
   }
 
-  // ─── ASSIGN DRIVER (PRD §6, Admin only) ──────────────────────────────────
-  async assignDriver(id: string, dto: AssignDriverDto, adminId: string) {
-    const booking = await this.prisma.booking.findUnique({ where: { id } });
-    if (!booking) throw new NotFoundException('Booking not found');
+  // ─── UPDATE STATUS (Admin — any transition) ────────────────────────────────
 
-    if (!([BookingStatus.APPROVED, BookingStatus.CREATED] as BookingStatus[])
-        .includes(booking.status)) {
-        throw new BadRequestException(
-            `Cannot assign driver to booking with status ${booking.status}`,
-        );
-        }
+  async updateStatusByAdmin(bookingId: string, adminId: string, dto: UpdateStatusDto) {
+    const booking = await this.findOrThrow(bookingId);
 
-    // PRD §17.1: Validate driver compliance before assignment
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: dto.status,
+        ...(dto.status === BookingStatus.DELIVERED && {
+          deliveredAt: new Date(),
+          deliveryProofUrl: dto.deliveryProofUrl ?? null,
+        }),
+        ...(dto.status === BookingStatus.COMPLETED && {
+          // Payment must be confirmed before completing — enforce in payments flow
+        }),
+      },
+    });
+
+    await this.writeAudit(adminId, 'ADMIN_OVERRIDE', 'BOOKING', bookingId, {
+      action: 'STATUS_OVERRIDE',
+      from: booking.status,
+      to: dto.status,
+      note: dto.note,
+    });
+
+    return updated;
+  }
+
+  // ─── ASSIGN DRIVER (Admin) ─────────────────────────────────────────────────
+
+  async assignDriver(bookingId: string, adminId: string, dto: AssignDriverDto) {
+    const booking = await this.findOrThrow(bookingId);
+
+    if (!([BookingStatus.CREATED, BookingStatus.SEARCHING, BookingStatus.APPROVED] as string[]).includes(booking.status)) {
+      throw new BadRequestException(
+        `Cannot assign driver — booking status is ${booking.status}`,
+      );
+    }
+
+    // Validate driver exists and is eligible
     const driver = await this.prisma.driver.findUnique({
       where: { id: dto.driverId },
-      include: { vehicle: true },
     });
     if (!driver) throw new NotFoundException('Driver not found');
     if (driver.isBlacklisted) throw new BadRequestException('Driver is blacklisted');
-    if (!driver.licenseVerified) throw new BadRequestException('Driver license not verified');
+    if (!driver.isAvailable) throw new BadRequestException('Driver is not available');
+
+    // Validate vehicle exists
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id: dto.vehicleId },
+    });
+    if (!vehicle) throw new NotFoundException('Vehicle not found');
+    if (vehicle.status !== VehicleStatus.ACTIVE) throw new BadRequestException('Vehicle is not active');
 
     // Check driver has no active conflicting trip
     const activeTrip = await this.prisma.booking.findFirst({
@@ -343,214 +340,300 @@ export class BookingsService {
       },
     });
     if (activeTrip) {
-      throw new BadRequestException('Driver already has an active trip');
+      throw new BadRequestException(
+        `Driver already has an active trip (${activeTrip.reference})`,
+      );
     }
 
+    // Generate delivery OTP
+    const deliveryOtp = crypto.randomInt(1000, 9999).toString();
+
     const updated = await this.prisma.booking.update({
-      where: { id },
+      where: { id: bookingId },
       data: {
-        driverId:  dto.driverId,
-        vehicleId: dto.vehicleId ?? driver.vehicle?.driverId ?? null,
-        status:    BookingStatus.ASSIGNED,
+        driverId: dto.driverId,
+        vehicleId: dto.vehicleId,
+        status: BookingStatus.ASSIGNED,
+        deliveryOtp,
       },
-      include: { stops: true, driver: { select: { user: true } } },
+      include: {
+        driver: { include: { user: { select: { fullName: true, phone: true } } } },
+        vehicle: { select: { plateNumber: true, type: true } },
+      },
     });
 
-    await this.auditLog(adminId, 'DRIVER_ASSIGNED', 'booking', id, {
-      driverId:  dto.driverId,
+    await this.writeAudit(adminId, 'BOOKING_ASSIGNED', 'BOOKING', bookingId, {
+      driverId: dto.driverId,
       vehicleId: dto.vehicleId,
+      note: dto.note,
     });
 
     return updated;
   }
 
-  // ─── CANCEL BOOKING (PRD §6, §20) ────────────────────────────────────────
-  /**
-   * PRD §20: Cancellation rules differ by stage.
-   * Customer cannot cancel after PICKED.
-   * Admin can cancel at any stage.
-   */
-  async cancel(
-    id: string,
-    actorId: string,
-    actorRole: UserRole,
-    reason?: string,
-  ) {
-    const booking = await this.prisma.booking.findUnique({ where: { id } });
-    if (!booking) throw new NotFoundException('Booking not found');
+  // ─── CANCEL ────────────────────────────────────────────────────────────────
+
+  async cancelByCustomer(bookingId: string, customerId: string, dto: CancelBookingDto) {
+    const booking = await this.findOrThrow(bookingId);
+
+    if (booking.customerId !== customerId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    if (!(CANCELLABLE_BY_CUSTOMER as string[]).includes(booking.status)) {
+      throw new BadRequestException(
+        `Cannot cancel at this stage (${booking.status}). Contact support.`,
+      );
+    }
+
+    // Determine penalty — PRD §20
+    const penaltyApplies = (
+      [BookingStatus.ACCEPTED] as string[]
+    ).includes(booking.status);
+
+    const penaltyAmount = penaltyApplies
+      ? parseFloat((booking.totalPrice * PENALTY_PERCENT).toFixed(2))
+      : 0;
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancelledBy: customerId,
+        cancellationReason: dto.reason,
+      },
+    });
+
+    await this.writeAudit(customerId, 'BOOKING_CANCELLED', 'BOOKING', bookingId, {
+      reason: dto.reason,
+      previousStatus: booking.status,
+      penaltyAmount,
+    });
+
+    return { booking: updated, penaltyAmount };
+  }
+
+  async cancelByAdmin(bookingId: string, adminId: string, dto: CancelBookingDto) {
+    const booking = await this.findOrThrow(bookingId);
 
     if (booking.status === BookingStatus.COMPLETED) {
       throw new BadRequestException('Cannot cancel a completed booking');
     }
-    if (booking.status === BookingStatus.CANCELLED) {
-      throw new BadRequestException('Booking is already cancelled');
-    }
-
-    // PRD §20.1: Customer cannot cancel after PICKED
-    if (actorRole === UserRole.CUSTOMER) {
-      const blockedStatuses: BookingStatus[] = [
-        BookingStatus.PICKED,
-        BookingStatus.IN_TRANSIT,
-        BookingStatus.ARRIVED_AT_DESTINATION,
-        BookingStatus.DELIVERY_VERIFICATION,
-        BookingStatus.DELIVERED,
-      ];
-      if (blockedStatuses.includes(booking.status)) {
-        throw new ForbiddenException(
-          'Cancellation not permitted after cargo has been picked up. Contact admin.',
-        );
-      }
-    }
 
     const updated = await this.prisma.booking.update({
-      where: { id },
+      where: { id: bookingId },
       data: {
-        status:             BookingStatus.CANCELLED,
-        cancelledAt:        new Date(),
-        cancelledBy:        actorId,
-        cancellationReason: reason ?? 'No reason provided',
+        status: BookingStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancelledBy: adminId,
+        cancellationReason: dto.reason,
       },
     });
 
-    await this.auditLog(actorId, 'BOOKING_CANCELLED', 'booking', id, {
-      reason,
-      cancelledBy: actorRole,
-      previousStatus: booking.status,
+    await this.writeAudit(adminId, 'ADMIN_OVERRIDE', 'BOOKING', bookingId, {
+      action: 'ADMIN_CANCEL',
+      reason: dto.reason,
+      penaltyOverrideNote: dto.penaltyOverrideNote,
     });
 
     return updated;
   }
 
-  // ─── PRICE ESTIMATE (PRD §7, §19) ────────────────────────────────────────
-  /**
-   * Returns a real-time price estimate before booking confirmation.
-   * PRD §7: No hidden fees — show customer total before confirming.
-   */
-  async estimatePrice(
-    vehicleType: string,
-    distanceKm: number,
-    stopCount: number,
-    surgeMultiplier = 1.0,
-  ) {
-    const rateCard = await this.prisma.rateCard.findFirst({
-      where: { vehicleType: vehicleType as any, isActive: true },
-    });
+  // ─── RATE BOOKING ──────────────────────────────────────────────────────────
 
-    if (!rateCard) {
-      throw new NotFoundException(`No active rate card for vehicle type ${vehicleType}`);
-    }
-
-    const baseFare     = rateCard.baseFare;
-    const distanceFare = distanceKm * rateCard.ratePerKm;
-    const stopFare     = Math.max(0, stopCount - 1) * rateCard.perStopRate;
-    const subtotal     = baseFare + distanceFare + stopFare;
-    const totalPrice   = subtotal * surgeMultiplier;
-
-    return {
-      vehicleType,
-      distanceKm,
-      stopCount,
-      baseFare,
-      distanceFare,
-      stopFare,
-      surgeMultiplier,
-      totalPrice: Math.round(totalPrice),
-      currency: 'KES',
-    };
-  }
-
-  // ─── ADMIN OVERRIDE STATUS (PRD §42) ─────────────────────────────────────
-  /**
-   * Admin can force any status regardless of normal transition rules.
-   * Requires mandatory reason — logged in audit trail.
-   */
-  async adminOverrideStatus(
-    id: string,
-    newStatus: BookingStatus,
-    adminId: string,
-    reason: string,
-  ) {
-    if (!reason?.trim()) {
-      throw new BadRequestException('Reason is mandatory for admin status override');
-    }
-
-    const booking = await this.prisma.booking.findUnique({ where: { id } });
-    if (!booking) throw new NotFoundException('Booking not found');
-
-    const updated = await this.prisma.booking.update({
-      where: { id },
-      data: {
-        status: newStatus,
-        ...(newStatus === BookingStatus.DELIVERED && { deliveredAt: new Date() }),
-      },
-    });
-
-    await this.auditLog(adminId, 'ADMIN_STATUS_OVERRIDE', 'booking', id, {
-      from: booking.status,
-      to: newStatus,
-      reason,
-    });
-
-    return updated;
-  }
-
-  // ─── RATE BOOKING (PRD §18) ───────────────────────────────────────────────
-  /**
-   * Customer rates a completed booking within 48hr window.
-   */
-  async rateBooking(
-    id: string,
-    customerId: string,
-    rating: number,
-    comment?: string,
-  ) {
-    const booking = await this.prisma.booking.findUnique({ where: { id } });
-    if (!booking) throw new NotFoundException('Booking not found');
+  async rateBooking(bookingId: string, customerId: string, dto: RateBookingDto) {
+    const booking = await this.findOrThrow(bookingId);
 
     if (booking.customerId !== customerId) {
-      throw new ForbiddenException('You can only rate your own bookings');
+      throw new ForbiddenException('Access denied');
     }
-
     if (booking.status !== BookingStatus.COMPLETED) {
-      throw new BadRequestException('You can only rate completed bookings');
+      throw new BadRequestException('Can only rate completed bookings');
     }
 
-    // PRD §18: 48-hour rating window
-    if (booking.deliveredAt) {
-      const hoursSinceDelivery =
-        (Date.now() - new Date(booking.deliveredAt).getTime()) / (1000 * 60 * 60);
-      if (hoursSinceDelivery > 48) {
-        throw new BadRequestException('Rating window has closed (48 hours after delivery)');
-      }
+    // 48-hour rating window — PRD §18
+    const hoursElapsed =
+      (Date.now() - booking.updatedAt.getTime()) / (1000 * 60 * 60);
+    if (hoursElapsed > 48) {
+      throw new BadRequestException('Rating window has closed (48 hours after completion)');
     }
 
     // Update driver average rating
     if (booking.driverId) {
-      const driver = await this.prisma.driver.findUnique({ where: { id: booking.driverId } });
+      const driver = await this.prisma.driver.findUnique({
+        where: { id: booking.driverId },
+      });
       if (driver) {
-        const newRating = (driver.rating * driver.totalTrips + rating) / (driver.totalTrips + 1);
+        const newAvg = parseFloat(
+          ((driver.rating * driver.totalTrips + dto.rating) / (driver.totalTrips + 1)).toFixed(2),
+        );
         await this.prisma.driver.update({
           where: { id: booking.driverId },
-          data: { rating: Math.round(newRating * 10) / 10 },
+          data: { rating: newAvg },
         });
       }
     }
 
-    await this.auditLog(customerId, 'BOOKING_RATED', 'booking', id, { rating, comment });
+    await this.writeAudit(customerId, 'BOOKING_STATUS_CHANGED', 'BOOKING', bookingId, {
+      action: 'RATED',
+      rating: dto.rating,
+      comment: dto.comment,
+    });
 
-    return { message: 'Rating submitted successfully', rating };
+    return { message: 'Rating submitted successfully', rating: dto.rating };
   }
 
-  // ─── AUDIT LOG HELPER (PRD §40) ───────────────────────────────────────────
-  private async auditLog(
+  // ─── DRIVER: List assigned trips ──────────────────────────────────────────
+
+  async listForDriver(driverId: string, filters: { status?: BookingStatus; page?: number; limit?: number }) {
+    const { status, page = 1, limit = 20 } = filters;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      driverId,
+      ...(status && { status }),
+    };
+
+    const [bookings, total] = await Promise.all([
+      this.prisma.booking.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          stops: { orderBy: { sequence: 'asc' } },
+        },
+      }),
+      this.prisma.booking.count({ where }),
+    ]);
+
+    return { bookings, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  // ─── DRIVER: Reject trip ──────────────────────────────────────────────────
+
+  async rejectByDriver(bookingId: string, driverId: string, reason: string) {
+    const booking = await this.findOrThrow(bookingId);
+
+    if (booking.driverId !== driverId) {
+      throw new ForbiddenException('You are not assigned to this booking');
+    }
+    if (booking.status !== BookingStatus.ASSIGNED) {
+      throw new BadRequestException('Can only reject a booking in ASSIGNED status');
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.SEARCHING,
+        driverId: null,
+        vehicleId: null,
+      },
+    });
+
+    // Penalise driver acceptance rate
+    const driver = await this.prisma.driver.findUnique({ where: { id: driverId } });
+    if (driver && driver.totalTrips > 0) {
+      const newRate = parseFloat(
+        ((driver.acceptanceRate * driver.totalTrips) / (driver.totalTrips + 1)).toFixed(2),
+      );
+      await this.prisma.driver.update({
+        where: { id: driverId },
+        data: { acceptanceRate: newRate },
+      });
+    }
+
+    await this.writeAudit(driver?.userId ?? driverId, 'BOOKING_STATUS_CHANGED', 'BOOKING', bookingId, {
+      action: 'DRIVER_REJECTED',
+      reason,
+    });
+
+    return updated;
+  }
+
+  // ─── PRICING ENGINE ───────────────────────────────────────────────────────
+
+  private async calculatePrice(dto: CreateBookingDto) {
+    // Look up rate card for this vehicle + service type
+    const rateCard = await this.prisma.rateCard.findFirst({
+      where: {
+        vehicleType: dto.vehicleType,
+        serviceType: dto.serviceType,
+        isActive: true,
+      },
+    });
+
+    if (!rateCard) {
+      throw new BadRequestException(
+        `No active rate card for vehicle type ${dto.vehicleType} + service ${dto.serviceType}`,
+      );
+    }
+
+    // Estimate distance (haversine between first and last stop)
+    const first = dto.stops[0];
+    const last = dto.stops[dto.stops.length - 1];
+    const estimatedDistKm = this.haversineKm(
+      first.latitude, first.longitude,
+      last.latitude, last.longitude,
+    );
+
+    const effectiveDist = Math.max(estimatedDistKm, rateCard.minDistance);
+    const baseFare = rateCard.baseFare;
+    const distanceFare = parseFloat((effectiveDist * rateCard.ratePerKm).toFixed(2));
+    const stopCount = Math.max(0, dto.stops.length - 2); // intermediate stops only
+    const stopFare = parseFloat((stopCount * rateCard.perStopRate).toFixed(2));
+    const surgeMultiplier = rateCard.surgeMultiplier;
+
+    const totalPrice = parseFloat(
+      ((baseFare + distanceFare + stopFare) * surgeMultiplier).toFixed(2),
+    );
+
+    return { baseFare, distanceFare, stopFare, surgeMultiplier, totalPrice, estimatedDistKm };
+  }
+
+  // ─── HELPERS ─────────────────────────────────────────────────────────────
+
+  private async findOrThrow(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException(`Booking ${bookingId} not found`);
+    return booking;
+  }
+
+  private async writeAudit(
     userId: string,
     action: string,
     entityType: string,
     entityId: string,
-    details?: object,
+    details?: Record<string, any>,
   ) {
-    await this.prisma.auditLog.create({
-      data: { userId, action, entityType, entityId, details },
-    });
+    try {
+      // Only write if userId is a valid user — skip for system events
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return;
+      await this.prisma.auditLog.create({
+        data: { userId, action, entityType, entityId, details: details ?? {} },
+      });
+    } catch {
+      // Audit must never crash the main flow
+    }
   }
+
+  private async generateReference(): Promise<string> {
+    const ref = 'ZT-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    const exists = await this.prisma.booking.findUnique({ where: { reference: ref } });
+    return exists ? this.generateReference() : ref;
+  }
+
+  private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const dLat = this.toRad(lat2 - lat1);
+    const dLng = this.toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return parseFloat((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(2));
+  }
+
+  private toRad(deg: number) { return (deg * Math.PI) / 180; }
 }

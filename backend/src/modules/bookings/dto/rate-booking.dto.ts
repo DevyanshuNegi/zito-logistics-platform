@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, Min, Max } from 'class-validator';
+import { IsNumber, Min, Max, IsString, IsOptional } from 'class-validator';
 
 export class RateBookingDto {
   @IsNumber()
@@ -6,7 +6,7 @@ export class RateBookingDto {
   @Max(5)
   rating: number;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   comment?: string;
 }

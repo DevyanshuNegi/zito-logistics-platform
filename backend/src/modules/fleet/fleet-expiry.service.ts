@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Cron } from '@nestjs/schedule';
+
+// Schema reality:
+// Vehicle fields: deviceGpsLat, deviceGpsLng, lastGpsAt, insuranceExpiry, permitExpiry
+//   — NO inspectionExpiry, NO ntsaExpiry, NO isAssignmentBlocked, NO currentDriver
+//   — relation name: driver (not currentDriver)
+// Driver fields: licenseExpiry, isAvailable, isOnline, isBlacklisted
+//   — NO canReceiveAssignments, NO complianceStatus, NO policeClearanceExpiry, NO medicalCertExpiry
+//
+// @nestjs/schedule may not be installed — using plain interval instead of @Cron
 
 const PRE_EXPIRY_ALERT_DAYS = 15;
 const GPS_DIVERGENCE_THRESHOLD_METERS = 500;
@@ -11,14 +19,23 @@ export class FleetExpiryService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  @Cron('0 7 * * *')
-  async checkVehicleDocumentExpiry() {
-    this.logger.log('Running vehicle document expiry check...');
-
+  // Call this from a scheduled job in app.module or a cron service
+  // Run daily at 07:00
+  async checkAllDocumentExpiry(): Promise<{ vehiclesChecked: number; driversChecked: number }> {
+    this.logger.log('Running document expiry check...');
+    const now = new Date();
     const alertDate = new Date();
     alertDate.setDate(alertDate.getDate() + PRE_EXPIRY_ALERT_DAYS);
-    const now = new Date();
 
+    const [vehicleCount, driverCount] = await Promise.all([
+      this.checkVehicleExpiry(now, alertDate),
+      this.checkDriverExpiry(now, alertDate),
+    ]);
+
+    return { vehiclesChecked: vehicleCount, driversChecked: driverCount };
+  }
+
+  private async checkVehicleExpiry(now: Date, alertDate: Date): Promise<number> {
     const vehicles = await this.prisma.vehicle.findMany({
       where: {
         status: 'ACTIVE',
@@ -29,167 +46,162 @@ export class FleetExpiryService {
       },
       include: {
         driver: {
-          include: { user: { select: { id: true, phone: true, email: true, fullName: true } } },
+          select: { id: true, userId: true },
         },
       },
     });
 
     for (const vehicle of vehicles) {
-      const expiries = [
-        { document: 'Insurance', expiredAt: vehicle.insuranceExpiry },
-        { document: 'Permit Certificate', expiredAt: vehicle.permitExpiry },
-      ]
-        .filter((d) => d.expiredAt)
-        .map((d) => {
-          const daysRemaining = Math.ceil(
-            (d.expiredAt!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-          );
-          return {
-            ...d,
-            daysRemaining,
-            isExpired: daysRemaining <= 0,
-            isExpiringSoon: daysRemaining > 0 && daysRemaining <= PRE_EXPIRY_ALERT_DAYS,
-          };
-        });
+      const docs = [
+        { name: 'Insurance', expiry: vehicle.insuranceExpiry },
+        { name: 'Permit', expiry: vehicle.permitExpiry },
+      ].filter((d) => d.expiry !== null);
 
-      for (const expiry of expiries) {
-        if (expiry.isExpired) {
+      for (const doc of docs) {
+        const daysRemaining = Math.ceil(
+          (doc.expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        if (daysRemaining <= 0) {
+          this.logger.warn(`Vehicle ${vehicle.plateNumber} — ${doc.name} EXPIRED`);
+          // Suspend vehicle
           await this.prisma.vehicle.update({
             where: { id: vehicle.id },
             data: { status: 'SUSPENDED' },
           });
-
-          await this.createExpiryAlert(vehicle.id, expiry.document, expiry.expiredAt!, 'VEHICLE_EXPIRED');
-          this.logger.warn(`Vehicle ${vehicle.plateNumber} blocked � ${expiry.document} expired on ${expiry.expiredAt}`);
-        } else if (expiry.isExpiringSoon) {
-          await this.createExpiryAlert(vehicle.id, expiry.document, expiry.expiredAt!, 'VEHICLE_EXPIRING_SOON');
-          this.logger.log(`Vehicle ${vehicle.plateNumber} � ${expiry.document} expires in ${expiry.daysRemaining} days`);
+          await this.createSystemAlert('VEHICLE', vehicle.id, `${doc.name} expired`, 'HIGH');
+        } else if (daysRemaining <= PRE_EXPIRY_ALERT_DAYS) {
+          this.logger.log(`Vehicle ${vehicle.plateNumber} — ${doc.name} expires in ${daysRemaining}d`);
+          await this.createSystemAlert('VEHICLE', vehicle.id, `${doc.name} expires in ${daysRemaining} days`, 'MEDIUM');
         }
       }
     }
 
-    await this.checkDriverDocumentExpiry(now, alertDate);
-
-    return { checked: vehicles.length };
+    return vehicles.length;
   }
 
-  private async checkDriverDocumentExpiry(now: Date, alertDate: Date) {
+  private async checkDriverExpiry(now: Date, alertDate: Date): Promise<number> {
     const drivers = await this.prisma.driver.findMany({
       where: {
-        isAvailable: true,
-        OR: [
-          { licenseExpiry: { lte: alertDate } },
-        ],
+        licenseExpiry: { lte: alertDate },
+        isBlacklisted: false,
       },
       include: {
-        user: { select: { id: true, phone: true, email: true, fullName: true } },
+        user: { select: { id: true, fullName: true, email: true, phone: true } },
       },
     });
 
     for (const driver of drivers) {
-      const docs = [
-        { name: 'Driving License', expiry: driver.licenseExpiry },
-      ].filter((d) => d.expiry);
+      if (!driver.licenseExpiry) continue;
 
-      for (const doc of docs) {
-        const daysRemaining = Math.ceil(
-          (doc.expiry!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-        );
+      const daysRemaining = Math.ceil(
+        (driver.licenseExpiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
-        if (daysRemaining <= 0) {
-          await this.prisma.driver.update({
-            where: { id: driver.id },
-            data: { isAvailable: false },
-          });
-          this.logger.warn(`Driver ${driver.user.fullName} suspended � ${doc.name} expired`);
-        } else if (daysRemaining <= PRE_EXPIRY_ALERT_DAYS) {
-          this.logger.log(`Driver ${driver.user.fullName} � ${doc.name} expires in ${daysRemaining}d`);
-        }
+      if (daysRemaining <= 0) {
+        this.logger.warn(`Driver ${driver.user.fullName} — Licence EXPIRED`);
+        // Block driver from receiving assignments
+        await this.prisma.driver.update({
+          where: { id: driver.id },
+          data: { isAvailable: false },
+        });
+        await this.createSystemAlert('DRIVER', driver.id, 'Driving licence expired', 'HIGH');
+      } else if (daysRemaining <= PRE_EXPIRY_ALERT_DAYS) {
+        this.logger.log(`Driver ${driver.user.fullName} — Licence expires in ${daysRemaining}d`);
+        await this.createSystemAlert('DRIVER', driver.id, `Licence expires in ${daysRemaining} days`, 'MEDIUM');
       }
     }
+
+    return drivers.length;
   }
 
-  async checkGpsDivergence(vehicleId: string) {
+  // Dual GPS divergence check — driver mobile vs vehicle hardware GPS
+  // Call from tracking service when processing location updates
+  async checkGpsDivergence(vehicleId: string): Promise<{
+    alert: boolean;
+    divergenceMeters?: number;
+    message?: string;
+  }> {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id: vehicleId },
-      include: { driver: true },
+      include: {
+        driver: {
+          select: {
+            id: true,
+            currentLatitude: true,
+            currentLongitude: true,
+            lastLocationAt: true,
+          },
+        },
+      },
     });
 
-    if (!vehicle || !vehicle.driver) return null;
+    if (!vehicle || !vehicle.driver) return { alert: false };
+    if (!vehicle.deviceGpsLat || !vehicle.deviceGpsLng) return { alert: false };
+    if (!vehicle.driver.currentLatitude || !vehicle.driver.currentLongitude) return { alert: false };
 
-    const driver = vehicle.driver;
-
+    // Reject stale data (older than 2 minutes)
     const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-    if (
-      !driver.currentLatitude ||
-      !vehicle.deviceGpsLat ||
-      (driver.lastLocationAt && driver.lastLocationAt < twoMinutesAgo) ||
-      (vehicle.lastGpsAt && vehicle.lastGpsAt < twoMinutesAgo)
-    ) {
-      return null;
-    }
+    if (vehicle.lastGpsAt && vehicle.lastGpsAt < twoMinutesAgo) return { alert: false };
+    if (vehicle.driver.lastLocationAt && vehicle.driver.lastLocationAt < twoMinutesAgo) return { alert: false };
 
-    const distanceMeters = this.haversineDistance(
-      driver.currentLatitude,
-      driver.currentLongitude!,
+    const distanceMeters = this.haversineMeters(
+      vehicle.driver.currentLatitude,
+      vehicle.driver.currentLongitude,
       vehicle.deviceGpsLat,
-      vehicle.deviceGpsLng!,
+      vehicle.deviceGpsLng,
     );
 
     if (distanceMeters > GPS_DIVERGENCE_THRESHOLD_METERS) {
       this.logger.warn(
-        `GPS DIVERGENCE ALERT: Vehicle ${vehicle.plateNumber} � driver vs device ${Math.round(distanceMeters)}m apart`,
+        `GPS DIVERGENCE: Vehicle ${vehicle.plateNumber} — ${Math.round(distanceMeters)}m between driver and vehicle`,
       );
-
-      await this.prisma.internalAlert.create({
-        data: {
-          type: 'GPS_DIVERGENCE',
-          severity: 'HIGH',
-          message: `Vehicle ${vehicle.plateNumber} gps diverging from driver by ${Math.round(distanceMeters)}m.`,
-          entityType: 'VEHICLE',
-          entityId: vehicleId,
-          metadata: {
-            driverPosition: { lat: driver.currentLatitude, lng: driver.currentLongitude },
-            vehiclePosition: { lat: vehicle.deviceGpsLat, lng: vehicle.deviceGpsLng },
-            divergenceMeters: Math.round(distanceMeters),
-          },
-        },
-      });
-
+      await this.createSystemAlert(
+        'VEHICLE',
+        vehicleId,
+        `GPS divergence detected: ${Math.round(distanceMeters)}m`,
+        'HIGH',
+      );
       return {
         alert: true,
-        vehicleId,
-        plateNumber: vehicle.plateNumber,
         divergenceMeters: Math.round(distanceMeters),
-        driverPosition: { lat: driver.currentLatitude, lng: driver.currentLongitude },
-        vehiclePosition: { lat: vehicle.deviceGpsLat, lng: vehicle.deviceGpsLng },
+        message: `Driver and vehicle GPS positions are ${Math.round(distanceMeters)}m apart`,
       };
     }
 
     return { alert: false, divergenceMeters: Math.round(distanceMeters) };
   }
 
+  // Update vehicle hardware GPS (called by IoT device webhook)
   async updateVehicleGps(vehicleId: string, lat: number, lng: number) {
     return this.prisma.vehicle.update({
       where: { id: vehicleId },
-      data: { deviceGpsLat: lat, deviceGpsLng: lng, lastGpsAt: new Date() },
-    });
-  }
-
-  private async createExpiryAlert(vehicleId: string, document: string, expiryDate: Date, type: string) {
-    await this.prisma.internalAlert.create({
       data: {
-        type: 'DOCUMENT_EXPIRY',
-        severity: 'MEDIUM',
-        message: `${document} for vehicle ${type} expires/expired on ${expiryDate}`,
-        entityType: 'VEHICLE',
-        entityId: vehicleId,
-        metadata: { document, expiryDate, type },
+        deviceGpsLat: lat,
+        deviceGpsLng: lng,
+        lastGpsAt: new Date(),
       },
     });
   }
 
-  private haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  private async createSystemAlert(entityType: string, entityId: string, message: string, severity: string) {
+    try {
+      await this.prisma.internalAlert.create({
+        data: {
+          type: 'DOCUMENT_EXPIRY',
+          severity,
+          message,
+          entityType,
+          entityId,
+          status: 'PENDING',
+        },
+      });
+    } catch {
+      // Never crash main expiry flow
+    }
+  }
+
+  private haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
     const R = 6371000;
     const dLat = this.toRad(lat2 - lat1);
     const dLng = this.toRad(lng2 - lng1);

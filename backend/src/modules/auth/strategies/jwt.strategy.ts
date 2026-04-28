@@ -1,12 +1,11 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { PassportStrategy } from '@nestjs/passport';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AccountStatus } from '@prisma/client';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private prisma: PrismaService) {
+  constructor(private readonly prisma: PrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -14,27 +13,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  /**
-   * PRD §3 & §4: Real-time Account Lifecycle Validation.
-   * Re-validates the user status against the database on every authenticated request.
-   */
   async validate(payload: any) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { id: true, email: true, phone: true, role: true, status: true },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('User session invalid or user deleted');
+    const user = await this.prisma.user.findUnique({ where: { id: payload.userId } });
+    if (!user || user.status === 'SUSPENDED') {
+      throw new UnauthorizedException();
     }
-
-    if (user.status !== AccountStatus.ACTIVE) {
-      throw new UnauthorizedException({
-        message: `Access denied. Account is ${user.status.toLowerCase()}`,
-        data: { status: user.status },
-      });
-    }
-
-    return user;
+    // Return a minimal user object to the request
+    return { id: user.id, email: user.email, role: user.role, agencyId: user.agencyId };
   }
 }

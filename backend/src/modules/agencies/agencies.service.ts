@@ -1,43 +1,47 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateAgencyDto } from './dto/create-agency.dto';
-import { UpdateAgencyDto } from './dto/update-agency.dto';
 
 @Injectable()
 export class AgenciesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createAgencyDto: CreateAgencyDto) {
+  async create(dto: { name: string; address?: string; latitude?: number; longitude?: number; managerId?: string }) {
     return this.prisma.agency.create({
-      data: createAgencyDto,
+      data: {
+        ...dto,
+        status: 'ACTIVE',
+      },
     });
   }
 
   async findAll() {
-    return this.prisma.agency.findMany();
+    return this.prisma.agency.findMany({
+      include: { _count: { select: { users: true, bookings: true, staff: true } } },
+    });
   }
 
   async findOne(id: string) {
     const agency = await this.prisma.agency.findUnique({
       where: { id },
+      include: { staff: { where: { isActive: true } } },
     });
-    if (!agency) throw new NotFoundException(`Agency with ID ${id} not found`);
+    if (!agency) throw new NotFoundException('Agency not found');
     return agency;
   }
 
-  async update(id: string, updateAgencyDto: UpdateAgencyDto) {
-    await this.findOne(id); // Check existence
+  async update(id: string, dto: any) {
+    await this.findOne(id);
     return this.prisma.agency.update({
       where: { id },
-      data: updateAgencyDto,
+      data: dto,
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id); // Check existence
+  async deactivate(id: string) {
+    await this.findOne(id);
     return this.prisma.agency.update({
       where: { id },
-      data: { status: 'INACTIVE' }, // Soft delete / deactivation
+      data: { status: 'INACTIVE' },
     });
   }
 }
