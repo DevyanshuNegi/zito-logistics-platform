@@ -436,7 +436,7 @@ model Booking {
   driver          Driver?       @relation("AssignedDriver", fields: [driverId], references: [id])
   vehicleId       String?
   vehicle         Vehicle?      @relation("BookingVehicle", fields: [vehicleId], references: [id])
-
+  requiredVehicleType   VehicleType?
   baseFare        Float         @default(0)
   distanceFare    Float         @default(0)
   stopFare        Float         @default(0)

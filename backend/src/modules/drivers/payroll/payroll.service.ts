@@ -1,67 +1,139 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { UserRole } from '@prisma/client';
+
+// PRD §44.2 — Payroll Engine
+// Path: src/modules/drivers/payroll/payroll.service.ts
+// Schema: DriverPayroll, DriverIncentive, DriverPenalty, DriverShift, Booking
 
 @Injectable()
 export class PayrollService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Calculates driver earnings, incentives, and penalties for a given period.
-   * Implementation of PRD §44.2: Driver Payroll Engine.
-   * Leverages performance metrics (trip_hours) calculated in ShiftService (PRD §44.1).
-   */
-  async getDriverPayroll(driverId: string, startDate?: Date, endDate?: Date) {
-    const start = startDate || new Date(new Date().setDate(new Date().getDate() - 30));
-    const end = endDate || new Date();
+  async generatePayroll(driverId: string, periodStart: Date, periodEnd: Date) {
+    const driver = await this.prisma.driver.findUnique({ where: { id: driverId } });
+    if (!driver) throw new NotFoundException('Driver not found');
 
-    // Check if driver exists and is active (PRD §3)
-    const driver = await this.prisma.user.findUnique({
-      where: { id: driverId },
+    const existing = await this.prisma.driverPayroll.findFirst({
+      where: { driverId, periodStart, periodEnd, status: { not: 'CANCELLED' } },
     });
+    if (existing) throw new ConflictException('Payroll already exists for this period');
 
-    if (!driver || driver.role !== UserRole.DRIVER) {
-      throw new NotFoundException('Driver not found');
-    }
-
-    // 1. Fetch completed shifts to aggregate trip_hours and idle_hours (PRD §44.1)
-    const shifts = await this.prisma.driverShift.findMany({
-      where: {
-        driverId: driverId,
-        shiftStartTime: { gte: start },
-        shiftEndTime: { lte: end, not: null },
-      },
-    });
-
-    const totalTripHours = shifts.reduce((acc, s) => acc + (Number(s.tripHours) || 0), 0);
-    const totalIdleHours = shifts.reduce((acc, s) => acc + (Number(s.idleHours) || 0), 0);
-
-    // 2. Calculate trip-based earnings (PRD §44.2 / §8)
     const completedBookings = await this.prisma.booking.findMany({
-      where: {
-        driverId: driverId,
-        status: 'COMPLETED',
-        deliveredAt: { gte: start, lte: end },
-      },
+      where: { driverId, status: 'COMPLETED', updatedAt: { gte: periodStart, lte: periodEnd } },
+      select: { id: true },
+    });
+    const totalTrips = completedBookings.length;
+
+    const incentives = await this.prisma.driverIncentive.findMany({
+      where: { driverId, createdAt: { gte: periodStart, lte: periodEnd } },
+    });
+    const incentiveTotal = incentives.reduce((sum, i) => sum + i.amount, 0);
+
+    const penalties = await this.prisma.driverPenalty.findMany({
+      where: { driverId, createdAt: { gte: periodStart, lte: periodEnd } },
+    });
+    const penaltyTotal = penalties.reduce((sum, p) => sum + p.amount, 0);
+
+    const shifts = await this.prisma.driverShift.findMany({
+      where: { driverId, shiftStartTime: { gte: periodStart, lte: periodEnd }, status: 'ENDED' },
+      select: { totalHours: true, tripHours: true },
+    });
+    const tripHours = shifts.reduce((sum, s) => sum + (s.tripHours ?? 0), 0);
+
+    const BASE_RATE_PER_TRIP = 200;
+    const HOURLY_RATE        = 150;
+    const tripEarnings   = parseFloat((totalTrips * BASE_RATE_PER_TRIP).toFixed(2));
+    const hourlyEarnings = parseFloat((tripHours  * HOURLY_RATE).toFixed(2));
+    const netPayout      = parseFloat(
+      Math.max(0, tripEarnings + hourlyEarnings + incentiveTotal - penaltyTotal).toFixed(2),
+    );
+
+    const payroll = await this.prisma.driverPayroll.create({
+      data: { driverId, periodStart, periodEnd, totalTrips, tripEarnings, hourlyEarnings, incentiveTotal, penaltyTotal, netPayout, status: 'PENDING' },
     });
 
-    // Driver share is calculated from the booking price (PRD §19 / §48)
-    // Default logic assumes 80% share for the driver
-    const tripEarnings = completedBookings.reduce((acc, b) => acc + (Number(b.totalPrice || 0) * 0.8), 0);
+    return { payroll, breakdown: { totalTrips, tripEarnings, hourlyEarnings, incentiveTotal, penaltyTotal, netPayout } };
+  }
 
-    // 3. Incentives & Penalties (PRD §44.9) - Integration points for automated logic
-    const incentives = 0; // Placeholder for Peak-hour/Completion bonuses
-    const penalties = 0;   // Placeholder for Cancellation/SLA breach penalties
+  async approvePayroll(payrollId: string, adminId: string) {
+    const payroll = await this.getOrThrow(payrollId);
+    if (payroll.status !== 'PENDING') {
+      throw new BadRequestException(`Cannot approve payroll with status ${payroll.status}`);
+    }
+    return this.prisma.driverPayroll.update({
+      where: { id: payrollId },
+      data: { status: 'APPROVED', approvedBy: adminId, approvedAt: new Date() },
+    });
+  }
 
-    return {
-      trip_earnings: parseFloat(tripEarnings.toFixed(2)),
-      trip_hours: parseFloat(totalTripHours.toFixed(2)),
-      idle_hours: parseFloat(totalIdleHours.toFixed(2)),
-      incentives,
-      penalties,
-      total_payout: parseFloat((tripEarnings + incentives - penalties).toFixed(2)),
-      currency: 'KES',
-      period: { start, end },
-    };
+  async markPaid(payrollId: string, transactionRef: string) {
+    const payroll = await this.getOrThrow(payrollId);
+    if (payroll.status !== 'APPROVED') {
+      throw new BadRequestException('Payroll must be APPROVED before marking as paid');
+    }
+    return this.prisma.driverPayroll.update({
+      where: { id: payrollId },
+      data: { status: 'PAID', paidAt: new Date(), transactionRef },
+    });
+  }
+
+  async addIncentive(dto: { driverId: string; type: string; amount: number; reason?: string; bookingId?: string }) {
+    const driver = await this.prisma.driver.findUnique({ where: { id: dto.driverId } });
+    if (!driver) throw new NotFoundException('Driver not found');
+    return this.prisma.driverIncentive.create({
+      data: { driverId: dto.driverId, type: dto.type, amount: dto.amount, reason: dto.reason ?? null, bookingId: dto.bookingId ?? null },
+    });
+  }
+
+  async addPenalty(dto: { driverId: string; type: string; amount: number; reason: string; bookingId?: string }) {
+    const driver = await this.prisma.driver.findUnique({ where: { id: dto.driverId } });
+    if (!driver) throw new NotFoundException('Driver not found');
+    return this.prisma.driverPenalty.create({
+      data: { driverId: dto.driverId, type: dto.type, amount: dto.amount, reason: dto.reason, bookingId: dto.bookingId ?? null },
+    });
+  }
+
+  async listForDriver(driverId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [payrolls, total] = await Promise.all([
+      this.prisma.driverPayroll.findMany({ where: { driverId }, orderBy: { periodStart: 'desc' }, skip, take: limit }),
+      this.prisma.driverPayroll.count({ where: { driverId } }),
+    ]);
+    return { payrolls, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  async listForAdmin(filters: { driverId?: string; status?: string; page?: number; limit?: number }) {
+    const { driverId, status, page = 1, limit = 20 } = filters;
+    const skip = (page - 1) * limit;
+    const where = { ...(driverId && { driverId }), ...(status && { status }) };
+    const [payrolls, total] = await Promise.all([
+      this.prisma.driverPayroll.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      this.prisma.driverPayroll.count({ where }),
+    ]);
+    return { payrolls, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  async getPayroll(payrollId: string) { return this.getOrThrow(payrollId); }
+
+  async getEarningsSummary(driverId: string) {
+    const [payrolls, incentives, penalties] = await Promise.all([
+      this.prisma.driverPayroll.findMany({ where: { driverId }, orderBy: { periodStart: 'desc' }, take: 12 }),
+      this.prisma.driverIncentive.findMany({ where: { driverId }, orderBy: { createdAt: 'desc' }, take: 10 }),
+      this.prisma.driverPenalty.findMany({ where: { driverId }, orderBy: { createdAt: 'desc' }, take: 10 }),
+    ]);
+    const totalEarned   = payrolls.filter(p => p.status === 'PAID').reduce((s, p) => s + p.netPayout, 0);
+    const pendingAmount = payrolls.filter(p => ['PENDING','APPROVED'].includes(p.status)).reduce((s,p)=>s+p.netPayout,0);
+    return { totalEarned: parseFloat(totalEarned.toFixed(2)), pendingAmount: parseFloat(pendingAmount.toFixed(2)), recentPayrolls: payrolls, recentIncentives: incentives, recentPenalties: penalties };
+  }
+
+  private async getOrThrow(payrollId: string) {
+    const p = await this.prisma.driverPayroll.findUnique({ where: { id: payrollId } });
+    if (!p) throw new NotFoundException('Payroll record not found');
+    return p;
   }
 }

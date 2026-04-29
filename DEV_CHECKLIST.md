@@ -10,35 +10,34 @@ This file tracks the end-to-end development of the ZITO Super App based strictly
 **Goal:** Customers can register, book a trip, pay, and track it. Drivers receive jobs and update status. Admins manage everything.
 
 ### 1.1 Authentication & Users (PRD §2, §3, §4)
-- [ ] Backend: Auth module (login, JWT, refresh token)
+- [x] Backend: Auth module (login, JWT, refresh token)
 - [x] Backend: OTP flow (send, verify, rate limit)
-- [ ] Backend: User registration + KYC document upload
-- [ ] Backend: Account lifecycle (PENDING → VERIFIED → ACTIVE)
+- [x] Backend: User registration + KYC document upload
+- [x] Backend: Account lifecycle (PENDING → VERIFIED → ACTIVE)
 - [ ] Frontend: Login page, Register page, OTP verify, pending-approval
 - [ ] Frontend: Role selection screen
-- [ ] Backend: JWT guard, roles guard, RBAC decorators
+- [x] Backend: JWT guard, roles guard, RBAC decorators
 
 ### 1.2 Agency Setup (PRD §31)
-- [ ] Backend: Agency CRUD (create, update, list, deactivate)
-- [ ] Backend: Agency controller with RBAC
-- [x] Backend: Staff management (roles, permissions, login)
+- [x] Backend: Agency CRUD (create, update, list, deactivate)
+- [x] Backend: Agency controller with RBAC
 - [ ] Frontend: Admin agency dashboard
 
 ### 1.3 Booking Engine (PRD §6)
-- [ ] Backend: Create booking (multi-stop, serviceType, pricing)
-- [ ] Backend: Full status lifecycle with audit log
-- [ ] Backend: Cancellation with reason + refund logic
+- [x] Backend: Create booking (multi-stop, serviceType, pricing)
+- [x] Backend: Full status lifecycle with audit log
+- [x] Backend: Cancellation with reason + refund logic
 - [x] Backend: Idempotency key enforcement on booking create
-- [ ] Backend: Admin booking list, assign driver, override status
+- [x] Backend: Admin booking list, assign driver, override status
 - [ ] Frontend: Customer booking list + detail + cancel
 - [ ] Frontend: Customer new booking wizard
 - [ ] Frontend: Admin bookings dashboard
 
 ### 1.4 Driver System (PRD §8, §44.1, §44.2)
-- [ ] Backend: Driver profile (create, GPS update, online/offline)
+- [x] Backend: Driver profile (create, GPS update, online/offline)
 - [ ] Backend: Driver matching engine
 - [x] Backend: Shift system (start/end shift, hours calc)
-- [ ] Backend: ShiftActiveGuard
+- [x] Backend: ShiftActiveGuard
 - [ ] Backend: Payroll engine (trip earnings, incentives)
 - [ ] Frontend: Driver dashboard (jobs list, accept/reject)
 - [ ] Frontend: Shift control screen
@@ -47,7 +46,7 @@ This file tracks the end-to-end development of the ZITO Super App based strictly
 ### 1.5 Fleet & Vehicle (PRD §9)
 - [ ] Backend: Vehicle CRUD (add, edit, assign to driver)
 - [x] Backend: Insurance / permit expiry tracking with alerts
-- [ ] Backend: Dual GPS tracking (driver vs vehicle device)
+- [x] Backend: Dual GPS tracking (driver vs vehicle device)
 - [ ] Backend: Breakdown reporting and rescue flow
 - [ ] Frontend: Transporter fleet dashboard
 - [ ] Frontend: Admin fleet overview
@@ -55,9 +54,7 @@ This file tracks the end-to-end development of the ZITO Super App based strictly
 ### 1.6 Payment & Wallet (PRD §15)
 - [ ] Backend: Initiate payment (M-Pesa STK push)
 - [x] Backend: Escrow (hold on booking, release on delivery)
-- [ ] Backend: Wallet (credit/debit with idempotency)
-- [ ] Backend: Payment retry logic
-- [ ] Backend: Automated refund on cancellation
+- [x] Backend: Wallet (credit/debit with idempotency)ee cancellation
 - [ ] Frontend: Customer payment history
 - [ ] Frontend: Admin payment dashboard + manual reconcile
 
@@ -68,7 +65,7 @@ This file tracks the end-to-end development of the ZITO Super App based strictly
 
 ### 1.8 Real-Time Tracking (PRD §26)
 - [ ] Backend: WebSocket gateway (driver location broadcast)
-- [ ] Backend: Customer tracking endpoint (ETA + live location)
+- [x] Backend: Customer tracking endpoint (ETA + live location)
 - [ ] Frontend: Live map component (driver pin + ETA)
 - [ ] Frontend: Customer tracking page
 - [ ] Frontend: Socket.io client hook
