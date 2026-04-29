@@ -20,6 +20,7 @@ import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 
 @ApiTags('Contracts')
 @ApiBearerAuth('JWT')
+@Controller()
 export class ContractsController {
   constructor(private readonly contractsService: ContractsService) {}
 }
