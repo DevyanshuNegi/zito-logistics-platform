@@ -7,6 +7,20 @@ import { CreateDriverDto } from './dto/create-driver.dto';
 export class DriversService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async listDrivers(filters: { isAvailable?: boolean; isOnline?: boolean } = {}) {
+    return this.prisma.driver.findMany({
+      where: {
+        ...(filters.isAvailable !== undefined && { isAvailable: filters.isAvailable }),
+        ...(filters.isOnline !== undefined && { isOnline: filters.isOnline }),
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { id: true, fullName: true, phone: true, email: true } },
+        vehicle: { select: { id: true, plateNumber: true, type: true, status: true } },
+      },
+    });
+  }
+
   async registerDriver(userId: string, dto: CreateDriverDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');

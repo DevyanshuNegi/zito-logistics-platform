@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BookingStatus, ServiceType } from '@prisma/client';
+import { ShiftActiveGuard } from '../drivers/shift/shift-active.guard';
 
 // ─── Customer routes ──────────────────────────────────────────────────────────
 @Controller('customer/bookings')
@@ -116,6 +117,7 @@ export class DriverTripsController {
   // PATCH /driver/trips/:id/status
   // ShiftActiveGuard applied here — driver must have active shift
   @Patch(':id/status')
+  @UseGuards(ShiftActiveGuard)
   @HttpCode(HttpStatus.OK)
   updateStatus(
     @Param('id', ParseUUIDPipe) id: string,

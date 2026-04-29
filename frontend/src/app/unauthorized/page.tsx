@@ -1,28 +1,33 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
-import { getHomePathForRole } from '@/utils/roles';
+import { Button } from '@/components/ui/Button';
+import { useAuth } from '@/hooks/useAuth';
+import { getRoleHomePath } from '@/lib/roles';
 
 export default function UnauthorizedPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const homePath = getHomePathForRole(user?.role);
+  const homePath = getRoleHomePath(user?.role);
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-[#0a0d14] text-[#e8eaf2] font-sans">
-      <div className="text-[64px] mb-4">🚫</div>
-      <h1 className="text-[28px] font-bold mb-2">Access Denied</h1>
-      <p className="text-[#8892a4] mb-8 text-center max-w-md px-4">
-        You do not have permission to access the requested page or module. Your role ({user?.role || 'Guest'}) might not be authorized for this operation.
-      </p>
-      
-      <button
-        onClick={() => router.push(homePath)}
-        className="px-8 py-3 bg-[#e8a020] hover:bg-[#d69010] text-black font-bold text-sm rounded-lg transition-colors"
-      >
-        Go to Home
-      </button>
+    <main className="flex min-h-screen items-center justify-center px-4">
+      <div className="max-w-lg rounded-[2rem] border border-slate-700/40 bg-slate-950/60 p-8 text-center shadow-2xl backdrop-blur">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-rose-400/30 bg-rose-500/10 text-3xl text-rose-200">
+          !
+        </div>
+        <h1 className="mt-6 text-3xl font-semibold text-white">Access denied</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-300">
+          This route is not available for your current role.
+          {user?.role ? ` Signed in as ${user.role}.` : ' You are currently not signed in.'}
+        </p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Button onClick={() => router.push(homePath)}>Go to home</Button>
+          <Button variant="secondary" onClick={() => router.push('/login')}>
+            Back to login
+          </Button>
+        </div>
+      </div>
     </main>
   );
 }

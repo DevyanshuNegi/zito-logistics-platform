@@ -26,7 +26,7 @@ interface MulterFile {
 
 @ApiTags('Users')
 @ApiBearerAuth('JWT')
-@Controller('api/v1/users')
+@Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}

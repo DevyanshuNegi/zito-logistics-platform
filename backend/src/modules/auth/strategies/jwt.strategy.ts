@@ -18,7 +18,27 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || user.status === 'SUSPENDED') {
       throw new UnauthorizedException();
     }
-    // Return a minimal user object to the request
-    return { id: user.id, email: user.email, role: user.role, agencyId: user.agencyId };
+
+    const baseUser = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      activeRole: user.role,
+      agencyId: user.agencyId,
+    };
+
+    if (user.role === 'DRIVER') {
+      const driverProfile = await this.prisma.driver.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+
+      return {
+        ...baseUser,
+        driverId: driverProfile?.id ?? null,
+      };
+    }
+
+    return baseUser;
   }
 }

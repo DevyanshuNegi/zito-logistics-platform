@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Put, Patch, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, Get, Put, Patch, UseGuards, Req, Query } from '@nestjs/common';
 import { DriversService } from './drivers.service';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverStatusDto } from './dto/update-driver-status.dto';
@@ -10,6 +10,19 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @UseGuards(JwtAuthGuard)
 export class DriversController {
   constructor(private readonly driversService: DriversService) {}
+
+  @Get()
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
+  @UseGuards(RolesGuard)
+  async list(
+    @Query('available') available?: string,
+    @Query('online') online?: string,
+  ) {
+    return this.driversService.listDrivers({
+      isAvailable: available === undefined ? undefined : available === 'true',
+      isOnline: online === undefined ? undefined : online === 'true',
+    });
+  }
 
   @Post('register')
   @Roles('DRIVER')

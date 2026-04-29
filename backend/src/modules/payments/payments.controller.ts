@@ -1,6 +1,7 @@
 import {
   Controller, Post, Get, Patch, Param, Body,
   Req, UseGuards, Query, Headers, ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UserRole, PaymentStatus } from '@prisma/client';
@@ -31,7 +32,7 @@ export class PaymentsController {
     @Headers('x-idempotency-key') idempotencyKey: string,
   ) {
     if (!idempotencyKey) {
-      throw new Error('X-Idempotency-Key header is required');
+      throw new BadRequestException('X-Idempotency-Key header is required');
     }
     return this.paymentsService.initiatePayment(
       dto.bookingId,

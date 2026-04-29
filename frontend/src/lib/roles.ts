@@ -1,0 +1,26 @@
+export function normalizeRole(role?: string | null) {
+  return (role ?? '').trim().toUpperCase();
+}
+
+export function getRoleHomePath(role?: string | null) {
+  switch (normalizeRole(role)) {
+    case 'SUPER_ADMIN':
+    case 'ADMIN':
+      return '/admin/bookings';
+    case 'CUSTOMER':
+      return '/customer/bookings';
+    case 'DRIVER':
+      return '/driver/dashboard';
+    case 'TRANSPORTER':
+      return '/transporter/fleet';
+    case 'AGENCY_STAFF':
+      return '/staff/support';
+    default:
+      return '/login';
+  }
+}
+
+export function hasAnyRole(role: string | null | undefined, allowedRoles: string[]) {
+  const normalized = normalizeRole(role);
+  return allowedRoles.map(normalizeRole).includes(normalized);
+}

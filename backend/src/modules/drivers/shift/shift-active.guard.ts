@@ -11,7 +11,10 @@ export class ShiftActiveGuard implements CanActivate {
     const req = context.switchToHttp().getRequest();
     const user = req.user;
 
-    if (!user || user.activeRole !== 'DRIVER') return true; // only applies to drivers
+    if (!user || (user.activeRole !== 'DRIVER' && user.role !== 'DRIVER')) return true;
+    if (!user.driverId) {
+      throw new ForbiddenException('Driver profile not found for this account');
+    }
 
     await this.shiftService.assertActiveShift(user.driverId);
     return true;

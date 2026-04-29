@@ -6,9 +6,11 @@ import {
   AdminBookingsController,
 } from './bookings.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { PaymentsModule } from '../payments/payments.module';
+import { DriversModule } from '../drivers/drivers.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, PaymentsModule, DriversModule],
   controllers: [
     CustomerBookingsController,
     DriverTripsController,

@@ -13,6 +13,7 @@ import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { RateBookingDto } from './dto/rate-booking.dto';
 import * as crypto from 'crypto';
+import { PaymentsService } from '../payments/payments.service';
 
 // ─── Status transition rules ──────────────────────────────────────────────────
 // PRD §6 — complete 15-state lifecycle
@@ -30,10 +31,23 @@ const CANCELLABLE_BY_CUSTOMER: BookingStatus[] = [
 // Cancellation penalty threshold — PRD §20
 const PENALTY_THRESHOLD_STATUS = BookingStatus.ACCEPTED;
 const PENALTY_PERCENT = 0.10; // 10% of total price
+const ESCROW_RELEASE_STATUSES: BookingStatus[] = [
+  BookingStatus.DELIVERED,
+  BookingStatus.COMPLETED,
+];
+const ADMIN_AUTO_REFUND_STATUSES: BookingStatus[] = [
+  BookingStatus.CREATED,
+  BookingStatus.SEARCHING,
+  BookingStatus.APPROVED,
+  BookingStatus.ASSIGNED,
+];
 
 @Injectable()
 export class BookingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   // ─── CREATE ────────────────────────────────────────────────────────────────
 
@@ -265,6 +279,13 @@ export class BookingsService {
       note: dto.note,
     });
 
+    if (ESCROW_RELEASE_STATUSES.includes(dto.status)) {
+      await this.paymentsService.releaseEscrowForBooking(
+        bookingId,
+        `Released after driver updated booking to ${dto.status}`,
+      );
+    }
+
     return updated;
   }
 
@@ -293,6 +314,13 @@ export class BookingsService {
       to: dto.status,
       note: dto.note,
     });
+
+    if (ESCROW_RELEASE_STATUSES.includes(dto.status)) {
+      await this.paymentsService.releaseEscrowForBooking(
+        bookingId,
+        `Released after admin updated booking to ${dto.status}`,
+      );
+    }
 
     return updated;
   }
@@ -411,7 +439,18 @@ export class BookingsService {
       penaltyAmount,
     });
 
-    return { booking: updated, penaltyAmount };
+    const refund =
+      penaltyAmount === 0
+        ? await this.paymentsService.refundBookingPayment(
+            bookingId,
+            `Customer cancellation: ${dto.reason}`,
+          )
+        : {
+            action: 'MANUAL_REVIEW_REQUIRED',
+            penaltyAmount,
+          };
+
+    return { booking: updated, penaltyAmount, refund };
   }
 
   async cancelByAdmin(bookingId: string, adminId: string, dto: CancelBookingDto) {
@@ -437,7 +476,24 @@ export class BookingsService {
       penaltyOverrideNote: dto.penaltyOverrideNote,
     });
 
-    return updated;
+    const penaltyAmount = booking.status === PENALTY_THRESHOLD_STATUS
+      ? parseFloat((booking.totalPrice * PENALTY_PERCENT).toFixed(2))
+      : 0;
+    const autoRefundEligible = ADMIN_AUTO_REFUND_STATUSES.includes(booking.status);
+
+    const refund =
+      autoRefundEligible
+        ? await this.paymentsService.refundBookingPayment(
+            bookingId,
+            `Admin cancellation: ${dto.reason}`,
+          )
+        : {
+            action: 'MANUAL_REVIEW_REQUIRED',
+            penaltyAmount,
+            note: dto.penaltyOverrideNote ?? null,
+          };
+
+    return { booking: updated, penaltyAmount, refund };
   }
 
   // ─── RATE BOOKING ──────────────────────────────────────────────────────────

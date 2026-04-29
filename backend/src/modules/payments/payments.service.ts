@@ -4,37 +4,40 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { EscrowService } from './escrow/escrow.service';
+import { MpesaService } from './mpesa/mpesa.service';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly escrowService: EscrowService,
+    private readonly mpesaService: MpesaService,
+  ) {}
 
-  // ─── Initiate Payment (PRD §15) ───────────────────────────────────────────
-  /**
-   * Creates a payment record and holds escrow.
-   * Idempotency key prevents duplicate charges on retry.
-   */
   async initiatePayment(
     bookingId: string,
     amount: number,
     method: PaymentMethod,
     idempotencyKey: string,
   ) {
-    // PRD §28: Idempotency — return existing payment if key already used
     const existing = await this.prisma.payment.findUnique({
       where: { idempotencyKey },
     });
     if (existing) return existing;
 
-    // Verify booking exists
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
     });
     if (!booking) throw new NotFoundException(`Booking ${bookingId} not found`);
 
-    // PRD §15: Cannot initiate payment on already-paid booking
+    const customer = await this.prisma.user.findUnique({
+      where: { id: booking.customerId },
+      select: { phone: true },
+    });
+
     const existingPayment = await this.prisma.payment.findFirst({
       where: { bookingId, status: PaymentStatus.SUCCESS },
     });
@@ -42,35 +45,43 @@ export class PaymentsService {
       throw new ConflictException('Booking already has a successful payment');
     }
 
-    // Create payment + escrow in a transaction
     return this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.create({
         data: {
           bookingId,
           amount,
           method,
-          status: PaymentStatus.INITIATED,
+          status: method === PaymentMethod.MPESA
+            ? PaymentStatus.PENDING
+            : PaymentStatus.INITIATED,
           idempotencyKey,
           reference: `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
         },
       });
 
-      // PRD §15: Hold escrow on booking creation
       await tx.escrow.upsert({
         where: { bookingId },
         create: { bookingId, amount, status: 'HELD' },
         update: { amount, status: 'HELD' },
       });
 
-      return payment;
+      if (method !== PaymentMethod.MPESA) {
+        return payment;
+      }
+
+      const providerResponse = await this.mpesaService.initiateStkPush({
+        amount,
+        phoneNumber: customer?.phone,
+        reference: payment.reference,
+      });
+
+      return {
+        ...payment,
+        providerResponse,
+      };
     });
   }
 
-  // ─── Verify / Confirm Payment (PRD §15) ───────────────────────────────────
-  /**
-   * Called after M-Pesa STK push callback confirms payment.
-   * Releases escrow and marks booking payment_status as paid.
-   */
   async confirmPayment(paymentId: string, mpesaRef?: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
@@ -78,36 +89,32 @@ export class PaymentsService {
     if (!payment) throw new NotFoundException('Payment not found');
 
     if (payment.status === PaymentStatus.SUCCESS) {
-      return payment; // Already confirmed — idempotent
+      return payment;
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // Mark payment success
-      const updated = await tx.payment.update({
-        where: { id: paymentId },
-        data: {
-          status: PaymentStatus.SUCCESS,
-          reference: mpesaRef ?? payment.reference,
-        },
-      });
-
-      // PRD §15: Release escrow on payment confirmation
-      await tx.escrow.update({
-        where: { bookingId: payment.bookingId },
-        data: { status: 'RELEASED', releasedAt: new Date() },
-      });
-
-      // PRD §6: Move booking to PAYMENT_PENDING → COMPLETED handled by booking service
-      // Here we just log the payment success
-      return updated;
+    const updated = await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        status: PaymentStatus.SUCCESS,
+        reference: mpesaRef ?? payment.reference,
+      },
     });
+
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: payment.bookingId },
+      select: { status: true },
+    });
+
+    if (booking && ['DELIVERED', 'COMPLETED'].includes(booking.status)) {
+      await this.releaseEscrowForBooking(
+        payment.bookingId,
+        'Released after successful payment confirmation',
+      );
+    }
+
+    return updated;
   }
 
-  // ─── Refund Payment (PRD §15) ─────────────────────────────────────────────
-  /**
-   * Admin-initiated refund. Reverses escrow and marks payment refunded.
-   * PRD §15: Automated refund on cancellation.
-   */
   async refundPayment(paymentId: string, reason?: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
@@ -118,31 +125,27 @@ export class PaymentsService {
       throw new BadRequestException('Only successful payments can be refunded');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const refunded = await tx.payment.update({
-        where: { id: paymentId },
-        data: {
-          status: PaymentStatus.REFUNDED,
-          reversedAt: new Date(),
-          failureReason: reason,
-        },
-      });
-
-      // Reverse escrow
-      await tx.escrow.update({
-        where: { bookingId: payment.bookingId },
-        data: { status: 'REFUNDED', refundedAt: new Date() },
-      });
-
-      return refunded;
+    const refunded = await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        status: PaymentStatus.REFUNDED,
+        reversedAt: new Date(),
+        failureReason: reason,
+      },
     });
+
+    try {
+      await this.escrowService.refund(
+        payment.bookingId,
+        reason ?? 'Refund processed from payment service',
+      );
+    } catch {
+      // Some bookings may not have escrow yet; payment refund should still succeed.
+    }
+
+    return refunded;
   }
 
-  // ─── Retry Failed Payment (PRD §15) ───────────────────────────────────────
-  /**
-   * Increments retry count and resets status to INITIATED.
-   * Max 3 retries enforced per PRD §15.
-   */
   async retryPayment(paymentId: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
@@ -160,14 +163,87 @@ export class PaymentsService {
     return this.prisma.payment.update({
       where: { id: paymentId },
       data: {
-        status: PaymentStatus.INITIATED,
+        status: payment.method === PaymentMethod.MPESA
+          ? PaymentStatus.PENDING
+          : PaymentStatus.INITIATED,
         retryCount: { increment: 1 },
         failureReason: null,
       },
     });
   }
 
-  // ─── Get Payment by ID ────────────────────────────────────────────────────
+  async refundBookingPayment(bookingId: string, reason: string) {
+    const payment = await this.prisma.payment.findFirst({
+      where: {
+        bookingId,
+        status: { in: [PaymentStatus.SUCCESS, PaymentStatus.PENDING, PaymentStatus.INITIATED] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!payment) {
+      return {
+        action: 'NO_PAYMENT_FOUND',
+        bookingId,
+      };
+    }
+
+    if (payment.status === PaymentStatus.SUCCESS) {
+      const refundedPayment = await this.refundPayment(payment.id, reason);
+      return {
+        action: 'PAYMENT_REFUNDED',
+        payment: refundedPayment,
+      };
+    }
+
+    const reversed = await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: PaymentStatus.REVERSED,
+        reversedAt: new Date(),
+        failureReason: reason,
+      },
+    });
+
+    try {
+      await this.escrowService.refund(bookingId, reason);
+    } catch {
+      // Escrow may not exist yet for a reversed initiation.
+    }
+
+    return {
+      action: 'PAYMENT_REVERSED',
+      payment: reversed,
+    };
+  }
+
+  async releaseEscrowForBooking(bookingId: string, note: string) {
+    const successfulPayment = await this.prisma.payment.findFirst({
+      where: { bookingId, status: PaymentStatus.SUCCESS },
+      select: { id: true },
+    });
+
+    if (!successfulPayment) {
+      return {
+        action: 'ESCROW_HELD_NO_SUCCESSFUL_PAYMENT',
+        bookingId,
+      };
+    }
+
+    try {
+      const escrow = await this.escrowService.release(bookingId, note);
+      return {
+        action: 'ESCROW_RELEASED',
+        escrow,
+      };
+    } catch {
+      return {
+        action: 'ESCROW_RELEASE_SKIPPED',
+        bookingId,
+      };
+    }
+  }
+
   async getPayment(id: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { id },
@@ -177,7 +253,6 @@ export class PaymentsService {
     return payment;
   }
 
-  // ─── Get Payments for Booking ─────────────────────────────────────────────
   async getBookingPayments(bookingId: string) {
     return this.prisma.payment.findMany({
       where: { bookingId },
@@ -185,7 +260,6 @@ export class PaymentsService {
     });
   }
 
-  // ─── Get Escrow Status (PRD §15) ─────────────────────────────────────────
   async getEscrow(bookingId: string) {
     const escrow = await this.prisma.escrow.findUnique({
       where: { bookingId },
@@ -194,11 +268,9 @@ export class PaymentsService {
     return escrow;
   }
 
-  // ─── Wallet: Get Balance (PRD §15) ───────────────────────────────────────
   async getWallet(userId: string) {
     let wallet = await this.prisma.wallet.findFirst({ where: { userId } });
 
-    // Auto-create wallet if not exists
     if (!wallet) {
       wallet = await this.prisma.wallet.create({
         data: { userId, balance: 0, currency: 'KES' },
@@ -208,7 +280,6 @@ export class PaymentsService {
     return wallet;
   }
 
-  // ─── Wallet: Credit (PRD §15) ─────────────────────────────────────────────
   async creditWallet(
     userId: string,
     amount: number,
@@ -216,7 +287,6 @@ export class PaymentsService {
     bookingId?: string,
     idempotencyKey?: string,
   ) {
-    // Idempotency check
     if (idempotencyKey) {
       const existing = await this.prisma.walletTransaction.findUnique({
         where: { idempotencyKey },
@@ -246,7 +316,6 @@ export class PaymentsService {
     });
   }
 
-  // ─── Wallet: Debit (PRD §15) ──────────────────────────────────────────────
   async debitWallet(
     userId: string,
     amount: number,
@@ -287,7 +356,6 @@ export class PaymentsService {
     });
   }
 
-  // ─── Wallet: Transaction History (PRD §15) ────────────────────────────────
   async getWalletTransactions(userId: string, page = 1, limit = 20) {
     const wallet = await this.getWallet(userId);
 
@@ -304,7 +372,6 @@ export class PaymentsService {
     return { wallet, transactions, total, page, limit };
   }
 
-  // ─── Admin: All Payments (PRD §42) ────────────────────────────────────────
   async getAllPayments(page = 1, limit = 20, status?: PaymentStatus) {
     const where = status ? { status } : {};
     const [payments, total] = await Promise.all([

@@ -32,4 +32,10 @@ export class AgenciesController {
   update(@Param('id') id: string, @Body() dto: any) {
     return this.agenciesService.update(id, dto);
   }
+
+  @Roles(UserRole.SUPER_ADMIN)
+  @Patch(':id/deactivate')
+  deactivate(@Param('id') id: string) {
+    return this.agenciesService.deactivate(id);
+  }
 }
