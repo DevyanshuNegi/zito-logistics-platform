@@ -3,6 +3,7 @@
 ## Active Source
 `docs/prd/ZITO_PRD_v10_ULTIMATE.docx` is the only PRD to follow in this repo.
 `docs/prd/ZITO_PRD_v10_ULTIMATE.txt` is the searchable text export generated from the same file.
+The repo copy was re-synced on 29 April 2026 from the external VG Logistics v10 master document, restoring the missing readiness, release, non-functional, fallback, testing, and go-live sections.
 
 ## Phase 1 Status
 - Core Platform scope is implemented across the backend and the Next.js web portal.
@@ -33,7 +34,7 @@
 - Reconciliation coverage from PRD section 35 and section 44.12 is active with invoice and payment auto-match, mismatch detection, daily reporting, and `/admin/reconciliation`.
 - Admin-control coverage from PRD section 44.14 is active with approval requests, dual authorization for refunds and payout overrides, audited booking-cancel requests, `/admin/audit`, and `/admin/staff-performance`.
 - Analytics and retention coverage from PRD sections 27A and 27B is active with revenue dashboards, driver KPIs, warehouse utilization, CLV, repeat-rate tracking, a rating-derived NPS proxy, and `/admin/analytics`.
-- Promo-code, loyalty-point, and referral metrics are currently exposed as an explicit readiness state because the current Prisma schema does not yet store those ledgers directly.
+- Promo-code, loyalty-point, and referral metrics are derived from wallet-transaction and audit-log conventions in the current schema, which keeps the Phase 3 analytics slice live without adding new tables.
 
 ## Phase 4 Status
 - Fraud-detection coverage from PRD section 44.7 is active with GPS spoof detection, ghost-trip detection, duplicate-booking heuristics, route-anomaly detection, fraud-flag review actions, suspension controls, and `/admin/fraud`.
@@ -41,6 +42,28 @@
 - Route-optimization coverage from PRD section 44.17 is active with a dedicated backend module, Google Directions API support when configured, fallback shortest-path and multi-stop optimization logic, route-deviation alerts, dynamic recalculation, and the customer route layer inside `/customer/tracking/[bookingId]`.
 - Driver-heatmap coverage from PRD section 44.21 is active with demand-vs-driver zone scoring, a driver-focused heatmap endpoint, threshold controls, `/driver/heatmap`, and a reusable heatmap layer component.
 - Heatmap threshold persistence is currently configuration-based in service memory because the current Prisma schema has no dedicated settings model for this slice.
+- Capacity-planning coverage from PRD section 44.18 is active with warehouse occupancy snapshots, fleet availability tracking, booking-time overbooking prevention, and historical-demand forecasting through the new `capacity-planning` module.
+- Warehouse capacity planning uses live bin occupancy as the fullness signal because the current schema has no separate reserved-space model, and fleet planning is global because vehicles do not carry a direct agency foreign key in the schema.
+- Internal-alert coverage from PRD section 39 is active with missing-parcel, payment-failure, delay, fraud, low-capacity, and driver-offline triggers, recipient routing, queue resolution, and `/admin/alerts`.
+- System-health coverage from PRD section 44.11 is active with runtime API-failure metrics, Prisma slow-query capture, DB and Redis health checks, `/health`, and `/admin/system-health`.
+- BullMQ queue monitoring now attaches when `BULLMQ_ENABLED` is enabled and the queue runtime is present, and Sentry or Datadog forwarding now activates when the corresponding environment variables are configured.
+- Session and access-control coverage from PRD section 44.15 is active with session-bound JWTs, configurable inactivity expiry, suspicious-login alerts, `/auth/reauth`, and Super Admin forced logout.
+- Session state now persists through schema-backed session records, so inactivity expiry and forced logout survive process restarts instead of depending on in-memory runtime state.
+
+## Phase 5 Status
+- Offline-mode coverage from PRD section 23 is now active across backend and frontend.
+- The warehouse scan flow already had local queueing, and it now includes stable client references, offline occurrence timestamps, duplicate-scan merge handling, stale-event rejection, and retry-safe reconnect sync.
+- Map components now cache their latest live-tracking and driver-heatmap snapshots locally, so low-connectivity sessions can fall back to cached route and demand views.
+- Frontend API requests now support exponential retry backoff for safe retry paths, and scan sync uses that retry path together with backend deduplication.
+- Multi-currency coverage from PRD section 23 is now active with backend currency config, env-overridable conversion rates, supported-currency listing, and rate-card quote conversion for KES, UGX, TZS, RWF, NGN, GHS, and ZAR.
+- Multi-language coverage from PRD section 23 is now active with `next-intl` language packs for English, Kiswahili, French, and Amharic plus a customer profile selector backed by schema-stored user preferences.
+- Customer and corporate booking confirmation flows now surface preferred-currency quote previews from the live rate-card calculation path before booking creation.
+- Marketplace coverage from PRD section 44.20 is now active with a dedicated backend module, transporter and warehouse-partner onboarding, approval or suspension workflow, partner-side opportunity listing, fixed-price acceptance, open-bid and negotiation flows, plus commission tracking on awarded work.
+- Admin marketplace coverage is now live at `/admin/marketplace`, where operations can onboard partners, publish booking opportunities, review bid stacks, inspect partner performance, and rerun marketplace monitoring.
+- Marketplace partner review and low-performance follow-up now surface through `InternalAlert` records, while partner scorecards derive completion, on-time, bid-conversion, and fraud signals from the current schema-backed implementation.
+- Partner-onboarding coverage from PRD section 50 is now active with driver referral registration and conversion, joining-bonus wallet credits, transporter bulk fleet onboarding, and onboarding-funnel analytics for registered-to-verified-to-active supply tracking.
+- Multi-country expansion coverage from PRD section 49 is now active with country pricing and tax overlays for Kenya, Uganda, Tanzania, and Rwanda, cross-border agency handoff records backed by parcel-scan confirmation, and inter-agency settlement generation.
+- USSD fallback coverage from PRD section 23 is now active through `/ussd`, with a session-backed book-track-pay menu flow plus SMS confirmations after USSD booking or payment initiation.
 
 ## Legacy Cleanup
 Legacy PRD files and PRD-linked testing documentation under `docs/prd/` and `docs/testing/` have been removed from the repo.
@@ -59,7 +82,8 @@ Stale top-level repo references to older PRD versions have been updated to point
 - Mobile flows: auth, customer booking or tracking, driver trips or earnings, and transporter dashboard or fleet workflows remain part of the wider PRD footprint.
 
 ## Follow-up Audit Hotspots
-- Phase 4.5 through 4.8 remain open after fraud detection, surge pricing, route optimization, and heatmap: capacity planning, alerts, system health, and session-access control.
+- The phased implementation area from PRD v10 is complete through Phase 5, so remaining follow-up is operational rather than a missing repo phase slice.
+- Multi-region Render or AWS rollout is still environment-driven and not provisioned inside this repo, even though the country-config and inter-agency code paths are now in place.
 - Standalone warehouse and combined invoices still rely on booking or invoice-number references for reconciliation because the current payment schema is booking-linked rather than invoice-linked.
-- Promo-code, loyalty-point, and referral execution models are still absent from the schema, so Phase 3 analytics exposes readiness state rather than a fully transactable retention program.
+- Promo-code, loyalty-point, and referral execution still rely on wallet-transaction and audit-log conventions rather than dedicated program tables, so future commercial expansion may still justify a dedicated ledger model.
 - Keep executable engineering tests for safety, but do not use old PRD versions as the functional source of truth anymore.

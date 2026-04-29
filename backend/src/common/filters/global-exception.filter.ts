@@ -1,23 +1,24 @@
 import {
-  ExceptionFilter,
-  Catch,
   ArgumentsHost,
+  Catch,
+  ExceptionFilter,
   HttpException,
   HttpStatus,
+  Injectable,
   Logger,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
+import { Request, Response } from 'express';
+import { TelemetryService } from '../monitoring/telemetry.service';
 
-// PRD §22 — Clear error messages for all failures
-// Standardised error envelope across all endpoints:
-// { success: false, statusCode, error, message, details?, timestamp, path }
-
+@Injectable()
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
-  catch(exception: unknown, host: ArgumentsHost) {
+  constructor(private readonly telemetryService: TelemetryService) {}
+
+  async catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
@@ -40,7 +41,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
       error = this.getErrorLabel(status);
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
-      // Map Prisma errors to human-readable responses
       switch (exception.code) {
         case 'P2002':
           status = HttpStatus.CONFLICT;
@@ -55,7 +55,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         case 'P2003':
           status = HttpStatus.BAD_REQUEST;
           error = 'Bad Request';
-          message = 'Related record not found — check your foreign key references';
+          message = 'Related record not found - check your foreign key references';
           break;
         default:
           status = HttpStatus.BAD_REQUEST;
@@ -83,9 +83,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (status >= 500) {
       this.logger.error(
-        `[${request.method}] ${request.url} → ${status}`,
+        `[${request.method}] ${request.url} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
+      await this.telemetryService.captureException({
+        message: Array.isArray(body.message) ? body.message.join('; ') : String(body.message),
+        statusCode: status,
+        path: request.url,
+        method: request.method,
+        timestamp: body.timestamp,
+      });
     }
 
     response.status(status).json(body);
@@ -107,13 +114,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     return map[status] ?? 'Error';
   }
 
-  private buildUniqueViolationMessage(err: Prisma.PrismaClientKnownRequestError): string {
+  private buildUniqueViolationMessage(err: Prisma.PrismaClientKnownRequestError) {
     const fields = (err.meta?.target as string[]) ?? [];
-    if (fields.includes('email')) return 'An account with this email already exists';
-    if (fields.includes('phone')) return 'An account with this phone number already exists';
-    if (fields.includes('plate_number')) return 'A vehicle with this plate number already exists';
-    if (fields.includes('license_number')) return 'A driver with this license number already exists';
-    if (fields.includes('key')) return 'Duplicate idempotency key — request already processed';
+    if (fields.includes('email')) {
+      return 'An account with this email already exists';
+    }
+    if (fields.includes('phone')) {
+      return 'An account with this phone number already exists';
+    }
+    if (fields.includes('plate_number')) {
+      return 'A vehicle with this plate number already exists';
+    }
+    if (fields.includes('license_number')) {
+      return 'A driver with this license number already exists';
+    }
+    if (fields.includes('key')) {
+      return 'Duplicate idempotency key - request already processed';
+    }
     return `A record with this ${fields.join(', ')} already exists`;
   }
 }

@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { FuelReportPanel } from '@/components/operations/FuelReportPanel';
 import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
 import { VEHICLE_TYPES } from '@/lib/phase-one';
@@ -185,6 +186,15 @@ export default function TransporterFleetPage() {
           />
         )}
       </SurfaceCard>
+
+      <FuelReportPanel
+        title="Fuel report"
+        description="Transporter-side expected vs actual usage report with variance visibility."
+        vehicles={vehicles.map((vehicle) => ({
+          id: vehicle.id,
+          plateNumber: vehicle.plateNumber,
+        }))}
+      />
     </div>
   );
 }

@@ -19,7 +19,7 @@ export class StaffService {
   async createStaff(
     agencyId: string,
     dto: { userId: string; role: string },
-    _adminId?: string,   // accepted for audit purposes, ignored in Phase 1
+    adminId?: string,
   ) {
     // Verify agency exists
     const agency = await this.prisma.agency.findUnique({ where: { id: agencyId } });
@@ -49,6 +49,22 @@ export class StaffService {
       where: { id: dto.userId },
       data: { role: UserRole.AGENCY_STAFF },
     });
+
+    if (adminId) {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: adminId,
+          action: 'STAFF_CREATED',
+          entityType: 'STAFF',
+          entityId: staff.id,
+          details: {
+            agencyId,
+            userId: dto.userId,
+            role: dto.role,
+          },
+        },
+      });
+    }
 
     // Return staff with user data joined manually
     return {

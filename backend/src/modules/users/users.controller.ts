@@ -1,22 +1,36 @@
 import {
-  Controller, Get, Patch, Post,
-  Body, Param, Query, Req, UseGuards,
-  UploadedFile, UseInterceptors, ParseUUIDPipe,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 
 import { UsersService } from './users.service';
-// PRD §33 — Guards live in modules/auth/guards/ per file structure
-import { JwtAuthGuard }  from '../auth/guards/jwt-auth.guard';
-import { RolesGuard }    from '../auth/guards/roles.guard';
-import { Roles }         from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UploadKycDto }  from './dto/upload-kyc.dto';
+import { UploadKycDto } from './dto/upload-kyc.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
+import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
 
-// PRD §4 — Inline Multer type (avoids @types/multer dependency)
 interface MulterFile {
   originalname: string;
   mimetype: string;
@@ -31,23 +45,30 @@ interface MulterFile {
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  // ─── SELF — Any Authenticated User ────────────────────────────────────────
-
-  // PRD §4 — Get own profile; used by pending-approval screen to poll status
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile and account status (PRD §4)' })
   getProfile(@Req() req: any) {
     return this.usersService.findOne(req.user.id);
   }
 
-  // PRD §4 — Update own profile (fullName, email, phone); role/status locked
+  @Get('me/preferences')
+  @ApiOperation({ summary: 'Get current user language and currency preferences (PRD §23)' })
+  getPreferences(@Req() req: any) {
+    return this.usersService.getPreferences(req.user.id);
+  }
+
   @Patch('me')
   @ApiOperation({ summary: 'Update own profile (PRD §4)' })
   updateProfile(@Req() req: any, @Body() dto: UpdateUserDto) {
     return this.usersService.update(req.user.id, dto);
   }
 
-  // PRD §4 — Upload KYC; sets account status to VERIFIED after upload
+  @Patch('me/preferences')
+  @ApiOperation({ summary: 'Update current user language and currency preferences (PRD §23)' })
+  updatePreferences(@Req() req: any, @Body() dto: UpdateUserPreferencesDto) {
+    return this.usersService.updatePreferences(req.user.id, dto);
+  }
+
   @Post('me/kyc')
   @ApiOperation({ summary: 'Upload KYC document (PRD §4)' })
   @ApiConsumes('multipart/form-data')
@@ -60,41 +81,36 @@ export class UsersController {
     return this.usersService.uploadKycDocument(req.user.id, file, dto);
   }
 
-  // PRD §4 — Get own KYC documents and verification status
   @Get('me/kyc')
   @ApiOperation({ summary: 'Get own KYC documents (PRD §4)' })
   getMyKyc(@Req() req: any) {
     return this.usersService.getKycDocuments(req.user.id);
   }
 
-  // ─── ADMIN — User Management (PRD §42) ────────────────────────────────────
-
-  // PRD §42 — AGENCY_STAFF scoped to own agency; ADMIN sees all
   @Get()
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'List all users with pagination and filter (PRD §42)' })
-  @ApiQuery({ name: 'page',   required: false, type: Number })
-  @ApiQuery({ name: 'limit',  required: false, type: Number })
-  @ApiQuery({ name: 'role',   required: false, enum: UserRole })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'role', required: false, enum: UserRole })
   @ApiQuery({ name: 'status', required: false, type: String })
   findAll(
     @Req() req: any,
-    @Query('page')   page   = '1',
-    @Query('limit')  limit  = '20',
-    @Query('role')   role?: UserRole,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('role') role?: UserRole,
     @Query('status') status?: string,
   ) {
     return this.usersService.findAll({
-      page:     Number(page),
-      limit:    Math.min(Number(limit), 100), // PRD §28: max page size 100
+      page: Number(page),
+      limit: Math.min(Number(limit), 100),
       role,
       status,
       agencyId: req.user.role === UserRole.AGENCY_STAFF ? req.user.agencyId : undefined,
     });
   }
 
-  // PRD §42 — Get specific user by ID
   @Get(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -103,7 +119,6 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
-  // PRD §42 — Admin update any user profile
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -112,7 +127,6 @@ export class UsersController {
     return this.usersService.update(id, dto);
   }
 
-  // PRD §2 — SUPER_ADMIN only: change role
   @Patch(':id/role')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
@@ -121,7 +135,6 @@ export class UsersController {
     return this.usersService.updateRole(id, dto.role);
   }
 
-  // PRD §3 — Activate account after KYC approval
   @Patch(':id/activate')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -130,7 +143,6 @@ export class UsersController {
     return this.usersService.setStatus(id, 'ACTIVE' as any);
   }
 
-  // PRD §3 — Suspend account; blocks login immediately
   @Patch(':id/suspend')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -139,7 +151,6 @@ export class UsersController {
     return this.usersService.setStatus(id, 'SUSPENDED' as any);
   }
 
-  // PRD §4 — Admin view user KYC documents
   @Get(':id/kyc')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -148,16 +159,20 @@ export class UsersController {
     return this.usersService.getKycDocuments(id);
   }
 
-  // PRD §4 — Admin approve or reject a KYC document
   @Patch(':id/kyc/:documentId/verify')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @ApiOperation({ summary: 'Admin: approve or reject a KYC document (PRD §4)' })
   verifyKycDocument(
-    @Param('id',         ParseUUIDPipe) userId:     string,
+    @Param('id', ParseUUIDPipe) userId: string,
     @Param('documentId', ParseUUIDPipe) documentId: string,
     @Body() body: { status: 'APPROVED' | 'REJECTED'; reason?: string },
   ) {
-    return this.usersService.verifyKycDocument(userId, documentId, body.status, body.reason);
+    return this.usersService.verifyKycDocument(
+      userId,
+      documentId,
+      body.status,
+      body.reason,
+    );
   }
 }

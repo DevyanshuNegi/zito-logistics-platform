@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { Button } from '@/components/ui/Button';
@@ -27,6 +28,7 @@ export function PortalShell({
   navItems,
   children,
 }: PortalShellProps) {
+  const t = useTranslations('Shell');
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading, logout } = useAuth();
@@ -86,15 +88,15 @@ export function PortalShell({
           </nav>
 
           <div className="mt-8 rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 text-sm text-slate-300">
-            <p className="font-medium text-sky-100">{user?.fullName ?? 'Signed in'}</p>
-            <p className="mt-1 text-xs text-slate-400">{user?.email ?? user?.phone ?? 'Active session'}</p>
+            <p className="font-medium text-sky-100">{user?.fullName ?? t('signedIn')}</p>
+            <p className="mt-1 text-xs text-slate-400">{user?.email ?? user?.phone ?? t('activeSession')}</p>
             <div className="mt-4 flex gap-2">
               <Button
                 variant="secondary"
                 className="flex-1"
                 onClick={() => router.push(getRoleHomePath(user?.role))}
               >
-                Home
+                {t('home')}
               </Button>
               <Button
                 variant="danger"
@@ -104,7 +106,7 @@ export function PortalShell({
                   router.push('/login');
                 }}
               >
-                Log Out
+                {t('logOut')}
               </Button>
             </div>
           </div>
@@ -114,7 +116,7 @@ export function PortalShell({
           <header className="mb-6 rounded-3xl border border-slate-700/40 bg-slate-950/55 px-5 py-4 shadow-2xl backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Phase 1 Portal</p>
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('operationsPortal')}</p>
                 <h2 className="mt-1 text-2xl font-semibold text-white">{title}</h2>
               </div>
               <div className="flex items-center gap-3">

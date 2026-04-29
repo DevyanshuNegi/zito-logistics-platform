@@ -4,7 +4,8 @@ PRODUCT REQUIREMENTS DOCUMENT
 Version 10 — ULTIMATE
 Enterprise-Grade | Africa-Scale | Investor-Ready
 Classification: CONFIDENTIAL
-© 2024 ZITO Logistics Technologies. All Rights Reserved.1. 🎯 Product Vision
+? 2024 ZITO Logistics Technologies. All Rights Reserved.
+1. Product Vision
 ZITO is a unified logistics super platform built for Africa-scale operations. It consolidates fragmented transport, warehousing, and last-mile delivery services into a single intelligent platform, enabling operators, transporters, drivers, warehouses, and customers to collaborate in real time.
 Core Services
 FTL (Full Truck Load) — long-haul freight transport
@@ -137,7 +138,7 @@ Maintenance schedule tracking
 Insurance validity tracking
 Compliance documentation
 Vehicle performance analytics
-10. 🏬 Warehouse System
+10. Warehouse System
 Structure
 Warehouse → Zone → Rack → Bin
 Geo-located warehouses with coverage radius
@@ -373,6 +374,21 @@ Customer ETA Visibility:
 Real-time ETA updates
 Delay prediction alerts
 27A 📈 Analytics
+Operational Analytics
+Booking funnel conversion and service-wise order volumes
+On-time pickup, on-time delivery, failed delivery, and cancellation rates
+Scan compliance, parcel aging, exception counts, and warehouse occupancy
+Commercial Analytics
+Gross merchandise value, net revenue, refunds, and branch profitability
+Receivables aging, payout aging, and collection efficiency by customer and agency
+Invoice, payment, and wallet movement summaries with reconciliation views
+Supply Analytics
+Driver utilization, acceptance rate, idle time, and no-show rate
+Vehicle uptime, maintenance downtime, and capacity utilization
+Partner activation, retention, and performance scorecards
+Rules:
+All analytics must support filtering by date, service, agency, region, customer, transporter, and staff owner
+Exports and scheduled reports must be available for finance, operations, and management reviews
 27B CUSTOMER RETENTION & ENGAGEMENT SYSTEM
 Features:
 Promo codes and discount campaigns
@@ -549,7 +565,7 @@ Searchable and filterable audit interface
 Export to CSV/PDF for compliance reporting
 Retention period: 7 years minimum
 41. 🏢 Multi-Agency Operations Flow
-Customer books → Nearest agency assigned → Warehouse/	 handled locally → Delivery completed → Reporting to HQ
+Customer books → Nearest agency assigned → Warehouse/ handled locally → Delivery completed → Reporting to HQ
 Cross-Agency Operations
 Shipments moving between agency zones are handed off with scan confirmation
 Inter-agency billing handled automatically
@@ -562,8 +578,24 @@ Staff cannot access customer app features
 Customers cannot access admin or staff panels
 Drivers have a separate driver-only mobile interface
 Session tokens are role-scoped and non-transferable
-43. 🎯 Implementation Status & Readiness
-44. ADVANCED OPERATIONS & CONTROL LAYER (MANDATORY)
+43. Implementation Status & Readiness
+Readiness Levels
+Defined - business rule documented and owner assigned
+Designed - API, UI, data model, and event flow approved
+In Build - development started with linked test cases
+QA Ready - feature complete and integrated in staging
+UAT Ready - business users validated the end-to-end flow
+Live Ready - monitoring, training, rollback, and support handoff completed
+Mandatory Release Gates
+Business sign-off completed for rules, pricing, permissions, exceptions, and operational fallback
+Security, compliance, and audit requirements verified
+Operational dashboards, alerts, and reconciliation controls verified
+Runbooks, support SOPs, and rollback plans documented
+Definition of Completion
+A module is not complete until backend, web/admin, mobile/ops touchpoints, notifications, audit logs, reports, and exception handling are implemented where applicable
+Happy path, failure path, permission checks, and data validation must all pass before release
+Deferred items must be explicitly tagged to a later release and must not silently block launch scope
+44. Advanced Operations & Control Layer (Mandatory)
 44.1 DRIVER SHIFT & ATTENDANCE SYSTEM
 Data Fields:
 shift_id
@@ -597,15 +629,13 @@ Fuel logs per trip
 Abnormal fuel usage alerts
 Fuel theft detection
 44.4 VEHICLE BREAKDOWN & RESCUE FLOW
-Flow:
-driver_report_issue → alert_agency → assign_backup_vehicle → load_transfer → trip_continue
+Flow: driver_report_issue → alert_agency → assign_backup_vehicle → load_transfer → trip_continue
 Features:
 Breakdown reporting option in driver app
 Automatic escalation to agency
 Backup vehicle/driver assignment
 44.5 RETURN (RTO) SYSTEM
-Lifecycle:
-delivery_failed → return_initiated → return_in_transit → warehouse_received → closed
+Lifecycle: delivery_failed → return_initiated → return_in_transit → warehouse_received → closed
 Applicable To:
 Courier
 PTL shipments
@@ -635,8 +665,7 @@ Trip completion incentives
 Cancellation penalties
 Rating-based rewards
 44.10 OPERATIONS ESCALATION SYSTEM
-Escalation Flow:
-Level 1 → Level 2 → Manager → Super Admin
+Escalation Flow: Level 1 → Level 2 → Manager → Super Admin
 Includes:
 SLA timers
 Automatic escalation
@@ -829,6 +858,11 @@ Versioned APIs (/v1, /v2)
 Error Handling:
 Standard HTTP status codes
 Structured error responses
+Execution Rules:
+Every API must define the caller role, validation rules, success response, error response, audit event, and retry or reconciliation behavior where applicable
+Create and update endpoints must support idempotency protection for duplicate requests on critical flows such as booking, payment, refund, and scan ingestion
+List endpoints must define pagination, filtering, sorting, and data visibility rules by role
+Breaking contract changes require versioning or an explicit migration plan
 46. CORE DATA MODELS
 Primary Entities:
 User
@@ -898,147 +932,75 @@ Growth Features:
 - Agent-based acquisition model
 Tracking:
 - Onboarding funnel analytics (registered → verified → active)
-FINAL VERDICT
+51. Release Phasing & MVP Definition
+Phase 0 - Platform Foundation
+Authentication, RBAC, agency master data, audit logging, configuration controls, observability, and infrastructure readiness
+Phase 1 - Core Transport Launch
+Customer booking, admin or dispatch operations, driver mobile flows, fleet and compliance basics, real-time tracking, base payment collection, notifications, and operational reporting
+Phase 2 - Warehouse & Commerce Expansion
+Warehouse operations, inventory, barcode and scan enforcement, LR and waybill, invoicing, contracts, multi-service billing, and SLA automation
+Phase 3 - Advanced Optimization & Control
+Fraud detection, fuel and payroll engines, breakdown rescue, capacity planning, marketplace mode, demand heatmaps, retention systems, and advanced analytics
+Rule:
+Only features inside the approved phase are considered launch scope; all other items must be tracked as deferred scope with an explicit target release
+52. Acceptance Criteria & Definition of Done
+Every requirement is complete only when:
+Business rule, exceptions, and approval path are documented and approved
+API contract, UI flow, data fields, validations, and role permissions are defined
+Audit events, notifications, reports, and reconciliation behavior are specified where applicable
+Happy path, unhappy path, retry path, and permission-denied path are tested
+Support playbooks and operational fallback steps are available for launch-critical flows
+53. Non-Functional Requirements & Service Levels
+Performance Targets
+Auth, booking, and payment APIs should meet p95 response times of 2 seconds or better under normal operating load
+Search, reporting, and list APIs should meet p95 response times of 5 seconds or better under normal operating load
+Real-time tracking and event propagation should be visible to operational dashboards within 10 seconds under normal network conditions
+Offline scans and queued location updates should sync within 60 seconds of reconnect where network is restored
+Reliability & Control
+Availability target: 99.9 percent or higher for launch-critical services
+Backup and disaster recovery target remains RTO 4 hours and RPO 1 hour
+Critical alerts should be generated within 1 minute of the triggering event
+Audit records for financial and high-risk administrative actions must be immutable after lock or approval
+54. Dependencies, Assumptions & Fallback Modes
+External Dependencies
+Payment gateways or banking partners for collection, settlement, refund, and payout flows
+Map, geocoding, routing, and ETA providers for address validation and trip calculation
+SMS, email, push, and WhatsApp providers for notification delivery
+GPS hardware or telematics providers where vehicle-level tracking is required
+Object storage, queue or cache services, and monitoring stack for platform operations
+Fallback Rules
+Payment provider failure must move the transaction to payment_pending or manual review and must never create a false success state
+Map or routing degradation must still allow lat/lng capture with operations-controlled manual dispatch fallback
+Messaging failure must trigger next-channel retry plus an admin-visible delivery alert
+GPS hardware failure may fall back to mobile GPS but must mark the trip with reduced tracking confidence
+All external dependency failures must create a visible ops event with retry or manual resolution workflow
+55. Testing, UAT & Sign-Off
+Mandatory Test Layers
+Unit, integration, end-to-end, role and permission, finance reconciliation, offline sync, security, performance, backup restore, and disaster recovery drills
+Business Sign-Off Owners
+Product or operations sign-off for workflow correctness and exception handling
+Finance sign-off for payment, wallet, invoice, refund, payout, and reconciliation flows
+Support sign-off for ticketing, escalation, and customer care workflows
+Security or compliance sign-off for authentication, audit, privacy, and access control
+Technology sign-off for APIs, data integrity, monitoring, rollback, and infrastructure readiness
+Release Rule
+No launch-critical module may go live without written UAT sign-off and tracked closure of all critical defects
+56. Requirement Traceability & Change Control
+Traceability Minimum Fields
+Every requirement must map to a requirement ID, module, owner, priority, release phase, API or UI reference, data model reference, test case IDs, and current status
+Change Control Rules
+Rate card, SLA, permission, payout, and financial rule changes must be versioned with approver, timestamp, previous value, and new value
+Breaking changes after design sign-off require a migration plan and explicit approval
+Scope added after UAT freeze must be treated as a formal change request and not silently merged into the release scope
+57. Go-Live Exit Criteria
+Launch cannot proceed until:
+All Phase 1 mandatory flows pass UAT from booking creation through operational completion and payment closure
+There are no open critical defects in launch scope
+Monitoring, alerting, reconciliation, and audit logging are verified in the target environment
+Provider credentials, templates, rate cards, user roles, and permissions are configured and approved
+Support escalation roster, SOPs, and rollback runbooks are active
+Backup restore and rollback drills are completed successfully
+A pilot or controlled live validation is completed and reviewed by operations leadership
+Final Verdict
 Enterprise-Grade Logistics + ERP + Warehouse Platform
-Africa-Scale Ready  •  Investor-Ready  •  Production-Ready
-
-[TABLE]
-Role | Description | Primary Access
-Customer | End-user booking shipments | Booking, Tracking, Payment
-Driver | Assigned delivery agent | Jobs, GPS, Delivery
-Transporter | Fleet owner / operator | Fleet, Vehicles, Earnings
-Warehouse Partner | Storage facility operator | Inventory, Billing
-Agency Staff | Branch operations team | Ops, Support, Finance
-Admin | System-level administrator | All modules
-Super Admin | Global platform control | Unrestricted
-Corporate (B2B) | Enterprise client account | Booking, Invoicing, Reports
-
-[TABLE]
-Factor | Weight | Description
-Distance to pickup | High | Nearest available driver preferred
-Availability status | Critical | Must be online & unassigned
-Driver rating | Medium | Minimum threshold enforced
-Acceptance rate | Medium | Low-acceptance drivers deprioritized
-
-[TABLE]
-Checkpoint | Scan Type | Action
-Pickup | QR / Barcode | Item registered, trip started
-Warehouse Entry | QR / Barcode | Stock received, location assigned
-Storage | Bin barcode | Item placed, bin updated
-Dispatch | QR / Barcode | Stock released, trip created
-Delivery | QR / Barcode | Delivery confirmed, proof captured
-
-[TABLE]
-Document Type | Service | Description
-LR (Lorry Receipt) | FTL | Full truck load consignment document
-Waybill | PTL / Courier | Partial/courier shipment document
-
-[TABLE]
-Type | Trigger | Recipients
-Transport Invoice | Trip completion | Customer, B2B Client
-Warehouse Invoice | Storage period end | Warehouse client
-Courier Invoice | Delivery confirmation | Customer
-Combined Invoice | Multi-service order | Corporate client
-
-[TABLE]
-Rate Type | Formula | Applies To
-Per KM Rate | distance × per_km_rate | All vehicles
-Base Fare | Fixed starting charge | Courier, Motorbike
-Vehicle-Based Pricing | rate by vehicle class | FTL, PTL
-Zone Pricing | origin/destination zones | Inter-city, Cross-border
-Warehouse Rate | space × days × rate | Storage services
-
-[TABLE]
-Feature | Description
-Offline Mode | Core flows work without connectivity, sync on reconnect
-Retry Logic | Exponential backoff for failed API calls
-Multi-Currency | KES, UGX, TZS, NGN, GHS, ZAR and more
-Multi-Language | Swahili, English, French, Amharic and more
-USSD Support | Fallback for feature phones
-Low-Bandwidth UI | Compressed assets, lazy loading
-
-[TABLE]
-Module | Key Metrics
-Revenue | Daily/monthly revenue, by service, by agency
-Driver Performance | Completion rate, rating, on-time %, acceptance rate
-Delivery Success | On-time delivery %, SLA adherence, failed deliveries
-Warehouse | Utilization %, dwell time, turnover rate
-Customer | Repeat rate, NPS, complaint frequency
-
-[TABLE]
-Layer | Technology
-Backend Framework | NestJS (TypeScript)
-ORM / DB Layer | Prisma + PostgreSQL + PostGIS
-Queue System | BullMQ (Redis-backed)
-Real-Time | WebSockets (Socket.io)
-File Storage | Cloudflare R2
-Cache | Redis (session, rate limit, queues)
-Deployment | Render (staging) → AWS (production)
-CDN | Cloudflare
-
-[TABLE]
-Field | Type | Description
-agency_id | UUID | Unique branch identifier
-agency_name | String | Display name of branch
-Location | lat/lng | PostGIS geographic point
-Address | String | Physical street address
-manager_id | UUID | Assigned agency manager
-Status | Enum | active | suspended | inactive
-
-[TABLE]
-Role | Function | Key Permissions
-Operations Staff | Booking & dispatch control | Manage bookings, assign drivers
-Accounts Team | Billing & payment management | Approve invoices, reconcile payments
-Customer Support | Customer query resolution | View bookings, contact customers
-Warehouse Staff | Inventory handling | Scan, store, dispatch parcels
-Dispatch Manager | Driver and route coordination | Reassign drivers, override routes
-Agency Manager | Branch-level overall control | All agency permissions
-
-[TABLE]
-Field | Type | Description
-staff_id | UUID | Unique staff identifier
-Name | String | Full name
-Email | String | Work email address
-Phone | String | Work phone number
-Role | Enum | Assigned staff role
-agency_id | UUID | Home branch assignment
-Permissions | JSON | Granular permission set
-Status | Enum | active | suspended | inactive
-
-[TABLE]
-Module | Super Admin | Admin | Agency Admin | Accounts | Operations | Support | Warehouse
-All Bookings | ✅ Full | ✅ Full | Agency only | View only | Agency only | View only | ❌
-Payments | ✅ Full | ✅ Full | Agency only | ✅ Full | ❌ | ❌ | ❌
-Warehouse | ✅ Full | ✅ Full | Agency only | ❌ | View only | ❌ | ✅ Full
-Reports | ✅ Full | ✅ Full | Agency only | Financial | Ops only | ❌ | WH only
-User Mgmt | ✅ Full | ✅ Full | Agency staff | ❌ | ❌ | ❌ | ❌
-Driver Mgmt | ✅ Full | ✅ Full | Agency only | ❌ | ✅ Full | ❌ | ❌
-System Config | ✅ Full | ✅ Full | ❌ | ❌ | ❌ | ❌ | ❌
-
-[TABLE]
-Alert Type | Trigger | Recipients
-Missing Parcel | Item not scanned within SLA window | Warehouse, Agency Manager
-Payment Failure | Transaction declined or reversed | Accounts, Agency Manager
-Delayed Delivery | Trip exceeds SLA timeline | Operations, Support
-Fraud Detection | Location spoof or ghost trip detected | Super Admin, Agency Admin
-Low Capacity | Warehouse occupancy > 90% | Warehouse Manager
-Driver Offline | Active trip driver goes offline | Dispatch Manager
-
-[TABLE]
-Portal | URL | Audience
-Admin Panel | /admin | Super Admin, Admin
-Staff Portal | /staff | Agency Staff, Managers
-Customer App | /app | Customers, Drivers
-
-[TABLE]
-Domain | Status | Coverage
-Logistics (FTL/PTL/Courier) | ✅ Complete | 100%
-Warehouse Management | ✅ Complete | 100%
-Billing & Invoicing | ✅ Complete | 100%
-Real-Time Tracking | ✅ Complete | 100%
-Admin & Operations | ✅ Complete | 100%
-Agency Management | ✅ Complete | 100%
-Staff & RBAC | ✅ Complete | 100%
-Africa-Scale Features | ✅ Complete | 100%
-Security & Compliance | ✅ Complete | 100%
-Analytics & Reporting | ✅ Complete | 100%
+Africa-Scale Ready • Investor-Ready • Production-Ready

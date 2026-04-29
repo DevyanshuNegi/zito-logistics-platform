@@ -16,7 +16,7 @@ export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('dashboard')
-  @ApiOperation({ summary: 'Admin analytics dashboard snapshot (PRD §27A, §27B)' })
+  @ApiOperation({ summary: 'Admin analytics dashboard snapshot (PRD Section 27A and 27B)' })
   @ApiQuery({ name: 'period', required: false, enum: ['daily', 'monthly'] })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
@@ -25,7 +25,7 @@ export class AnalyticsController {
   }
 
   @Get('revenue')
-  @ApiOperation({ summary: 'Revenue analytics by period, service, and agency (PRD §27A)' })
+  @ApiOperation({ summary: 'Revenue analytics by period, service, and agency (PRD Section 27A)' })
   @ApiQuery({ name: 'period', required: false, enum: ['daily', 'monthly'] })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
@@ -34,7 +34,7 @@ export class AnalyticsController {
   }
 
   @Get('drivers')
-  @ApiOperation({ summary: 'Driver KPI analytics (PRD §27A)' })
+  @ApiOperation({ summary: 'Driver KPI analytics (PRD Section 27A)' })
   @ApiQuery({ name: 'period', required: false, enum: ['daily', 'monthly'] })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
@@ -43,11 +43,17 @@ export class AnalyticsController {
   }
 
   @Get('warehouses')
-  @ApiOperation({ summary: 'Warehouse utilization analytics (PRD §27A)' })
+  @ApiOperation({ summary: 'Warehouse utilization analytics (PRD Section 27A)' })
   @ApiQuery({ name: 'period', required: false, enum: ['daily', 'monthly'] })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
   getWarehouseKpis(@Query() query: AnalyticsQueryDto) {
     return this.analyticsService.warehouseKpis(query);
+  }
+
+  @Get('onboarding-funnel')
+  @ApiOperation({ summary: 'Supply onboarding funnel analytics (PRD Section 50)' })
+  getOnboardingFunnel() {
+    return this.analyticsService.funnelReport();
   }
 }

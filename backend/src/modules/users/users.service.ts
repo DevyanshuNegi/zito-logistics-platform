@@ -1,13 +1,23 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UserRole, AccountStatus } from '@prisma/client';
+import { UserRole, AccountStatus, Prisma } from '@prisma/client';
+import {
+  DEFAULT_CURRENCY,
+  DEFAULT_LANGUAGE,
+  SUPPORTED_CURRENCIES,
+  SUPPORTED_CURRENCY_CODES,
+  SUPPORTED_LANGUAGES,
+  SUPPORTED_LANGUAGE_CODES,
+  type SupportedCurrencyCode,
+  type SupportedLanguageCode,
+} from '../../config/app.config';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UploadKycDto } from './dto/upload-kyc.dto';
+import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
 
 // PRD §4 — Inline Multer type (avoids @types/multer dependency)
 interface MulterFile {
@@ -43,6 +53,34 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
+
+  private preferencesKey(userId: string) {
+    return `user-preferences:${userId}`;
+  }
+
+  private asPreferencesRecord(value: Prisma.JsonValue | null | undefined) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const record = value as Record<string, Prisma.JsonValue>;
+    return {
+      language:
+        typeof record.language === 'string' &&
+        SUPPORTED_LANGUAGE_CODES.includes(record.language as SupportedLanguageCode)
+          ? (record.language as SupportedLanguageCode)
+          : DEFAULT_LANGUAGE,
+      currency:
+        typeof record.currency === 'string' &&
+        SUPPORTED_CURRENCY_CODES.includes(record.currency as SupportedCurrencyCode)
+          ? (record.currency as SupportedCurrencyCode)
+          : DEFAULT_CURRENCY,
+      updatedAt:
+        typeof record.updatedAt === 'string'
+          ? record.updatedAt
+          : new Date().toISOString(),
+    };
+  }
 
   // ─── FIND ONE ─────────────────────────────────────────────────────────────
 
@@ -115,6 +153,74 @@ export class UsersService {
         ...(dto.phone    && { phone: dto.phone.trim() }),
       },
     });
+  }
+
+  async getPreferences(userId: string) {
+    await this.findOne(userId);
+
+    const record = await this.prisma.idempotencyRecord.findUnique({
+      where: { key: this.preferencesKey(userId) },
+      select: { response: true },
+    });
+
+    const stored = this.asPreferencesRecord(record?.response);
+
+    return {
+      language: stored?.language ?? DEFAULT_LANGUAGE,
+      currency: stored?.currency ?? DEFAULT_CURRENCY,
+      updatedAt: stored?.updatedAt ?? null,
+      supportedLanguages: SUPPORTED_LANGUAGE_CODES.map((code) => SUPPORTED_LANGUAGES[code]),
+      supportedCurrencies: SUPPORTED_CURRENCY_CODES.map((code) => SUPPORTED_CURRENCIES[code]),
+    };
+  }
+
+  async updatePreferences(userId: string, dto: UpdateUserPreferencesDto) {
+    const current = await this.getPreferences(userId);
+    const language = dto.language ?? current.language;
+    const currency = dto.currency ?? current.currency;
+    const updatedAt = new Date().toISOString();
+
+    await this.prisma.idempotencyRecord.upsert({
+      where: { key: this.preferencesKey(userId) },
+      create: {
+        key: this.preferencesKey(userId),
+        status: 'ACTIVE',
+        requestHash: userId,
+        response: {
+          language,
+          currency,
+          updatedAt,
+        } as Prisma.InputJsonValue,
+      },
+      update: {
+        status: 'ACTIVE',
+        requestHash: userId,
+        response: {
+          language,
+          currency,
+          updatedAt,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'USER_PREFERENCES_UPDATED',
+          entityType: 'USER',
+          entityId: userId,
+          details: {
+            language,
+            currency,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    } catch {
+      // Preference updates should not fail because audit logging was unavailable.
+    }
+
+    return this.getPreferences(userId);
   }
 
   // ─── ROLE ─────────────────────────────────────────────────────────────────

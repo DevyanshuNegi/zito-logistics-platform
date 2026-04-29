@@ -13,8 +13,12 @@ export function getRoleHomePath(role?: string | null) {
       return '/driver/dashboard';
     case 'TRANSPORTER':
       return '/transporter/fleet';
+    case 'WAREHOUSE_PARTNER':
+      return '/warehouse/dashboard';
     case 'AGENCY_STAFF':
       return '/staff/support';
+    case 'CORPORATE':
+      return '/corporate/bookings';
     default:
       return '/login';
   }

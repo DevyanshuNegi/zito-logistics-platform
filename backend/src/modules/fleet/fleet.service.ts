@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { VehicleStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BreakdownService } from './breakdown/breakdown.service';
@@ -199,6 +200,79 @@ export class FleetService {
     return this.fuelService.createFuelLog(data, reportedBy);
   }
 
+  async bulkOnboard(vehicles: any[], actorId: string) {
+    if (!Array.isArray(vehicles) || vehicles.length === 0) {
+      throw new BadRequestException('At least one vehicle is required for bulk onboarding.');
+    }
+
+    const batchId = randomUUID();
+    const created: any[] = [];
+    const skipped: Array<{ plateNumber: string; reason: string }> = [];
+    const failed: Array<{ plateNumber: string; reason: string }> = [];
+
+    for (const vehicle of vehicles) {
+      const plateNumber = String(vehicle.plateNumber ?? '').trim().toUpperCase();
+      if (!plateNumber) {
+        failed.push({
+          plateNumber: '(missing)',
+          reason: 'plateNumber is required.',
+        });
+        continue;
+      }
+
+      const existing = await this.prisma.vehicle.findUnique({
+        where: { plateNumber },
+        select: { id: true },
+      });
+      if (existing) {
+        skipped.push({
+          plateNumber,
+          reason: 'Vehicle already exists and was skipped.',
+        });
+        continue;
+      }
+
+      try {
+        const createdVehicle = await this.create({
+          ...vehicle,
+          plateNumber,
+        });
+        created.push(createdVehicle);
+      } catch (error) {
+        failed.push({
+          plateNumber,
+          reason:
+            error instanceof Error ? error.message : 'Vehicle onboarding failed.',
+        });
+      }
+    }
+
+    await this.writeAudit(actorId, 'FLEET_BULK_ONBOARDED', batchId, {
+      requestedCount: vehicles.length,
+      createdCount: created.length,
+      skippedCount: skipped.length,
+      failedCount: failed.length,
+      createdVehicleIds: created.map((vehicle) => vehicle.id),
+      skipped,
+      failed,
+    });
+
+    return {
+      batchId,
+      requestedCount: vehicles.length,
+      createdCount: created.length,
+      skippedCount: skipped.length,
+      failedCount: failed.length,
+      created,
+      skipped,
+      failed,
+      notes: [
+        'Bulk onboarding skips duplicate plate numbers instead of aborting the whole partner upload.',
+        'Driver assignment rules from the single-vehicle flow still apply to every record in the batch.',
+      ],
+    };
+  }
+
   async listFuelLogs(filters: any = {}) {
     return this.fuelService.listFuelLogs(filters);
   }
@@ -209,6 +283,31 @@ export class FleetService {
 
   async detectFuelTheft(logId: string) {
     return this.fuelService.detectTheft(logId);
+  }
+
+  private async writeAudit(
+    userId: string,
+    action: string,
+    entityId: string,
+    details: Record<string, unknown>,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      return;
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId,
+        action,
+        entityType: 'FLEET_BATCH',
+        entityId,
+        details: details as any,
+      },
+    });
   }
 
   private async assertDriverAssignable(driverId: string, currentVehicleId?: string) {

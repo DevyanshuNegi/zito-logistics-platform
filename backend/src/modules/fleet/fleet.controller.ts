@@ -15,6 +15,7 @@ import { FleetService } from './fleet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { BulkOnboardFleetDto } from './dto/bulk-onboard.dto';
 import { CreateFuelLogDto, FuelLogQueryDto } from './fuel/dto/fuel.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -26,6 +27,12 @@ export class FleetController {
   @Post()
   create(@Body() createVehicleDto: any) {
     return this.fleetService.create(createVehicleDto);
+  }
+
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Post('bulk-onboard')
+  bulkOnboard(@Body() dto: BulkOnboardFleetDto, @Req() req: any) {
+    return this.fleetService.bulkOnboard(dto.vehicles, req.user.id);
   }
 
   @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')

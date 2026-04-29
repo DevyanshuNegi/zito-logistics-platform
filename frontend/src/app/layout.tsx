@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { AppPreferencesProvider } from '@/contexts/AppPreferencesContext';
 
 export const metadata: Metadata = {
   title: 'ZITO - Logistics Super-App',
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <AppPreferencesProvider>{children}</AppPreferencesProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -24,7 +24,24 @@ type TrackingData = {
     location?: {
       lat?: number | null;
       lng?: number | null;
-      updatedAt?: string | null;
+      updatedAt?: string | Date | null;
+    } | null;
+  } | null;
+  route?: {
+    source?: string | null;
+    optimized?: boolean;
+    trafficLevel?: string | null;
+    distanceKm?: number | null;
+    durationMinutes?: number | null;
+    path?: Array<{
+      latitude: number;
+      longitude: number;
+    }>;
+    deviation?: {
+      isOffRoute?: boolean;
+      deviationKm?: number | null;
+      thresholdKm?: number | null;
+      alertStatus?: string | null;
     } | null;
   } | null;
   stops?: Array<{
@@ -37,6 +54,16 @@ type TrackingData = {
   }>;
 };
 
+type LocationUpdatePayload = {
+  lat?: number;
+  lng?: number;
+  updatedAt?: string;
+  timestamp?: string;
+  routeDeviationKm?: number | null;
+  isOffRoute?: boolean;
+  alertStatus?: string | null;
+};
+
 export default function CustomerTrackingPage() {
   const params = useParams();
   const rawBookingId = params?.bookingId;
@@ -47,7 +74,9 @@ export default function CustomerTrackingPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function loadTracking() {
-    if (!bookingId) return;
+    if (!bookingId) {
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -67,11 +96,13 @@ export default function CustomerTrackingPage() {
   }, [bookingId]);
 
   useEffect(() => {
-    if (!socket || !bookingId) return;
+    if (!socket || !bookingId) {
+      return;
+    }
 
     socket.emit('customer:track', { bookingId });
 
-    const handleUpdate = (payload: { lat?: number; lng?: number; updatedAt?: string }) => {
+    const handleUpdate = (payload: LocationUpdatePayload) => {
       setTracking((current) =>
         current
           ? {
@@ -82,10 +113,28 @@ export default function CustomerTrackingPage() {
                     location: {
                       lat: payload.lat ?? current.driver.location?.lat ?? null,
                       lng: payload.lng ?? current.driver.location?.lng ?? null,
-                      updatedAt: payload.updatedAt ?? current.driver.location?.updatedAt ?? null,
+                      updatedAt:
+                        payload.updatedAt ??
+                        payload.timestamp ??
+                        current.driver.location?.updatedAt ??
+                        null,
                     },
                   }
                 : current.driver,
+              route: current.route
+                ? {
+                    ...current.route,
+                    deviation: {
+                      ...(current.route.deviation ?? {}),
+                      deviationKm:
+                        payload.routeDeviationKm ?? current.route.deviation?.deviationKm ?? null,
+                      isOffRoute:
+                        payload.isOffRoute ?? current.route.deviation?.isOffRoute ?? false,
+                      alertStatus:
+                        payload.alertStatus ?? current.route.deviation?.alertStatus ?? null,
+                    },
+                  }
+                : current.route,
             }
           : current,
       );
@@ -127,9 +176,16 @@ export default function CustomerTrackingPage() {
         </Alert>
       ) : null}
 
+      {tracking.route?.deviation?.isOffRoute ? (
+        <Alert title="Route deviation detected" variant="warning">
+          The assigned driver appears to be about{' '}
+          {tracking.route.deviation.deviationKm ?? 0} km away from the planned route.
+        </Alert>
+      ) : null}
+
       <SurfaceCard
         title={`Tracking ${tracking.reference}`}
-        description="Live tracking uses the Phase 1 REST snapshot and Socket.IO room updates."
+        description="Live tracking now uses the Phase 4 route-aware snapshot plus Socket.IO room updates."
         actions={
           <div className="flex items-center gap-3">
             <Badge variant={connected ? 'success' : 'neutral'}>
@@ -139,28 +195,42 @@ export default function CustomerTrackingPage() {
           </div>
         }
       >
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Driver</p>
-            <p className="mt-3 text-lg font-semibold text-white">{tracking.driver?.name ?? 'Awaiting driver assignment'}</p>
+            <p className="mt-3 text-lg font-semibold text-white">
+              {tracking.driver?.name ?? 'Awaiting driver assignment'}
+            </p>
           </div>
           <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Phone</p>
-            <p className="mt-3 text-lg font-semibold text-white">{tracking.driver?.phone ?? 'Not available yet'}</p>
+            <p className="mt-3 text-lg font-semibold text-white">
+              {tracking.driver?.phone ?? 'Not available yet'}
+            </p>
           </div>
           <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-400">ETA</p>
-            <p className="mt-3 text-lg font-semibold text-white">{tracking.eta ?? 'Pending'}</p>
+            <p className="mt-3 text-lg font-semibold text-white">
+              {tracking.eta ?? 'Pending'}
+            </p>
+          </div>
+          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Route Source</p>
+            <p className="mt-3 text-lg font-semibold text-white">
+              {tracking.route?.source === 'google-directions' ? 'Google Maps' : 'Fallback'}
+            </p>
           </div>
         </div>
       </SurfaceCard>
 
       <LiveMap
+        cacheKey={`tracking-${bookingId}`}
         driver={{
           lat: tracking.driver?.location?.lat,
           lng: tracking.driver?.location?.lng,
         }}
         eta={tracking.eta}
+        route={tracking.route}
         status={tracking.status}
         stops={normalizedStops}
       />

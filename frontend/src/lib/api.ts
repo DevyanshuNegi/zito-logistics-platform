@@ -143,48 +143,122 @@ type RequestOptions = {
   headers?: Record<string, string>;
   token?: string | null;
   idempotencyKey?: string;
+  retry?:
+    | boolean
+    | {
+        enabled?: boolean;
+        attempts?: number;
+        baseDelayMs?: number;
+        maxDelayMs?: number;
+      };
 };
+
+type RetryPolicy = {
+  enabled: boolean;
+  attempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryStatus(status: number) {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function resolveRetryPolicy(method: NonNullable<RequestOptions['method']>, options: RequestOptions): RetryPolicy {
+  const configured =
+    typeof options.retry === 'object'
+      ? options.retry
+      : { enabled: options.retry };
+  const retryableByDefault = method === 'GET' || method === 'DELETE';
+
+  return {
+    enabled:
+      configured.enabled ??
+      (retryableByDefault || Boolean(options.idempotencyKey)),
+    attempts: Math.max(1, configured.attempts ?? 3),
+    baseDelayMs: Math.max(150, configured.baseDelayMs ?? 400),
+    maxDelayMs: Math.max(400, configured.maxDelayMs ?? 4000),
+  };
+}
+
+async function retryInterceptor<T>(
+  runner: () => Promise<T>,
+  policy: RetryPolicy,
+): Promise<T> {
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await runner();
+    } catch (error) {
+      attempt += 1;
+
+      const retryableError =
+        !(error instanceof ApiError) || shouldRetryStatus(error.status);
+      if (!policy.enabled || !retryableError || attempt >= policy.attempts) {
+        throw error;
+      }
+
+      const delay =
+        Math.min(policy.maxDelayMs, policy.baseDelayMs * 2 ** (attempt - 1)) +
+        Math.floor(Math.random() * 120);
+      await sleep(delay);
+    }
+  }
+}
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { accessToken } = getStoredSession();
   const token = options.token ?? accessToken;
-  const headers = new Headers(options.headers ?? {});
-  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const method = options.method ?? 'GET';
+  const retryPolicy = resolveRetryPolicy(method, options);
 
-  if (!isFormData) {
-    headers.set('Content-Type', 'application/json');
-  }
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  if (options.idempotencyKey) {
-    headers.set('X-Idempotency-Key', options.idempotencyKey);
-  }
+  return retryInterceptor(async () => {
+    const headers = new Headers(options.headers ?? {});
+    const isFormData =
+      typeof FormData !== 'undefined' && options.body instanceof FormData;
 
-  const response = await fetch(`${getApiBaseUrl()}${normalizePath(path)}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body == null
-      ? undefined
-      : isFormData
-        ? options.body as FormData
-        : JSON.stringify(options.body),
-    cache: 'no-store',
-  });
+    if (!isFormData) {
+      headers.set('Content-Type', 'application/json');
+    }
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    if (options.idempotencyKey) {
+      headers.set('X-Idempotency-Key', options.idempotencyKey);
+    }
 
-  const contentType = response.headers.get('content-type') ?? '';
-  const payload = contentType.includes('application/json')
-    ? await response.json()
-    : await response.text();
+    const response = await fetch(`${getApiBaseUrl()}${normalizePath(path)}`, {
+      method,
+      headers,
+      body:
+        options.body == null
+          ? undefined
+          : isFormData
+            ? (options.body as FormData)
+            : JSON.stringify(options.body),
+      cache: 'no-store',
+    });
 
-  if (!response.ok) {
-    const message = typeof payload === 'object' && payload && 'message' in payload
-      ? String((payload as { message?: string }).message ?? 'Request failed')
-      : 'Request failed';
-    throw new ApiError(message, response.status, payload);
-  }
+    const contentType = response.headers.get('content-type') ?? '';
+    const payload = contentType.includes('application/json')
+      ? await response.json()
+      : await response.text();
 
-  return payload as T;
+    if (!response.ok) {
+      const message =
+        typeof payload === 'object' && payload && 'message' in payload
+          ? String((payload as { message?: string }).message ?? 'Request failed')
+          : 'Request failed';
+      throw new ApiError(message, response.status, payload);
+    }
+
+    return payload as T;
+  }, retryPolicy);
 }
 
 export const api = {

@@ -1,7 +1,29 @@
 import { ScanCheckpoint } from '@prisma/client';
-import { IsEnum, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
-export class RecordScanDto {
+class ScanSyncMetadataDto {
+  @IsString()
+  @IsOptional()
+  clientReference?: string;
+
+  @IsDateString()
+  @IsOptional()
+  occurredAt?: string;
+
+  @IsIn(['ONLINE', 'OFFLINE'])
+  @IsOptional()
+  syncMode?: 'ONLINE' | 'OFFLINE';
+}
+
+export class RecordScanDto extends ScanSyncMetadataDto {
   @IsUUID()
   itemId: string;
 
@@ -57,7 +79,7 @@ export class ValidateScanDto {
   binId?: string;
 }
 
-export class VehicleLoadDto {
+export class VehicleLoadDto extends ScanSyncMetadataDto {
   @IsUUID()
   itemId: string;
 
@@ -77,7 +99,7 @@ export class VehicleLoadDto {
   notes?: string;
 }
 
-export class VehicleUnloadDto {
+export class VehicleUnloadDto extends ScanSyncMetadataDto {
   @IsUUID()
   itemId: string;
 
@@ -104,7 +126,7 @@ export class VehicleUnloadDto {
   notes?: string;
 }
 
-export class ConfirmDeliveryDto {
+export class ConfirmDeliveryDto extends ScanSyncMetadataDto {
   @IsUUID()
   itemId: string;
 

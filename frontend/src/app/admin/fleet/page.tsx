@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { FuelReportPanel } from '@/components/operations/FuelReportPanel';
 import { ApiError, api } from '@/lib/api';
 import { compactId, formatDateTime, formatStatus } from '@/lib/format';
 import { VEHICLE_TYPES } from '@/lib/phase-one';
@@ -61,6 +62,7 @@ type BreakdownResponse = {
 };
 
 export default function AdminFleetPage() {
+  const [activePanel, setActivePanel] = useState<'fleet' | 'breakdowns' | 'fuel'>('fleet');
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [breakdowns, setBreakdowns] = useState<Breakdown[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -202,7 +204,21 @@ export default function AdminFleetPage() {
         </Alert>
       ) : null}
 
-      <SurfaceCard title="Add vehicle" description="Complete the Phase 1 fleet CRUD setup from the admin side.">
+      <div className="flex flex-wrap gap-2">
+        <Button variant={activePanel === 'fleet' ? 'primary' : 'secondary'} onClick={() => setActivePanel('fleet')}>
+          Fleet
+        </Button>
+        <Button variant={activePanel === 'breakdowns' ? 'primary' : 'secondary'} onClick={() => setActivePanel('breakdowns')}>
+          Breakdowns
+        </Button>
+        <Button variant={activePanel === 'fuel' ? 'primary' : 'secondary'} onClick={() => setActivePanel('fuel')}>
+          Fuel
+        </Button>
+      </div>
+
+      {activePanel === 'fleet' ? (
+        <>
+      <SurfaceCard title="Add vehicle" description="Fleet CRUD and assignment control for admin operations.">
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreate}>
           <Input label="Plate number" value={plateNumber} onChange={(event) => setPlateNumber(event.target.value)} required />
           <label className="block space-y-2">
@@ -328,7 +344,10 @@ export default function AdminFleetPage() {
           />
         )}
       </SurfaceCard>
+        </>
+      ) : null}
 
+      {activePanel === 'breakdowns' ? (
       <SurfaceCard title="Breakdown rescue flow" description="Admin rescue coordination, backup assignment, and close-out.">
         {loading ? (
           <Spinner />
@@ -394,6 +413,18 @@ export default function AdminFleetPage() {
           />
         )}
       </SurfaceCard>
+      ) : null}
+
+      {activePanel === 'fuel' ? (
+        <FuelReportPanel
+          title="Fuel variance tab"
+          description="Phase 2 admin fuel report, variance analysis, and exception logging."
+          vehicles={vehicles.map((vehicle) => ({
+            id: vehicle.id,
+            plateNumber: vehicle.plateNumber,
+          }))}
+        />
+      ) : null}
     </div>
   );
 }

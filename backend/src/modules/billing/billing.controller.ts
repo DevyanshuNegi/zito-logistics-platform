@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -9,6 +9,7 @@ import {
   ConsolidateInvoiceDto,
   GenerateWarehouseInvoiceDto,
 } from './dto/billing.dto';
+import { InterAgencyBillDto } from './dto/inter-agency-bill.dto';
 
 @ApiTags('Billing')
 @ApiBearerAuth('JWT')
@@ -28,5 +29,17 @@ export class BillingController {
   @ApiOperation({ summary: 'Generate combined corporate invoice (PRD §18)' })
   consolidate(@Body() dto: ConsolidateInvoiceDto, @Req() req: any) {
     return this.billingService.consolidate(dto, req.user.id);
+  }
+
+  @Get('inter-agency')
+  @ApiOperation({ summary: 'List generated inter-agency billing settlements (PRD §49)' })
+  listInterAgencyBills() {
+    return this.billingService.listInterAgencyBills();
+  }
+
+  @Post('inter-agency')
+  @ApiOperation({ summary: 'Generate inter-agency billing settlement for a cross-border shipment (PRD §49)' })
+  interAgencyBill(@Body() dto: InterAgencyBillDto, @Req() req: any) {
+    return this.billingService.interAgencyBill(dto, req.user.id);
   }
 }

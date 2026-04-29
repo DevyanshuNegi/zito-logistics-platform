@@ -4,6 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, ServiceType, VehicleType } from '@prisma/client';
+import {
+  COUNTRY_CONFIGS,
+  DEFAULT_CURRENCY,
+  SUPPORTED_CURRENCIES,
+  SUPPORTED_COUNTRY_CODES,
+  SUPPORTED_CURRENCY_CODES,
+  type SupportedCountryCode,
+  type SupportedCurrencyCode,
+} from '../../config/app.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CalculateRateCardDto,
@@ -20,6 +29,21 @@ type ListFilters = {
 @Injectable()
 export class RateCardsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  listSupportedCurrencies() {
+    return {
+      baseCurrency: DEFAULT_CURRENCY,
+      currencies: SUPPORTED_CURRENCY_CODES.map((code) => SUPPORTED_CURRENCIES[code]),
+    };
+  }
+
+  countryConfig(countryCode?: string) {
+    const normalized = this.normalizeCountry(countryCode);
+    return {
+      country: COUNTRY_CONFIGS[normalized],
+      supportedCountries: SUPPORTED_COUNTRY_CODES.map((code) => COUNTRY_CONFIGS[code]),
+    };
+  }
 
   async list(filters: ListFilters) {
     const rateCards = await this.prisma.rateCard.findMany({
@@ -161,17 +185,107 @@ export class RateCardsService {
     const distanceFare = Number((effectiveDistance * rateCard.ratePerKm).toFixed(2));
     const stopFare = Number((dto.stopCount * rateCard.perStopRate).toFixed(2));
     const surgeMultiplier = rateCard.surgeMultiplier;
-    const subtotal = Number((baseFare + distanceFare + stopFare).toFixed(2));
+    const country = COUNTRY_CONFIGS[this.normalizeCountry(dto.countryCode)];
+    const countryAdjustedBaseFare = this.round(baseFare * country.rateMultiplier);
+    const countryAdjustedDistanceFare = this.round(
+      distanceFare * country.rateMultiplier,
+    );
+    const countryAdjustedStopFare = this.round(stopFare * country.rateMultiplier);
+    const subtotal = Number(
+      (
+        countryAdjustedBaseFare +
+        countryAdjustedDistanceFare +
+        countryAdjustedStopFare
+      ).toFixed(2),
+    );
     const totalPrice = Number((subtotal * surgeMultiplier).toFixed(2));
+    const taxAmount = this.round((totalPrice * country.vatRate) / 100);
+    const grandTotal = this.round(totalPrice + taxAmount);
+    const currency = this.normalizeCurrency(dto.currency ?? country.currency);
+    const convertedQuote = this.convertCurrency(
+      {
+        baseFare: countryAdjustedBaseFare,
+        distanceFare: countryAdjustedDistanceFare,
+        stopFare: countryAdjustedStopFare,
+        subtotal,
+        totalPrice,
+        taxAmount,
+        grandTotal,
+      },
+      currency,
+    );
 
     return {
       rateCard,
       effectiveDistance,
-      baseFare,
-      distanceFare,
-      stopFare,
+      baseCurrency: DEFAULT_CURRENCY,
+      country,
+      currency,
+      fxRateFromKes: SUPPORTED_CURRENCIES[currency].rateFromKes,
+      baseFare: convertedQuote.baseFare,
+      distanceFare: convertedQuote.distanceFare,
+      stopFare: convertedQuote.stopFare,
       surgeMultiplier,
-      totalPrice,
+      subtotal: convertedQuote.subtotal,
+      totalPrice: convertedQuote.totalPrice,
+      taxAmount: convertedQuote.taxAmount,
+      grandTotal: convertedQuote.grandTotal,
+      baseCurrencyQuote: {
+        currency: DEFAULT_CURRENCY,
+        baseFare: countryAdjustedBaseFare,
+        distanceFare: countryAdjustedDistanceFare,
+        stopFare: countryAdjustedStopFare,
+        subtotal,
+        totalPrice,
+        taxAmount,
+        grandTotal,
+      },
+      notes: [
+        'Country pricing applies a country-specific rate multiplier before tax so a shared Phase 0 rate-card table can still serve multi-country pricing rules.',
+        'If no currency is requested, the quote defaults to the configured currency for the selected operating country.',
+      ],
+    };
+  }
+
+  private normalizeCurrency(code?: string): SupportedCurrencyCode {
+    const normalized = (code ?? DEFAULT_CURRENCY).toUpperCase() as SupportedCurrencyCode;
+    if (!SUPPORTED_CURRENCY_CODES.includes(normalized)) {
+      throw new BadRequestException(`Unsupported currency ${code}`);
+    }
+    return normalized;
+  }
+
+  private normalizeCountry(code?: string): SupportedCountryCode {
+    const normalized = (code ?? 'KE').toUpperCase() as SupportedCountryCode;
+    if (!SUPPORTED_COUNTRY_CODES.includes(normalized)) {
+      throw new BadRequestException(`Unsupported country code ${code}`);
+    }
+    return normalized;
+  }
+
+  private convertCurrency(
+    quote: {
+      baseFare: number;
+      distanceFare: number;
+      stopFare: number;
+      subtotal: number;
+      totalPrice: number;
+      taxAmount: number;
+      grandTotal: number;
+    },
+    currency: SupportedCurrencyCode,
+  ) {
+    const rate = SUPPORTED_CURRENCIES[currency].rateFromKes;
+    const convert = (amount: number) => Number((amount * rate).toFixed(2));
+
+    return {
+      baseFare: convert(quote.baseFare),
+      distanceFare: convert(quote.distanceFare),
+      stopFare: convert(quote.stopFare),
+      subtotal: convert(quote.subtotal),
+      totalPrice: convert(quote.totalPrice),
+      taxAmount: convert(quote.taxAmount),
+      grandTotal: convert(quote.grandTotal),
     };
   }
 
@@ -198,6 +312,10 @@ export class RateCardsService {
       });
     } catch {
       // Rate-card changes should not fail because audit logging was unavailable.
-    }
+      }
+  }
+
+  private round(value: number) {
+    return Number(value.toFixed(2));
   }
 }

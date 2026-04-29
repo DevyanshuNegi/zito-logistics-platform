@@ -19,6 +19,11 @@ export const ROLE_PICKER_OPTIONS = [
     label: 'Agency Staff',
     description: 'Handle operational support, tickets, and day-to-day coordination.',
   },
+  {
+    role: 'CORPORATE',
+    label: 'Corporate',
+    description: 'Book on contract credit, manage invoices, and review commercial terms.',
+  },
 ] as const;
 
 export const SERVICE_TYPES = ['FTL', 'PTL', 'COURIER', 'WAREHOUSE'] as const;

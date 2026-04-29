@@ -1,15 +1,19 @@
-import { Controller, Post, Body, Req, Patch, Param, UseGuards } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
-import { KycDocumentDto } from './dto/kyc-document.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { KycUploadDto } from './dto/kyc-upload.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Body, Controller, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { Reauth } from '../../common/decorators/reauth.decorator';
+import { ReauthGuard } from '../../common/guards/reauth.guard';
+import { SessionGuard } from '../../common/guards/session.guard';
+import { AuthService } from './auth.service';
 import { Roles } from './decorators/roles.decorator';
-import { RolesGuard } from './guards/roles.guard';
+import { ForceLogoutDto } from './dto/force-logout.dto';
+import { KycUploadDto } from './dto/kyc-upload.dto';
+import { LoginDto } from './dto/login.dto';
+import { ReauthDto } from './dto/reauth.dto';
+import { RegisterDto } from './dto/register.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -33,7 +37,13 @@ export class AuthController {
   @ApiOperation({ summary: 'PRD §3: Verify OTP and issue tokens' })
   async verifyOtp(@Req() req: any, @Body() verifyOtpDto: VerifyOtpDto) {
     const token = req.headers['authorization']?.split(' ')[1];
-    return this.authService.verifyOtp(token, verifyOtpDto.otp);
+    return this.authService.verifyOtp(token, verifyOtpDto.otp, {
+      ipAddress: this.getClientIp(req),
+      deviceInfo:
+        typeof req.headers['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : null,
+    });
   }
 
   @Post('kyc-documents')
@@ -49,8 +59,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Admin only: Verify a user after KYC review (PRD §4)' })
   @ApiResponse({ status: 200, description: 'User verified successfully' })
   async verifyUser(@Param('id') userId: string, @Req() req: any) {
-    const admin = req.user;
-    return this.authService.verifyUserStatus(userId, admin.id);
+    return this.authService.verifyUserStatus(userId, req.user.id);
   }
 
   @Patch('activate-user/:id')
@@ -60,5 +69,33 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User activated successfully' })
   async activateUser(@Param('id') userId: string) {
     return this.authService.activateUserStatus(userId);
+  }
+
+  @Post('reauth')
+  @UseGuards(JwtAuthGuard, SessionGuard)
+  @ApiOperation({ summary: 'PRD §44.15: Re-authenticate before critical actions' })
+  async reauth(@Req() req: any, @Body() dto: ReauthDto) {
+    return this.authService.reauth(req.user.id, dto.password);
+  }
+
+  @Post('force-logout/:id')
+  @UseGuards(JwtAuthGuard, SessionGuard, RolesGuard, ReauthGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  @Reauth()
+  @ApiOperation({ summary: 'PRD §44.15: Force logout all sessions for a target user' })
+  async forceLogout(
+    @Param('id') userId: string,
+    @Req() req: any,
+    @Body() dto: ForceLogoutDto,
+  ) {
+    return this.authService.forceLogout(userId, req.user.id, dto.reason);
+  }
+
+  private getClientIp(req: any) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+      return forwarded.split(',')[0].trim();
+    }
+    return req.ip ?? null;
   }
 }

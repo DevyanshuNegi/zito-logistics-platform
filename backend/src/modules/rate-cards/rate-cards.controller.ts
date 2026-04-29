@@ -30,6 +30,37 @@ import { RateCardsService } from './rate-cards.service';
 export class RateCardsController {
   constructor(private readonly rateCardsService: RateCardsService) {}
 
+  @Get('countries/config')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.AGENCY_STAFF,
+    UserRole.CUSTOMER,
+    UserRole.CORPORATE,
+    UserRole.TRANSPORTER,
+    UserRole.DRIVER,
+  )
+  @ApiOperation({ summary: 'List country pricing and tax configuration (PRD Â§49)' })
+  @ApiQuery({ name: 'countryCode', required: false, type: String })
+  countryConfig(@Query('countryCode') countryCode?: string) {
+    return this.rateCardsService.countryConfig(countryCode);
+  }
+
+  @Get('currencies/supported')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.AGENCY_STAFF,
+    UserRole.CUSTOMER,
+    UserRole.CORPORATE,
+    UserRole.TRANSPORTER,
+    UserRole.DRIVER,
+  )
+  @ApiOperation({ summary: 'List supported billing currencies (PRD §23)' })
+  supportedCurrencies() {
+    return this.rateCardsService.listSupportedCurrencies();
+  }
+
   @Get()
   @ApiOperation({ summary: 'List rate cards and version history (PRD §19)' })
   @ApiQuery({ name: 'vehicleType', required: false, enum: VehicleType })
@@ -70,6 +101,14 @@ export class RateCardsController {
   }
 
   @Post('calculate')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.AGENCY_STAFF,
+    UserRole.CUSTOMER,
+    UserRole.CORPORATE,
+    UserRole.TRANSPORTER,
+  )
   @ApiOperation({ summary: 'Calculate pricing from the active rate card (PRD §19)' })
   calculate(@Body() dto: CalculateRateCardDto) {
     return this.rateCardsService.calculate(dto);

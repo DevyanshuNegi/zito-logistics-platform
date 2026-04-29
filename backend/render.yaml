@@ -21,6 +21,13 @@ services:
           name: zito-db
           property: connectionString
 
+      # Redis (auto-linked)
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: zito-redis
+          property: connectionString
+
       # JWT
       - key: JWT_SECRET
         generateValue: true
@@ -43,6 +50,12 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://zito-backend.onrender.com
+
+  # Redis / Key Value
+  - type: keyvalue
+    name: zito-redis
+    plan: free
+    ipAllowList: []
 
 databases:
   - name: zito-db

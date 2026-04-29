@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Body, Req, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Param, Body, Req, UseGuards, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 
@@ -6,6 +6,7 @@ import { TrackingService } from './tracking.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CrossBorderHandoffDto } from './dto/cross-border-handoff.dto';
 
 @ApiTags('Tracking')
 @ApiBearerAuth('JWT')
@@ -36,6 +37,26 @@ export class TrackingController {
   @ApiOperation({ summary: 'Admin: get tracking for any booking (PRD §26)' })
   getBookingTrackingAdmin(@Param('bookingId', ParseUUIDPipe) bookingId: string) {
     return this.trackingService.getBookingTrackingAdmin(bookingId);
+  }
+
+  @Post('admin/booking/:bookingId/cross-border-handoff')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.AGENCY_STAFF)
+  @ApiOperation({ summary: 'Admin: record cross-border or cross-agency handoff with scan confirmation (PRD Â§49)' })
+  crossBorderHandoff(
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+    @Body() dto: CrossBorderHandoffDto,
+    @Req() req: any,
+  ) {
+    return this.trackingService.crossBorderHandoff(bookingId, dto, req.user.id);
+  }
+
+  @Get('admin/booking/:bookingId/cross-border-handoffs')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.AGENCY_STAFF)
+  @ApiOperation({ summary: 'Admin: list cross-border handoff history for a booking (PRD Â§49)' })
+  getCrossBorderHandoffs(@Param('bookingId', ParseUUIDPipe) bookingId: string) {
+    return this.trackingService.getCrossBorderHandoffs(bookingId);
   }
 
   /**

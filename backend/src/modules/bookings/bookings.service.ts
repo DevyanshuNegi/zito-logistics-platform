@@ -17,6 +17,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { ContractsService } from '../contracts/contracts.service';
 import { SurgePricingService } from '../surge-pricing/surge-pricing.service';
+import { CapacityPlanningService } from '../capacity-planning/capacity-planning.service';
 
 // ─── Status transition rules ──────────────────────────────────────────────────
 // PRD §6 — complete 15-state lifecycle
@@ -53,6 +54,7 @@ export class BookingsService {
     private readonly invoicesService: InvoicesService,
     private readonly contractsService: ContractsService,
     private readonly surgePricingService: SurgePricingService,
+    private readonly capacityPlanningService: CapacityPlanningService,
   ) {}
 
   // ─── CREATE ────────────────────────────────────────────────────────────────
@@ -70,6 +72,13 @@ export class BookingsService {
       throw new BadRequestException('At least 2 stops required: pickup and delivery');
     }
 
+    await this.capacityPlanningService.enforceLimit({
+      agencyId: dto.agencyId,
+      serviceType: dto.serviceType,
+      vehicleType: dto.vehicleType,
+      cargoWeightKg: dto.cargoWeightKg,
+    });
+
     // Calculate pricing from RateCard
     const pricing = await this.calculatePrice(dto);
 
@@ -86,6 +95,7 @@ export class BookingsService {
         customerId,
         agencyId: dto.agencyId ?? null,
         serviceType: dto.serviceType,
+        requiredVehicleType: dto.vehicleType,
         status: BookingStatus.CREATED,
         idempotencyKey: dto.idempotencyKey,
         cargoType: dto.cargoType ?? null,

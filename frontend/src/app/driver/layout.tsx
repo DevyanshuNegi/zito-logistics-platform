@@ -4,6 +4,7 @@ import { PortalShell } from '@/components/layout/PortalShell';
 const navItems = [
   { href: '/driver/dashboard', label: 'Dashboard' },
   { href: '/driver/jobs', label: 'Jobs' },
+  { href: '/driver/heatmap', label: 'Heatmap' },
   { href: '/driver/shift', label: 'Shift' },
   { href: '/driver/earnings', label: 'Earnings' },
 ];

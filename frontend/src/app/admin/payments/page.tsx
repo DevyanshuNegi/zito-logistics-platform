@@ -37,6 +37,7 @@ export default function AdminPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   async function loadPayments() {
     setLoading(true);
@@ -61,9 +62,11 @@ export default function AdminPaymentsPage() {
   async function withRefresh(paymentId: string, action: () => Promise<unknown>) {
     setBusyId(paymentId);
     setError(null);
+    setSuccess(null);
 
     try {
       await action();
+      setSuccess('Payment action completed.');
       await loadPayments();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Payment action failed.');
@@ -85,8 +88,13 @@ export default function AdminPaymentsPage() {
           {error}
         </Alert>
       ) : null}
+      {success ? (
+        <Alert title="Payments workflow updated" variant="success">
+          {success}
+        </Alert>
+      ) : null}
 
-      <SurfaceCard title="Filters" description="Monitor payment states, retry failures, confirm pending M-Pesa, or process refunds.">
+      <SurfaceCard title="Filters" description="Monitor payment states, retry failures, confirm pending M-Pesa, or send refunds into the approval queue.">
         <label className="block max-w-sm space-y-2">
           <span className="text-sm font-medium text-slate-200">Status</span>
           <select
@@ -104,7 +112,7 @@ export default function AdminPaymentsPage() {
         </label>
       </SurfaceCard>
 
-      <SurfaceCard title="Admin payments dashboard" description="Escrow-aware payment review for the Phase 1 finance flow.">
+      <SurfaceCard title="Admin payments dashboard" description="Escrow-aware payment review with PRD v10 approval control for refunds.">
         {loading ? (
           <Spinner />
         ) : (
@@ -188,7 +196,7 @@ export default function AdminPaymentsPage() {
                         )
                       }
                     >
-                      Refund
+                      Request refund
                     </Button>
                   </div>
                 ),

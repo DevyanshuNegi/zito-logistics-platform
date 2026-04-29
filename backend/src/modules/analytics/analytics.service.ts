@@ -1,10 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  AccountStatus,
   BookingStatus,
   InvoiceStatus,
   InvoiceType,
   InventoryStatus,
   Prisma,
+  UserRole,
+  VehicleStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RetentionService } from '../retention/retention.service';
@@ -64,6 +67,11 @@ type WarehouseKpiRow = {
   averageDwellDays: number;
   turnoverCount: number;
   turnoverRate: number;
+};
+
+type MarketplacePartnerSnapshot = {
+  partnerType: string;
+  verificationStatus: string;
 };
 
 @Injectable()
@@ -512,6 +520,121 @@ export class AnalyticsService {
     };
   }
 
+  async funnelReport() {
+    const supplyRoles = [
+      UserRole.DRIVER,
+      UserRole.TRANSPORTER,
+      UserRole.WAREHOUSE_PARTNER,
+    ];
+    const [users, vehicles, referrals, marketplaceRows] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          role: {
+            in: supplyRoles,
+          },
+        },
+        select: {
+          id: true,
+          role: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.vehicle.findMany({
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+      this.retentionService.listDriverReferrals(),
+      this.prisma.idempotencyRecord.findMany({
+        where: {
+          key: { startsWith: 'marketplace:partner:' },
+        },
+        select: {
+          response: true,
+        },
+      }),
+    ]);
+
+    const partnerSnapshots = marketplaceRows
+      .map((row) => this.asMarketplacePartnerSnapshot(row.response))
+      .filter((value): value is MarketplacePartnerSnapshot => Boolean(value));
+    const registeredStatuses = new Set<AccountStatus>([
+      AccountStatus.VERIFIED,
+      AccountStatus.ACTIVE,
+      AccountStatus.SUSPENDED,
+    ]);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const funnelByRole = supplyRoles.map((role) => {
+      const roleUsers = users.filter((user) => user.role === role);
+      return {
+        role,
+        registered: roleUsers.length,
+        verified: roleUsers.filter((user) => registeredStatuses.has(user.status)).length,
+        active: roleUsers.filter((user) => user.status === AccountStatus.ACTIVE).length,
+      };
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      summary: {
+        registered: users.length,
+        verified: users.filter((user) => registeredStatuses.has(user.status)).length,
+        active: users.filter((user) => user.status === AccountStatus.ACTIVE).length,
+        convertedDriverReferrals: referrals.summary.converted,
+        pendingDriverReferrals: referrals.summary.registered,
+        approvedMarketplacePartners: partnerSnapshots.filter(
+          (partner) => partner.verificationStatus === 'APPROVED',
+        ).length,
+        pendingMarketplacePartners: partnerSnapshots.filter(
+          (partner) => partner.verificationStatus === 'PENDING_REVIEW',
+        ).length,
+        totalFleetUnits: vehicles.length,
+        recentlyOnboardedFleetUnits: vehicles.filter(
+          (vehicle) => vehicle.createdAt >= thirtyDaysAgo,
+        ).length,
+      },
+      byRole: funnelByRole,
+      partnerApproval: {
+        transportersApproved: partnerSnapshots.filter(
+          (partner) =>
+            partner.partnerType === 'TRANSPORTER' &&
+            partner.verificationStatus === 'APPROVED',
+        ).length,
+        warehousesApproved: partnerSnapshots.filter(
+          (partner) =>
+            partner.partnerType === 'WAREHOUSE' &&
+            partner.verificationStatus === 'APPROVED',
+        ).length,
+        transportersPending: partnerSnapshots.filter(
+          (partner) =>
+            partner.partnerType === 'TRANSPORTER' &&
+            partner.verificationStatus === 'PENDING_REVIEW',
+        ).length,
+        warehousesPending: partnerSnapshots.filter(
+          (partner) =>
+            partner.partnerType === 'WAREHOUSE' &&
+            partner.verificationStatus === 'PENDING_REVIEW',
+        ).length,
+      },
+      referralPipeline: referrals.summary,
+      fleetSupply: {
+        totalVehicles: vehicles.length,
+        activeVehicles: vehicles.filter((vehicle) => vehicle.status === VehicleStatus.ACTIVE)
+          .length,
+        inactiveVehicles: vehicles.filter((vehicle) => vehicle.status !== VehicleStatus.ACTIVE)
+          .length,
+      },
+      notes: [
+        'The onboarding funnel tracks registered, verified, and active supply-side accounts across drivers, transporters, and warehouse partners.',
+        'Marketplace-partner approval stages are derived from schema-backed marketplace onboarding records, while fleet onboarding depth uses live vehicle creation totals from the current fleet module.',
+      ],
+    };
+  }
+
   private resolveDateRange(query: AnalyticsQueryDto): ResolvedDateRange {
     const period = query.period ?? 'monthly';
     const now = new Date();
@@ -695,5 +818,24 @@ export class AnalyticsService {
 
   private diffDays(start: Date, end: Date) {
     return this.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  private asMarketplacePartnerSnapshot(value: Prisma.JsonValue | null | undefined) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const record = value as Record<string, Prisma.JsonValue>;
+    if (
+      typeof record.partnerType !== 'string' ||
+      typeof record.verificationStatus !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      partnerType: record.partnerType,
+      verificationStatus: record.verificationStatus,
+    } satisfies MarketplacePartnerSnapshot;
   }
 }

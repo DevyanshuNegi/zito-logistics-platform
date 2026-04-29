@@ -5,7 +5,9 @@ const navItems = [
   { href: '/customer/bookings', label: 'My Bookings' },
   { href: '/customer/bookings/new', label: 'Book a Trip' },
   { href: '/customer/payments', label: 'Payments' },
+  { href: '/customer/invoices', label: 'Invoices' },
   { href: '/customer/support', label: 'Support' },
+  { href: '/customer/profile', label: 'Profile' },
 ];
 
 export default function CustomerLayout({ children }: { children: ReactNode }) {

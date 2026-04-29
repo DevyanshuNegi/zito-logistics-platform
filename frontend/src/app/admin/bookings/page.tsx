@@ -82,6 +82,7 @@ export default function AdminBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -126,6 +127,7 @@ export default function AdminBookingsPage() {
 
     setBusyId(bookingId);
     setError(null);
+    setSuccess(null);
 
     try {
       await api.patch(`/admin/bookings/${bookingId}/assign`, {
@@ -133,6 +135,7 @@ export default function AdminBookingsPage() {
         vehicleId: driver.vehicle.id,
         note: 'Assigned from admin bookings dashboard',
       });
+      setSuccess('Driver assignment completed.');
       await loadData();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to assign driver.');
@@ -150,12 +153,14 @@ export default function AdminBookingsPage() {
 
     setBusyId(bookingId);
     setError(null);
+    setSuccess(null);
 
     try {
       await api.patch(`/admin/bookings/${bookingId}/status`, {
         status,
         note: 'Updated from admin bookings dashboard',
       });
+      setSuccess('Booking status updated.');
       await loadData();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to update booking status.');
@@ -170,11 +175,13 @@ export default function AdminBookingsPage() {
 
     setBusyId(bookingId);
     setError(null);
+    setSuccess(null);
 
     try {
       await api.post(`/admin/bookings/${bookingId}/cancel`, {
         reason,
       });
+      setSuccess('Booking cancellation approval request submitted.');
       await loadData();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to cancel booking.');
@@ -201,6 +208,11 @@ export default function AdminBookingsPage() {
           {error}
         </Alert>
       ) : null}
+      {success ? (
+        <Alert title="Bookings workflow updated" variant="success">
+          {success}
+        </Alert>
+      ) : null}
 
       <SurfaceCard title="Filters" description="Review, assign, and override bookings from one Phase 1 workspace.">
         <label className="block max-w-sm space-y-2">
@@ -219,7 +231,7 @@ export default function AdminBookingsPage() {
         </label>
       </SurfaceCard>
 
-      <SurfaceCard title="Admin bookings dashboard" description="Assign drivers, override status, or cancel with a reason.">
+      <SurfaceCard title="Admin bookings dashboard" description="Assign drivers, override status, or request audited cancellation approval.">
         {loading ? (
           <Spinner />
         ) : (
@@ -323,7 +335,7 @@ export default function AdminBookingsPage() {
                       onClick={() => void cancelBooking(booking.id)}
                       variant="danger"
                     >
-                      Cancel
+                      Request cancel
                     </Button>
                   </div>
                 ),

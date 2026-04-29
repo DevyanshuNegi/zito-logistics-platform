@@ -1,16 +1,347 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InventoryStatus, ScanCheckpoint } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InventoryStatus, Prisma, ScanCheckpoint } from '@prisma/client';
+import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 
+type ScanPayload = {
+  itemId: string;
+  checkpoint: ScanCheckpoint;
+  vehicleId?: string;
+  driverId?: string;
+  warehouseId?: string;
+  binId?: string;
+  latitude?: number;
+  longitude?: number;
+  notes?: string;
+  clientReference?: string;
+  occurredAt?: string;
+  syncMode?: 'ONLINE' | 'OFFLINE';
+};
+
+type ScanSyncResolution = 'CREATED' | 'MERGED_DUPLICATE' | 'REJECTED_STALE';
+
+type StoredScanResolution = {
+  accepted: boolean;
+  syncResolution: ScanSyncResolution;
+  reason: string;
+  occurredAt: string;
+  scanId: string | null;
+  latestScanId: string | null;
+  latestCheckpoint: ScanCheckpoint | null;
+  latestCreatedAt: string | null;
+};
+
 @Injectable()
 export class ScanService {
+  private readonly duplicateWindowMs = 5 * 60 * 1000;
+  private readonly staleScanGraceMs = 90 * 1000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
   ) {}
 
-  private async validateCheckpointRules(item: any, data: any, tx: any) {
+  private buildSyncKey(clientReference: string) {
+    return `scan-sync:${clientReference}`;
+  }
+
+  private normalizeOccurredAt(value?: string) {
+    if (!value) {
+      return new Date();
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  }
+
+  private buildResponse(
+    resolution: ScanSyncResolution,
+    accepted: boolean,
+    reason: string,
+    occurredAt: Date,
+    scan: any | null,
+    latestScan?: { id: string; checkpoint: ScanCheckpoint; createdAt: Date } | null,
+  ) {
+    return {
+      accepted,
+      syncResolution: resolution,
+      reason,
+      occurredAt: occurredAt.toISOString(),
+      latestScan: latestScan
+        ? {
+            id: latestScan.id,
+            checkpoint: latestScan.checkpoint,
+            createdAt: latestScan.createdAt.toISOString(),
+          }
+        : null,
+      scan,
+    };
+  }
+
+  private async getScanDetails(scanId: string, tx: any) {
+    return tx.scanEvent.findUnique({
+      where: { id: scanId },
+      include: {
+        item: true,
+        booking: true,
+        waybill: true,
+      },
+    });
+  }
+
+  private asStoredResolution(value: Prisma.JsonValue | null | undefined) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const record = value as Record<string, Prisma.JsonValue>;
+    if (
+      typeof record.accepted !== 'boolean' ||
+      typeof record.syncResolution !== 'string' ||
+      typeof record.reason !== 'string' ||
+      typeof record.occurredAt !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      accepted: record.accepted,
+      syncResolution: record.syncResolution as ScanSyncResolution,
+      reason: record.reason,
+      occurredAt: record.occurredAt,
+      scanId: typeof record.scanId === 'string' ? record.scanId : null,
+      latestScanId:
+        typeof record.latestScanId === 'string' ? record.latestScanId : null,
+      latestCheckpoint:
+        typeof record.latestCheckpoint === 'string'
+          ? (record.latestCheckpoint as ScanCheckpoint)
+          : null,
+      latestCreatedAt:
+        typeof record.latestCreatedAt === 'string' ? record.latestCreatedAt : null,
+    } satisfies StoredScanResolution;
+  }
+
+  private async storeResolution(
+    clientReference: string | undefined,
+    itemId: string,
+    response: ReturnType<ScanService['buildResponse']>,
+    tx: any,
+  ) {
+    if (!clientReference) {
+      return;
+    }
+
+    const stored: StoredScanResolution = {
+      accepted: response.accepted,
+      syncResolution: response.syncResolution,
+      reason: response.reason,
+      occurredAt: response.occurredAt,
+      scanId: response.scan?.id ?? null,
+      latestScanId: response.latestScan?.id ?? null,
+      latestCheckpoint: response.latestScan?.checkpoint ?? null,
+      latestCreatedAt: response.latestScan?.createdAt ?? null,
+    };
+
+    await tx.idempotencyRecord.upsert({
+      where: { key: this.buildSyncKey(clientReference) },
+      create: {
+        key: this.buildSyncKey(clientReference),
+        status: response.accepted ? 'COMPLETED' : 'REJECTED',
+        requestHash: itemId,
+        response: stored as Prisma.InputJsonValue,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+      update: {
+        status: response.accepted ? 'COMPLETED' : 'REJECTED',
+        requestHash: itemId,
+        response: stored as Prisma.InputJsonValue,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+  }
+
+  private async restoreStoredResolution(clientReference: string, tx: any) {
+    const record = await tx.idempotencyRecord.findUnique({
+      where: { key: this.buildSyncKey(clientReference) },
+      select: {
+        response: true,
+      },
+    });
+
+    const stored = this.asStoredResolution(record?.response);
+    if (!stored) {
+      return null;
+    }
+
+    const scan = stored.scanId ? await this.getScanDetails(stored.scanId, tx) : null;
+    const latestScan =
+      stored.latestScanId && stored.latestCheckpoint && stored.latestCreatedAt
+        ? {
+            id: stored.latestScanId,
+            checkpoint: stored.latestCheckpoint,
+            createdAt: new Date(stored.latestCreatedAt),
+          }
+        : null;
+
+    return this.buildResponse(
+      stored.syncResolution,
+      stored.accepted,
+      stored.reason,
+      new Date(stored.occurredAt),
+      scan,
+      latestScan,
+    );
+  }
+
+  private async writeSyncAudit(
+    tx: any,
+    performedBy: string,
+    itemId: string,
+    action: string,
+    details: Record<string, unknown>,
+  ) {
+    await tx.auditLog.create({
+      data: {
+        userId: performedBy,
+        action,
+        entityType: 'SCAN',
+        entityId: itemId,
+        details,
+      },
+    });
+  }
+
+  private async deduplicateScan(
+    item: any,
+    data: ScanPayload,
+    performedBy: string,
+    occurredAt: Date,
+    tx: any,
+  ) {
+    if (data.clientReference) {
+      const stored = await this.restoreStoredResolution(data.clientReference, tx);
+      if (stored) {
+        return stored;
+      }
+    }
+
+    const recentWindowStart = new Date(Date.now() - this.duplicateWindowMs);
+    const duplicate = await tx.scanEvent.findFirst({
+      where: {
+        itemId: item.id,
+        checkpoint: data.checkpoint,
+        vehicleId: data.vehicleId ?? null,
+        driverId: data.driverId ?? null,
+        performedBy,
+        createdAt: { gte: recentWindowStart },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!duplicate) {
+      return null;
+    }
+
+    const duplicateScan = await this.getScanDetails(duplicate.id, tx);
+    const response = this.buildResponse(
+      'MERGED_DUPLICATE',
+      true,
+      'Duplicate scan detected and merged into the most recent matching checkpoint.',
+      occurredAt,
+      duplicateScan,
+      {
+        id: duplicate.id,
+        checkpoint: duplicate.checkpoint,
+        createdAt: duplicate.createdAt,
+      },
+    );
+
+    await this.storeResolution(data.clientReference, item.id, response, tx);
+    await this.writeSyncAudit(tx, performedBy, item.id, 'SCAN_DUPLICATE_MERGED', {
+      checkpoint: data.checkpoint,
+      clientReference: data.clientReference ?? null,
+      mergedIntoScanId: duplicate.id,
+      syncMode: data.syncMode ?? 'ONLINE',
+    });
+
+    return response;
+  }
+
+  private async resolveConflict(
+    item: any,
+    data: ScanPayload,
+    performedBy: string,
+    occurredAt: Date,
+    tx: any,
+  ) {
+    if (data.syncMode !== 'OFFLINE') {
+      return null;
+    }
+
+    const latestScan = await tx.scanEvent.findFirst({
+      where: { itemId: item.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!latestScan) {
+      return null;
+    }
+
+    if (
+      latestScan.createdAt.getTime() - occurredAt.getTime() <=
+      this.staleScanGraceMs
+    ) {
+      return null;
+    }
+
+    const response = this.buildResponse(
+      'REJECTED_STALE',
+      false,
+      'A newer valid scan already exists for this parcel, so the stale offline event was ignored.',
+      occurredAt,
+      null,
+      {
+        id: latestScan.id,
+        checkpoint: latestScan.checkpoint,
+        createdAt: latestScan.createdAt,
+      },
+    );
+
+    await this.storeResolution(data.clientReference, item.id, response, tx);
+    await this.writeSyncAudit(tx, performedBy, item.id, 'SCAN_CONFLICT_REJECTED', {
+      checkpoint: data.checkpoint,
+      clientReference: data.clientReference ?? null,
+      incomingOccurredAt: occurredAt.toISOString(),
+      latestScanId: latestScan.id,
+      latestCheckpoint: latestScan.checkpoint,
+      latestCreatedAt: latestScan.createdAt.toISOString(),
+    });
+
+    return response;
+  }
+
+  private buildDedupeSignature(data: ScanPayload) {
+    return createHash('sha1')
+      .update(
+        JSON.stringify({
+          itemId: data.itemId,
+          checkpoint: data.checkpoint,
+          vehicleId: data.vehicleId ?? null,
+          driverId: data.driverId ?? null,
+          warehouseId: data.warehouseId ?? null,
+          binId: data.binId ?? null,
+          notes: data.notes ?? null,
+        }),
+      )
+      .digest('hex');
+  }
+
+  private async validateCheckpointRules(item: any, data: ScanPayload, tx: any) {
     if (data.binId) {
       const bin = await tx.warehouseBin.findUnique({
         where: { id: data.binId },
@@ -93,7 +424,7 @@ export class ScanService {
     }
   }
 
-  private buildStatusTransition(item: any, data: any) {
+  private buildStatusTransition(item: any, data: ScanPayload) {
     switch (data.checkpoint) {
       case ScanCheckpoint.PICKUP:
         return {
@@ -151,7 +482,7 @@ export class ScanService {
     }
   }
 
-  async validateMovement(data: any) {
+  async validateMovement(data: ScanPayload) {
     const item = await this.prisma.inventoryItem.findUnique({
       where: { id: data.itemId },
     });
@@ -184,8 +515,9 @@ export class ScanService {
     }
   }
 
-  async recordScan(data: any, performedBy: string) {
+  async recordScan(data: ScanPayload, performedBy: string) {
     return this.prisma.$transaction(async tx => {
+      const occurredAt = this.normalizeOccurredAt(data.occurredAt);
       const item = await tx.inventoryItem.findUnique({
         where: { id: data.itemId },
         include: {
@@ -195,6 +527,28 @@ export class ScanService {
 
       if (!item) {
         throw new NotFoundException('Item not found');
+      }
+
+      const deduplicated = await this.deduplicateScan(
+        item,
+        data,
+        performedBy,
+        occurredAt,
+        tx,
+      );
+      if (deduplicated) {
+        return deduplicated;
+      }
+
+      const conflict = await this.resolveConflict(
+        item,
+        data,
+        performedBy,
+        occurredAt,
+        tx,
+      );
+      if (conflict) {
+        return conflict;
       }
 
       await this.validateCheckpointRules(item, data, tx);
@@ -225,14 +579,28 @@ export class ScanService {
         );
       }
 
-      return tx.scanEvent.findUnique({
-        where: { id: scan.id },
-        include: {
-          item: true,
-          booking: true,
-          waybill: true,
-        },
+      const scanDetails = await this.getScanDetails(scan.id, tx);
+      const response = this.buildResponse(
+        'CREATED',
+        true,
+        data.syncMode === 'OFFLINE'
+          ? 'Offline scan synced successfully.'
+          : 'Scan checkpoint recorded successfully.',
+        occurredAt,
+        scanDetails,
+      );
+
+      await this.storeResolution(data.clientReference, item.id, response, tx);
+      await this.writeSyncAudit(tx, performedBy, item.id, 'SCAN_RECORDED', {
+        checkpoint: data.checkpoint,
+        scanId: scan.id,
+        clientReference: data.clientReference ?? null,
+        syncMode: data.syncMode ?? 'ONLINE',
+        occurredAt: occurredAt.toISOString(),
+        dedupeSignature: this.buildDedupeSignature(data),
       });
+
+      return response;
     });
   }
 
@@ -286,7 +654,7 @@ export class ScanService {
       throw new BadRequestException('Invalid delivery OTP');
     }
 
-    const scan = await this.recordScan(
+    const result = await this.recordScan(
       {
         itemId: data.itemId,
         checkpoint: ScanCheckpoint.DELIVERY,
@@ -294,21 +662,27 @@ export class ScanService {
         latitude: data.latitude,
         longitude: data.longitude,
         notes: data.notes,
+        driverId: data.driverId,
+        clientReference: data.clientReference,
+        occurredAt: data.occurredAt,
+        syncMode: data.syncMode,
       },
       performedBy,
     );
 
-    await this.prisma.booking.update({
-      where: { id: item.booking.id },
-      data: {
-        deliveryProofUrl: data.deliveryProofUrl,
-      },
-    });
+    if (result.accepted) {
+      await this.prisma.booking.update({
+        where: { id: item.booking.id },
+        data: {
+          deliveryProofUrl: data.deliveryProofUrl,
+        },
+      });
+    }
 
     return {
       otpVerified: true,
-      proofCaptured: true,
-      scan,
+      proofCaptured: result.accepted,
+      ...result,
     };
   }
 }

@@ -1,17 +1,30 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { ApiError, api } from '@/lib/api';
+import { formatMoney } from '@/lib/format';
+import { estimateDistanceKm } from '@/lib/geo';
 import { SERVICE_TYPES, VEHICLE_TYPES } from '@/lib/phase-one';
+import { useAppPreferences } from '@/contexts/AppPreferencesContext';
 
 type CreateBookingResponse = {
   booking: {
     id: string;
+  };
+};
+
+type RateQuoteResponse = {
+  currency: string;
+  totalPrice: number;
+  effectiveDistance: number;
+  baseCurrencyQuote?: {
+    currency: string;
+    totalPrice: number;
   };
 };
 
@@ -24,6 +37,7 @@ function generateIdempotencyKey() {
 
 export default function NewBookingPage() {
   const router = useRouter();
+  const { currency } = useAppPreferences();
   const [step, setStep] = useState(1);
   const [serviceType, setServiceType] = useState('FTL');
   const [vehicleType, setVehicleType] = useState('VAN');
@@ -44,6 +58,9 @@ export default function NewBookingPage() {
   const [isScheduled, setIsScheduled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [quote, setQuote] = useState<RateQuoteResponse | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   const summaryStops = useMemo(
     () => [
@@ -52,6 +69,49 @@ export default function NewBookingPage() {
     ],
     [dropAddress, dropContactName, dropContactPhone, pickupAddress, pickupContactName, pickupContactPhone],
   );
+
+  const estimatedDistance = useMemo(() => {
+    const values = [pickupLat, pickupLng, dropLat, dropLng].map((value) => Number(value));
+    if (values.some((value) => !Number.isFinite(value))) {
+      return null;
+    }
+
+    return estimateDistanceKm(values[0], values[1], values[2], values[3]);
+  }, [dropLat, dropLng, pickupLat, pickupLng]);
+
+  useEffect(() => {
+    if (step !== 3 || estimatedDistance == null) {
+      return;
+    }
+
+    setQuoteLoading(true);
+    setQuoteError(null);
+
+    void (async () => {
+      try {
+        const response = await api.post<RateQuoteResponse>(
+          '/rate-cards/calculate',
+          {
+            serviceType,
+            vehicleType,
+            distanceKm: estimatedDistance,
+            stopCount: 0,
+            currency,
+          },
+          { retry: false },
+        );
+        setQuote(response);
+      } catch (caught) {
+        setQuoteError(
+          caught instanceof ApiError
+            ? caught.message
+            : 'Unable to calculate the preferred-currency quote.',
+        );
+      } finally {
+        setQuoteLoading(false);
+      }
+    })();
+  }, [currency, estimatedDistance, serviceType, step, vehicleType]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,6 +163,12 @@ export default function NewBookingPage() {
       {error ? (
         <Alert title="Booking could not be created" variant="danger">
           {error}
+        </Alert>
+      ) : null}
+
+      {quoteError && step === 3 ? (
+        <Alert title="Quote unavailable" variant="warning">
+          {quoteError}
         </Alert>
       ) : null}
 
@@ -228,6 +294,20 @@ export default function NewBookingPage() {
                 <p>Cargo type: {cargoType || 'Not specified'}</p>
                 <p>Cargo weight: {cargoWeightKg || 'Not specified'} kg</p>
                 <p>Scheduled: {isScheduled ? 'Yes' : 'No'}</p>
+                <p>Estimated distance: {estimatedDistance != null ? `${estimatedDistance} km` : 'Pending coordinates'}</p>
+                <p>
+                  Estimated quote:{' '}
+                  {quote
+                    ? formatMoney(quote.totalPrice, quote.currency)
+                    : quoteLoading
+                      ? 'Calculating...'
+                      : 'Pending'}
+                </p>
+                {quote?.baseCurrencyQuote && quote.baseCurrencyQuote.currency !== quote.currency ? (
+                  <p className="text-xs text-slate-400">
+                    Base KES quote: {formatMoney(quote.baseCurrencyQuote.totalPrice, quote.baseCurrencyQuote.currency)}
+                  </p>
+                ) : null}
               </div>
             </div>
 
