@@ -17,10 +17,24 @@ import { WaybillModule } from './modules/waybill/waybill.module';
 import { ScanModule } from './modules/scan/scan.module';
 import { LossDetectionModule } from './modules/loss-detection/loss-detection.module';
 import { RtoModule } from './modules/rto/rto.module';
+import { RateCardsModule } from './modules/rate-cards/rate-cards.module';
+import { InvoicesModule } from './modules/invoices/invoices.module';
+import { BillingModule } from './modules/billing/billing.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
+import { SlaModule } from './modules/sla/sla.module';
+import { StaffPerformanceModule } from './modules/staff-performance/staff-performance.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { RetentionModule } from './modules/retention/retention.module';
+import { FraudModule } from './modules/fraud/fraud.module';
+import { SurgePricingModule } from './modules/surge-pricing/surge-pricing.module';
+import { RouteOptimizationModule } from './modules/route-optimization/route-optimization.module';
+import { HeatmapModule } from './modules/heatmap/heatmap.module';
 
 @Module({
   imports: [
-    PrismaModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule
+    PrismaModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule, RateCardsModule, InvoicesModule, BillingModule, ContractsModule, AuditModule, SlaModule, ReconciliationModule, StaffPerformanceModule, RetentionModule, AnalyticsModule, FraudModule, SurgePricingModule, RouteOptimizationModule, HeatmapModule
   ],
 })
 export class AppModule {}

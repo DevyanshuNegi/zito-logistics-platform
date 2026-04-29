@@ -82,6 +82,52 @@ export class PayrollService {
     });
   }
 
+  async overridePayout(
+    payrollId: string,
+    overrideAmount: number,
+    adminId: string,
+    reason: string,
+  ) {
+    if (overrideAmount < 0) {
+      throw new BadRequestException('Override amount cannot be negative');
+    }
+
+    const payroll = await this.getOrThrow(payrollId);
+    if (payroll.status === 'PAID') {
+      throw new BadRequestException('Paid payroll cannot be overridden');
+    }
+
+    const updated = await this.prisma.driverPayroll.update({
+      where: { id: payrollId },
+      data: {
+        netPayout: parseFloat(overrideAmount.toFixed(2)),
+      },
+    });
+
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id: adminId } });
+      if (user) {
+        await this.prisma.auditLog.create({
+          data: {
+            userId: adminId,
+            action: 'PAYROLL_PAYOUT_OVERRIDDEN',
+            entityType: 'DRIVER_PAYROLL',
+            entityId: payrollId,
+            details: {
+              previousNetPayout: payroll.netPayout,
+              overrideAmount: updated.netPayout,
+              reason,
+            },
+          },
+        });
+      }
+    } catch {
+      // Payout override should not fail because audit logging failed.
+    }
+
+    return updated;
+  }
+
   async addIncentive(dto: { driverId: string; type: string; amount: number; reason?: string; bookingId?: string }) {
     const driver = await this.prisma.driver.findUnique({ where: { id: dto.driverId } });
     if (!driver) throw new NotFoundException('Driver not found');

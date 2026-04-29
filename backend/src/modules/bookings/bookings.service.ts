@@ -14,6 +14,9 @@ import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { RateBookingDto } from './dto/rate-booking.dto';
 import * as crypto from 'crypto';
 import { PaymentsService } from '../payments/payments.service';
+import { InvoicesService } from '../invoices/invoices.service';
+import { ContractsService } from '../contracts/contracts.service';
+import { SurgePricingService } from '../surge-pricing/surge-pricing.service';
 
 // ─── Status transition rules ──────────────────────────────────────────────────
 // PRD §6 — complete 15-state lifecycle
@@ -47,11 +50,14 @@ export class BookingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly paymentsService: PaymentsService,
+    private readonly invoicesService: InvoicesService,
+    private readonly contractsService: ContractsService,
+    private readonly surgePricingService: SurgePricingService,
   ) {}
 
   // ─── CREATE ────────────────────────────────────────────────────────────────
 
-  async create(customerId: string, dto: CreateBookingDto) {
+  async create(customerId: string, dto: CreateBookingDto, requesterRole = 'CUSTOMER') {
     // Idempotency: if booking with this key already exists, return it
     const existing = await this.prisma.booking.findUnique({
       where: { idempotencyKey: dto.idempotencyKey },
@@ -66,6 +72,10 @@ export class BookingsService {
 
     // Calculate pricing from RateCard
     const pricing = await this.calculatePrice(dto);
+
+    if (requesterRole === 'CORPORATE') {
+      await this.contractsService.checkCredit(customerId, pricing.totalPrice);
+    }
 
     // Generate unique reference
     const reference = await this.generateReference();
@@ -114,6 +124,14 @@ export class BookingsService {
       serviceType: booking.serviceType,
       totalPrice: booking.totalPrice,
     });
+
+    if (requesterRole === 'CORPORATE') {
+      try {
+        await this.contractsService.syncCreditUsage(customerId);
+      } catch {
+        // Corporate booking creation should not fail if credit sync refresh needs retry.
+      }
+    }
 
     return { booking, idempotent: false };
   }
@@ -219,7 +237,7 @@ export class BookingsService {
     if (!booking) throw new NotFoundException('Booking not found');
 
     // Scope check: customers can only see their own bookings
-    if (requesterRole === 'CUSTOMER' && booking.customerId !== requesterId) {
+    if ((requesterRole === 'CUSTOMER' || requesterRole === 'CORPORATE') && booking.customerId !== requesterId) {
       throw new ForbiddenException('Access denied');
     }
     // Drivers can only see their assigned bookings
@@ -286,6 +304,19 @@ export class BookingsService {
       );
     }
 
+    if (
+      dto.status === BookingStatus.DELIVERED ||
+      dto.status === BookingStatus.COMPLETED
+    ) {
+      try {
+        await this.invoicesService.generateForBooking(bookingId, {
+          actorId: driver.userId,
+        });
+      } catch {
+        // Trip completion should not fail if downstream invoice generation needs retry.
+      }
+    }
+
     return updated;
   }
 
@@ -320,6 +351,19 @@ export class BookingsService {
         bookingId,
         `Released after admin updated booking to ${dto.status}`,
       );
+    }
+
+    if (
+      dto.status === BookingStatus.DELIVERED ||
+      dto.status === BookingStatus.COMPLETED
+    ) {
+      try {
+        await this.invoicesService.generateForBooking(bookingId, {
+          actorId: adminId,
+        });
+      } catch {
+        // Booking lifecycle should not be blocked by a failed invoice side effect.
+      }
     }
 
     return updated;
@@ -449,6 +493,12 @@ export class BookingsService {
             action: 'MANUAL_REVIEW_REQUIRED',
             penaltyAmount,
           };
+
+    try {
+      await this.contractsService.syncCreditUsage(customerId);
+    } catch {
+      // Cancellation should not fail if contract exposure sync needs retry.
+    }
 
     return { booking: updated, penaltyAmount, refund };
   }
@@ -639,13 +689,33 @@ export class BookingsService {
     const distanceFare = parseFloat((effectiveDist * rateCard.ratePerKm).toFixed(2));
     const stopCount = Math.max(0, dto.stops.length - 2); // intermediate stops only
     const stopFare = parseFloat((stopCount * rateCard.perStopRate).toFixed(2));
-    const surgeMultiplier = rateCard.surgeMultiplier;
+    const surgeContext = await this.surgePricingService.resolveMultiplierForStops(
+      dto.stops.map((stop) => ({
+        latitude: stop.latitude,
+        longitude: stop.longitude,
+      })),
+    );
+    const surgeMultiplier = parseFloat(
+      (
+        rateCard.surgeMultiplier *
+        surgeContext.zoneMultiplier *
+        surgeContext.peakHourMultiplier
+      ).toFixed(2),
+    );
 
     const totalPrice = parseFloat(
       ((baseFare + distanceFare + stopFare) * surgeMultiplier).toFixed(2),
     );
 
-    return { baseFare, distanceFare, stopFare, surgeMultiplier, totalPrice, estimatedDistKm };
+    return {
+      baseFare,
+      distanceFare,
+      stopFare,
+      surgeMultiplier,
+      totalPrice,
+      estimatedDistKm,
+      surgeBreakdown: surgeContext,
+    };
   }
 
   // ─── HELPERS ─────────────────────────────────────────────────────────────

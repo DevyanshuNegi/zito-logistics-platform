@@ -15,6 +15,7 @@ import { FleetService } from './fleet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CreateFuelLogDto, FuelLogQueryDto } from './fuel/dto/fuel.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('fleet')
@@ -58,6 +59,45 @@ export class FleetController {
   @Get('breakdowns/:breakdownId')
   getBreakdown(@Param('breakdownId', ParseUUIDPipe) breakdownId: string) {
     return this.fleetService.getBreakdown(breakdownId);
+  }
+
+  @Roles('DRIVER', 'ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Post('fuel/logs')
+  createFuelLog(@Body() body: CreateFuelLogDto, @Req() req: any) {
+    return this.fleetService.createFuelLog(
+      {
+        ...body,
+        driverId:
+          (req.user.activeRole ?? req.user.role) === 'DRIVER'
+            ? req.user.driverId
+            : body.driverId,
+      },
+      req.user.id,
+    );
+  }
+
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
+  @Get('fuel/logs')
+  listFuelLogs(@Query() query: FuelLogQueryDto) {
+    return this.fleetService.listFuelLogs({
+      ...query,
+      flagged:
+        typeof query.flagged === 'string'
+          ? query.flagged.toLowerCase() === 'true'
+          : undefined,
+    });
+  }
+
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
+  @Get('fuel/logs/:logId')
+  getFuelLog(@Param('logId', ParseUUIDPipe) logId: string) {
+    return this.fleetService.getFuelLog(logId);
+  }
+
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Post('fuel/logs/:logId/detect-theft')
+  detectFuelTheft(@Param('logId', ParseUUIDPipe) logId: string) {
+    return this.fleetService.detectFuelTheft(logId);
   }
 
   @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')

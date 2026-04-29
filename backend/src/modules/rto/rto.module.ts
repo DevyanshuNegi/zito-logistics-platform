@@ -4,8 +4,9 @@ import { RtoController } from './rto.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-  imports: [PrismaModule], // ✅ REQUIRED
+  imports: [PrismaModule],
   providers: [RtoService],
   controllers: [RtoController],
+  exports: [RtoService],
 })
 export class RtoModule {}

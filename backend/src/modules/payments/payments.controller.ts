@@ -11,13 +11,17 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { InitiatePaymentDto } from './dto/initiate-payment.dto';
+import { AuditService } from '../audit/audit.service';
 
 @ApiTags('Payments')
 @ApiBearerAuth('JWT')
 @Controller('payments')
 @UseGuards(JwtAuthGuard)
 export class PaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // ─── Customer / Self ──────────────────────────────────────────────────────
 
@@ -152,7 +156,11 @@ export class PaymentsController {
   refundPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { reason?: string },
+    @Req() req: any,
   ) {
-    return this.paymentsService.refundPayment(id, body.reason);
+    if (!body.reason) {
+      throw new BadRequestException('Refund reason is required');
+    }
+    return this.auditService.requestRefundApproval(id, req.user.id, body.reason);
   }
 }

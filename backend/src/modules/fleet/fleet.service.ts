@@ -8,6 +8,7 @@ import { VehicleStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BreakdownService } from './breakdown/breakdown.service';
 import { FleetExpiryService } from './fleet-expiry.service';
+import { FuelService } from './fuel/fuel.service';
 
 @Injectable()
 export class FleetService {
@@ -15,6 +16,7 @@ export class FleetService {
     private readonly prisma: PrismaService,
     private readonly breakdownService: BreakdownService,
     private readonly fleetExpiryService: FleetExpiryService,
+    private readonly fuelService: FuelService,
   ) {}
 
   async create(createVehicleDto: any) {
@@ -191,6 +193,22 @@ export class FleetService {
 
   async resolveBreakdown(breakdownId: string, adminId: string) {
     return this.breakdownService.resolveBreakdown(breakdownId, adminId);
+  }
+
+  async createFuelLog(data: any, reportedBy: string) {
+    return this.fuelService.createFuelLog(data, reportedBy);
+  }
+
+  async listFuelLogs(filters: any = {}) {
+    return this.fuelService.listFuelLogs(filters);
+  }
+
+  async getFuelLog(id: string) {
+    return this.fuelService.getFuelLog(id);
+  }
+
+  async detectFuelTheft(logId: string) {
+    return this.fuelService.detectTheft(logId);
   }
 
   private async assertDriverAssignable(driverId: string, currentVehicleId?: string) {

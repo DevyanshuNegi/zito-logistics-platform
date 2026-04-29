@@ -23,6 +23,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BookingStatus, ServiceType } from '@prisma/client';
 import { ShiftActiveGuard } from '../drivers/shift/shift-active.guard';
+import { AuditService } from '../audit/audit.service';
 
 // ─── Customer routes ──────────────────────────────────────────────────────────
 @Controller('customer/bookings')
@@ -36,7 +37,7 @@ export class CustomerBookingsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Request() req, @Body() dto: CreateBookingDto) {
-    return this.bookingsService.create(req.user.id, dto);
+    return this.bookingsService.create(req.user.id, dto, req.user.role);
   }
 
   // GET /customer/bookings
@@ -83,6 +84,51 @@ export class CustomerBookingsController {
     @Body() dto: RateBookingDto,
   ) {
     return this.bookingsService.rateBooking(id, req.user.id, dto);
+  }
+}
+
+@Controller('corporate/bookings')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('CORPORATE')
+export class CorporateBookingsController {
+  constructor(private readonly bookingsService: BookingsService) {}
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  create(@Request() req, @Body() dto: CreateBookingDto) {
+    return this.bookingsService.create(req.user.id, dto, req.user.role);
+  }
+
+  @Get()
+  list(
+    @Request() req,
+    @Query('status') status?: BookingStatus,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.bookingsService.listForCustomer(req.user.id, {
+      status,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  }
+
+  @Get(':id')
+  getOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req,
+  ) {
+    return this.bookingsService.getById(id, req.user.id, req.user.role);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req,
+    @Body() dto: CancelBookingDto,
+  ) {
+    return this.bookingsService.cancelByCustomer(id, req.user.id, dto);
   }
 }
 
@@ -144,7 +190,10 @@ export class DriverTripsController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN')
 export class AdminBookingsController {
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(
+    private readonly bookingsService: BookingsService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // GET /admin/bookings
   @Get()
@@ -203,6 +252,13 @@ export class AdminBookingsController {
     @Request() req,
     @Body() dto: CancelBookingDto,
   ) {
-    return this.bookingsService.cancelByAdmin(id, req.user.id, dto);
+    return this.auditService.requestBookingCancelApproval(
+      {
+        bookingId: id,
+        reason: dto.reason,
+        penaltyOverrideNote: dto.penaltyOverrideNote,
+      },
+      req.user.id,
+    );
   }
 }

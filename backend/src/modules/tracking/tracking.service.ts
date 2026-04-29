@@ -1,22 +1,20 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RouteOptimizationService } from '../route-optimization/route-optimization.service';
 
 @Injectable()
 export class TrackingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly routeOptimizationService: RouteOptimizationService,
+  ) {}
 
-  // ─── Driver: Update GPS Location (PRD §26) ────────────────────────────────
-  /**
-   * Called by driver app every N seconds to push live location.
-   * Also updates the Driver record's currentLatitude/Longitude.
-   */
   async updateDriverLocation(
     driverId: string,
     lat: number,
     lng: number,
     bookingId?: string,
   ) {
-    // Update driver's live location in Driver table
     await this.prisma.driver.update({
       where: { id: driverId },
       data: {
@@ -26,15 +24,38 @@ export class TrackingService {
       },
     });
 
-    // Return location payload for gateway to broadcast
-    return { driverId, lat, lng, bookingId, timestamp: new Date() };
+    const updatedAt = new Date();
+    let routeDeviationKm: number | null = null;
+    let isOffRoute = false;
+    let alertStatus: string | null = null;
+
+    if (bookingId) {
+      try {
+        const deviation = await this.routeOptimizationService.detectDeviation(bookingId, {
+          latitude: lat,
+          longitude: lng,
+        });
+        routeDeviationKm = deviation.deviationKm;
+        isOffRoute = deviation.isOffRoute;
+        alertStatus = deviation.alertStatus;
+      } catch {
+        routeDeviationKm = null;
+      }
+    }
+
+    return {
+      driverId,
+      lat,
+      lng,
+      bookingId,
+      updatedAt,
+      timestamp: updatedAt,
+      routeDeviationKm,
+      isOffRoute,
+      alertStatus,
+    };
   }
 
-  // ─── Customer: Get Live Tracking Data (PRD §26) ───────────────────────────
-  /**
-   * Returns current driver location + booking status + ETA for a booking.
-   * Customer can only track their own bookings.
-   */
   async getBookingTracking(bookingId: string, customerId: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
@@ -53,15 +74,19 @@ export class TrackingService {
       },
     });
 
-    if (!booking) throw new NotFoundException('Booking not found');
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
 
-    // PRD §26: Customer can only track own bookings
     if (booking.customerId !== customerId) {
       throw new ForbiddenException('You can only track your own bookings');
     }
 
-    // Basic ETA — will be replaced with Google Maps in Phase 4
-    const eta = this.estimateEta(booking.driver);
+    const routePlan = await this.routeOptimizationService.calculateForBooking(bookingId);
+    const deviation =
+      booking.driver?.currentLatitude != null && booking.driver?.currentLongitude != null
+        ? await this.routeOptimizationService.detectDeviation(bookingId)
+        : null;
 
     return {
       bookingId: booking.id,
@@ -80,11 +105,14 @@ export class TrackingService {
           }
         : null,
       stops: booking.stops,
-      eta,
+      eta: routePlan.route.eta,
+      route: {
+        ...routePlan.route,
+        deviation,
+      },
     };
   }
 
-  // ─── Admin: Get Any Booking Tracking (PRD §42) ────────────────────────────
   async getBookingTrackingAdmin(bookingId: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
@@ -102,15 +130,26 @@ export class TrackingService {
       },
     });
 
-    if (!booking) throw new NotFoundException('Booking not found');
-    return booking;
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const routePlan = await this.routeOptimizationService.calculateForBooking(bookingId);
+    const deviation =
+      booking.driver?.currentLatitude != null && booking.driver?.currentLongitude != null
+        ? await this.routeOptimizationService.detectDeviation(bookingId)
+        : null;
+
+    return {
+      ...booking,
+      eta: routePlan.route.eta,
+      route: {
+        ...routePlan.route,
+        deviation,
+      },
+    };
   }
 
-  // ─── Get All Active Drivers Map (PRD §26, Admin Dashboard) ───────────────
-  /**
-   * Returns all online drivers with their current GPS positions.
-   * Used by Admin live map dashboard.
-   */
   async getActiveDriversMap(agencyId?: string) {
     const where: any = {
       isOnline: true,
@@ -132,15 +171,5 @@ export class TrackingService {
     });
 
     return drivers;
-  }
-
-  // ─── ETA Estimation (Phase 1 stub — replaced by Maps API in Phase 4) ──────
-  private estimateEta(driver: any): string | null {
-    if (!driver?.lastLocationAt) return null;
-    const lastUpdate = new Date(driver.lastLocationAt);
-    const ageMs = Date.now() - lastUpdate.getTime();
-    if (ageMs > 5 * 60 * 1000) return 'Location data stale — driver may be offline';
-    // Phase 1: static placeholder — Phase 4 integrates Google Maps Directions API
-    return 'ETA available after Google Maps integration (Phase 4)';
   }
 }
