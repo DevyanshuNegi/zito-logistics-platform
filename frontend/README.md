@@ -26,6 +26,7 @@ The app runs on `http://localhost:3000` by default, so set `PORT=3001` if the ba
 
 ## Production deployment
 
-- The repo-root [render.yaml](/C:/Users/Abcom/Desktop/Zito/render.yaml:1) deploys this app as a Node web service.
+- The frontend reads `NEXT_PUBLIC_API_URL` and is hosting-provider agnostic.
+- Use Neon for the backing PostgreSQL database through the backend environment, not as a frontend host.
 - Use `npm run build` for production builds.
-- Use `npm run start` for the Render start command.
+- Use `npm run start` for any Node-compatible production host.

@@ -255,7 +255,7 @@ Goal: Offline-first expansion, multi-currency, marketplace, and USSD fallback.
 - Partner onboarding is now active through driver referral registration and conversion, joining-bonus wallet credits, transporter bulk fleet onboarding, and the new onboarding-funnel analytics endpoint for registered-to-verified-to-active supply tracking.
 - Multi-country expansion rules are now active through backend country pricing overlays for Kenya, Uganda, Tanzania, and Rwanda, plus cross-border agency handoff records with parcel-scan confirmation and inter-agency settlement generation.
 - USSD fallback is now active through `/ussd`, with a persisted menu-session flow for booking, tracking, and M-Pesa payment initiation plus SMS confirmation after USSD booking or payment actions.
-- Multi-region deployment itself remains environment-driven rather than repo-provisioned. The codebase now exposes country config and settlement logic, but actual Render or AWS regional rollout still depends on runtime infrastructure setup.
+- Multi-region deployment itself remains environment-driven rather than repo-provisioned. The codebase now exposes country config and settlement logic, but actual Neon-backed regional topology plus compute or Redis rollout still depends on runtime infrastructure setup.
 
 ## Phase 5 Verification
 - [x] Backend build passes after Phase 5 completion: `backend/npm run build`

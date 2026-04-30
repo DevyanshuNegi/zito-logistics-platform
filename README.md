@@ -6,7 +6,8 @@ Current implementation priorities:
 
 - Single-source PRD: `docs/prd/ZITO_PRD_v10_ULTIMATE.docx`
 - Searchable PRD export and tracker: `docs/prd/ZITO_PRD_v10_ULTIMATE.txt` and `backend/PRD_TRACKER.md`
-- Render as the default deployment target
+- Neon PostgreSQL as the managed database baseline
+- Provider-agnostic app hosting and Redis setup
 - Manual finance and route-entry fallbacks until live M-Pesa and paid map services are enabled
 
 Main workspaces:
@@ -15,10 +16,11 @@ Main workspaces:
 - `backend/` - API and operational workflows
 - `zito-mobile/` - Expo mobile routes, shared mobile utilities, and branding assets
 
-Deployment:
+Infrastructure:
 
-- Use Render blueprints from `render.yaml`
-- See `DEPLOY_RENDER.md` for the Render-first setup flow
+- Use Neon PostgreSQL for the primary transactional database
+- Use `DEPLOY_NEON.md` for Neon setup and production environment guidance
+- Choose backend, frontend, and Redis hosting independently of the database vendor
 
 Local run defaults:
 

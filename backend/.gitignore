@@ -84,7 +84,7 @@ backend/uploads/
 .tmp/
 .cache/
 
-# ── Render / Deployment ──────────────────────────────────────
+# ── Deployment Vendor / Runtime ─────────────────────────────
 
 .render/
 

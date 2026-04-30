@@ -111,7 +111,7 @@ backend/uploads/
 *.cert
 
 # =========================
-# Render Local Config
+# Deployment Vendor Local Config
 # =========================
 .render/
 

@@ -445,6 +445,7 @@ Surge pricing logic updates
 30. 🔄 Backup & Disaster Recovery
 Automated daily database backups with 30-day retention
 Point-in-time recovery (PITR) for PostgreSQL
+Managed database baseline: Neon PostgreSQL
 Multi-region failover configuration
 RTO: 4 hours | RPO: 1 hour
 Documented disaster recovery runbooks
@@ -887,11 +888,13 @@ Payment
 Wallet
 - id, user_id, balance
 47. INFRASTRUCTURE & SCALING
+Database baseline: Neon PostgreSQL
 Multi-region deployment (Africa coverage)
 Load balancing across services
 Auto-scaling based on demand
 CDN for static assets
 Failover and redundancy systems
+Application hosting and Redis must remain provider-agnostic and must not be coupled to a single infrastructure vendor in the PRD.
 Reliability Targets:
 High availability (99.9%+)
 Disaster recovery readiness
@@ -970,6 +973,7 @@ Payment gateways or banking partners for collection, settlement, refund, and pay
 Map, geocoding, routing, and ETA providers for address validation and trip calculation
 SMS, email, push, and WhatsApp providers for notification delivery
 GPS hardware or telematics providers where vehicle-level tracking is required
+Neon PostgreSQL as the managed transactional database provider
 Object storage, queue or cache services, and monitoring stack for platform operations
 Fallback Rules
 Payment provider failure must move the transaction to payment_pending or manual review and must never create a false success state

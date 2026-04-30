@@ -93,7 +93,7 @@ Stale top-level repo references to older PRD versions have been updated to point
 
 ## Follow-up Audit Hotspots
 - The phased implementation area from PRD v10 is complete through Phase 5, so remaining follow-up is operational rather than a missing repo phase slice.
-- Multi-region Render or AWS rollout is still environment-driven and not provisioned inside this repo, even though the country-config and inter-agency code paths are now in place.
+- Multi-region Neon-backed rollout is still environment-driven and not provisioned inside this repo, even though the country-config and inter-agency code paths are now in place.
 - Payments now support direct `invoiceId` linkage, and reconciliation prefers invoice-linked matching first while preserving booking and invoice-number fallback for historical records.
 - Promo-code, loyalty-point, and referral execution still rely on wallet-transaction and audit-log conventions rather than dedicated program tables, so future commercial expansion may still justify a dedicated ledger model.
 - Keep executable engineering tests for safety, but do not use old PRD versions as the functional source of truth anymore.

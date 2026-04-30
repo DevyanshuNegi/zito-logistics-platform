@@ -124,7 +124,7 @@ export default function Privacy() {
           <li style={S.li}><span style={S.highlight}>Customers</span> — Driver name, photo, vehicle details, and phone for active trips only</li>
           <li style={S.li}><span style={S.highlight}>Safaricom</span> — Phone number and amount for M-Pesa payment processing</li>
           <li style={S.li}><span style={S.highlight}>Government authorities</span> — When legally required (court orders, regulatory compliance)</li>
-          <li style={S.li}><span style={S.highlight}>Service providers</span> — Cloud hosting (Render), email delivery (Resend) under Data Processing Agreements</li>
+          <li style={S.li}><span style={S.highlight}>Service providers</span> — Cloud infrastructure, database, and email delivery providers under Data Processing Agreements</li>
         </ul>
         <p style={S.p}>We do <span style={S.highlight}>NOT</span> sell your personal data to third parties for marketing purposes.</p>
 

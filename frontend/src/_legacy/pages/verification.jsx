@@ -84,7 +84,7 @@ export default function Verification() {
     return acc;
   }, {});
 
-  // ─── Render field row ─────────────────────────────────────────────────────────
+  // ─── Field row helper ─────────────────────────────────────────────────────────
   const Field = ({ label, value }) => value ? (
     <div style={S.field}>
       <span style={S.fieldLabel}>{label}</span>
@@ -192,7 +192,7 @@ export default function Verification() {
     emptyText:  { color: '#545f73', fontSize: 14 },
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
+  // ─── UI output ────────────────────────────────────────────────────────────────
   return (
     <Layout title="Verification">
 
