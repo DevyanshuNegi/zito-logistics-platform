@@ -610,39 +610,53 @@ export class InvoicesService {
       );
       doc.on('error', reject);
 
-      const compositeBrandPath = resolveBrandAsset('aurenza-zito-brand.png');
-      const zitoWordmarkPath = resolveBrandAsset('zito-logo.png');
+      const companyLogoPath = resolveBrandAsset('aurenza-limited.png');
+      const zitoWordmarkPath = resolveBrandAsset('zito-wordmark.png');
+      const zitoBoardPath = resolveBrandAsset('zito-logo.png');
 
-      if (compositeBrandPath) {
-        doc.image(compositeBrandPath, 360, 36, {
-          fit: [170, 88],
-          align: 'right',
+      if (companyLogoPath) {
+        doc.image(companyLogoPath, 40, 36, {
+          fit: [220, 68],
+          align: 'left',
           valign: 'top',
         });
-      } else if (zitoWordmarkPath) {
-        doc.roundedRect(395, 40, 130, 40, 12).fill('#ffffff');
-        doc.image(zitoWordmarkPath, 406, 50, {
-          fit: [108, 20],
+      } else {
+        doc.fillColor('#0a2258');
+        doc.fontSize(24).text(BRAND.companyName, 40, 42);
+        doc.fillColor('#b8872f');
+        doc.fontSize(11).text(BRAND.companyTagline, 40, 72);
+      }
+
+      if (zitoWordmarkPath) {
+        doc.roundedRect(386, 38, 139, 46, 14).fill('#ffffff');
+        doc.image(zitoWordmarkPath, 400, 49, {
+          fit: [111, 20],
           align: 'center',
           valign: 'center',
         });
+      } else if (zitoBoardPath) {
+        doc.image(zitoBoardPath, 360, 34, {
+          fit: [165, 82],
+          align: 'right',
+          valign: 'top',
+        });
       }
 
-      doc.fillColor('#0a2258');
-      doc.fontSize(24).text(BRAND.companyName, 40, 42);
-      doc.fillColor('#b8872f');
-      doc.fontSize(11).text(BRAND.companyTagline, 40, 72);
+      const issuerLineY = companyLogoPath ? 112 : 92;
+      const dividerY = companyLogoPath ? 136 : 122;
+      const invoiceHeaderY = dividerY + 16;
+
       doc.fillColor('#475569');
-      doc.fontSize(10).text(BRAND.issuerLine, 40, 92, { width: 250 });
+      doc.fontSize(10).text(BRAND.issuerLine, 40, issuerLineY, { width: 280 });
       doc
-        .moveTo(40, 122)
-        .lineTo(555, 122)
+        .moveTo(40, dividerY)
+        .lineTo(555, dividerY)
         .strokeColor('#9333ea')
         .lineWidth(1)
         .stroke();
 
       doc.fillColor('#0f172a');
-      doc.fontSize(18).text(`${BRAND.appName} Invoice`, 40, 138);
+      doc.fontSize(18).text(`${BRAND.appName} Invoice`, 40, invoiceHeaderY);
       doc.moveDown(0.6);
       doc.fontSize(12).text(`Invoice No: ${invoice.number}`);
       doc.text(`Type: ${invoice.type}`);

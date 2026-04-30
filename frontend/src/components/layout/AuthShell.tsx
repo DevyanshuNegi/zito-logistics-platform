@@ -33,15 +33,34 @@ export function AuthShell({
           <div className="relative">
             <BrandLockup />
 
-            <div className="mt-8 overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950/70 shadow-2xl">
-              <div className="relative aspect-[16/9] w-full">
-                <Image
-                  src={BRAND.assets.composite}
-                  alt={`${BRAND.companyName} and ${BRAND.appName} brand board`}
-                  fill
-                  className="object-cover object-center"
-                  priority
-                />
+            <div className="mt-8 grid gap-4 xl:grid-cols-[0.92fr,1.08fr]">
+              <div className="overflow-hidden rounded-[1.75rem] border border-slate-700/30 bg-white/95 p-4 shadow-2xl">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-600">
+                  Operating company
+                </p>
+                <div className="relative mt-3 aspect-[16/10] w-full">
+                  <Image
+                    src={BRAND.assets.companyLogo}
+                    alt={`${BRAND.companyName} logo`}
+                    fill
+                    className="object-contain object-center"
+                    priority
+                  />
+                </div>
+              </div>
+              <div className="overflow-hidden rounded-[1.75rem] border border-cyan-400/15 bg-slate-950/80 p-4 shadow-2xl">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
+                  Customer-facing app
+                </p>
+                <div className="relative mt-3 aspect-[16/10] w-full">
+                  <Image
+                    src={BRAND.assets.appLogo}
+                    alt={`${BRAND.appName} logo`}
+                    fill
+                    className="object-contain object-center"
+                    priority
+                  />
+                </div>
               </div>
             </div>
 

@@ -19,3 +19,9 @@ Deployment:
 
 - Use Render blueprints from `render.yaml`
 - See `DEPLOY_RENDER.md` for the Render-first setup flow
+
+Local run defaults:
+
+- Backend: `http://localhost:3000`
+- Frontend: `http://localhost:3001`
+- Swagger: `http://localhost:3000/api/docs`

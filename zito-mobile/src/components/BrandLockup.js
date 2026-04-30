@@ -12,11 +12,23 @@ export default function BrandLockup({
 
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      <Image
-        source={compact ? BRAND.assets.wordmark : BRAND.assets.composite}
-        style={compact ? styles.wordmark : styles.composite}
-        resizeMode="contain"
-      />
+      <View style={[styles.appRow, compact && styles.appRowCompact]}>
+        <View style={styles.appIconFrame}>
+          <Image source={BRAND.assets.appIcon} style={styles.appIcon} resizeMode="contain" />
+        </View>
+        <View style={styles.wordmarkFrame}>
+          <Image
+            source={BRAND.assets.appWordmark}
+            style={compact ? styles.wordmarkCompact : styles.wordmark}
+            resizeMode="contain"
+          />
+        </View>
+      </View>
+      {!compact && showCompany ? (
+        <View style={styles.companyPanel}>
+          <Image source={BRAND.assets.companyLogo} style={styles.companyLogo} resizeMode="contain" />
+        </View>
+      ) : null}
       {showCompany ? (
         <Text style={[styles.company, compact && styles.companyCompact]}>{BRAND.companyName}</Text>
       ) : null}
@@ -35,15 +47,60 @@ const styles = StyleSheet.create({
   containerCompact: {
     alignItems: 'flex-end',
   },
-  composite: {
-    width: 260,
-    height: 120,
+  appRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginBottom: 12,
   },
-  wordmark: {
-    width: 96,
-    height: 26,
+  appRowCompact: {
+    gap: 10,
     marginBottom: 6,
+  },
+  appIconFrame: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.32)',
+    backgroundColor: '#050914',
+    padding: 8,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  appIcon: {
+    width: 36,
+    height: 36,
+  },
+  wordmarkFrame: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(34,211,238,0.28)',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  wordmark: {
+    width: 112,
+    height: 24,
+  },
+  wordmarkCompact: {
+    width: 92,
+    height: 20,
+  },
+  companyPanel: {
+    width: 246,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  companyLogo: {
+    width: '100%',
+    height: 108,
   },
   company: {
     color: colors.gold,

@@ -7,6 +7,11 @@ import { BRAND } from '@/lib/brand';
 export const metadata: Metadata = {
   title: `${BRAND.appName} | ${BRAND.companyName}`,
   description: BRAND.appDescription,
+  icons: {
+    icon: '/zito-app-icon.png',
+    shortcut: '/zito-app-icon.png',
+    apple: '/zito-app-icon.png',
+  },
 };
 
 export default function RootLayout({

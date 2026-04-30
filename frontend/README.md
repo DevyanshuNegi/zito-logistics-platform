@@ -1,28 +1,31 @@
-## Usage
+# Zito Frontend
+
+This workspace is the Next.js 14 web portal for Zito by Aurenza Limited.
+
+## Local setup
+
+1. Install dependencies
 
 ```bash
-$ npm install # or pnpm install or yarn install
+npm install
 ```
 
-### Learn more on the [Solid Website](https://solidjs.com) and come chat with us on our [Discord](https://discord.com/invite/solidjs)
+2. Create `frontend/.env.local`
 
-## Available Scripts
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1
+```
 
-In the project directory, you can run:
+3. Start the frontend
 
-### `npm run dev`
+```bash
+npm run dev
+```
 
-Runs the app in the development mode.<br>
-Open [http://localhost:5173](http://localhost:5173) to view it in the browser.
+The app runs on `http://localhost:3000` by default, so set `PORT=3001` if the backend is already using `3000`.
 
-### `npm run build`
+## Production deployment
 
-Builds the app for production to the `dist` folder.<br>
-It correctly bundles Solid in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.<br>
-Your app is ready to be deployed!
-
-## Deployment
-
-Learn more about deploying your application with the [documentations](https://vite.dev/guide/static-deploy.html)
+- The repo-root [render.yaml](/C:/Users/Abcom/Desktop/Zito/render.yaml:1) deploys this app as a Node web service.
+- Use `npm run build` for production builds.
+- Use `npm run start` for the Render start command.

@@ -6,7 +6,9 @@ export const BRAND = {
   appDescriptor: 'Your logistics. Simplified.',
   issuerLine: 'Aurenza Limited via the Zito platform',
   assets: {
-    wordmark: require('../../assets/images/zito-logo.png'),
-    composite: require('../../assets/images/aurenza-zito-brand.png'),
+    companyLogo: require('../../assets/images/aurenza-limited.png'),
+    appLogo: require('../../assets/images/zito-logo.png'),
+    appWordmark: require('../../assets/images/zito-wordmark.png'),
+    appIcon: require('../../assets/images/zito-app-icon.png'),
   },
 };

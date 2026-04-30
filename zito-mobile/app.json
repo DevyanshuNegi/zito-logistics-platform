@@ -32,15 +32,15 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/zito-logo.png"
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/aurenza-zito-brand.png",
-          "imageWidth": 240,
+          "image": "./assets/images/zito-app-icon.png",
+          "imageWidth": 168,
           "resizeMode": "contain",
           "backgroundColor": "#050914",
           "dark": {

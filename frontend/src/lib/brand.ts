@@ -9,7 +9,9 @@ export const BRAND = {
   productLine: 'Zito by Aurenza Limited',
   issuerLine: 'Issued by Aurenza Limited via the Zito platform',
   assets: {
-    wordmark: '/zito-logo.png',
-    composite: '/aurenza-zito-brand.png',
+    companyLogo: '/aurenza-limited.png',
+    appLogo: '/zito-logo.png',
+    appWordmark: '/zito-wordmark.png',
+    appIcon: '/zito-app-icon.png',
   },
 } as const;
