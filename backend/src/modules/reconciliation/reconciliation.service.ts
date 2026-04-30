@@ -26,7 +26,7 @@ type ReconciliationRecord = {
     | 'UNPAID'
     | 'NO_INVOICE'
     | 'MANUAL_REVIEW';
-  matchedBy: 'BOOKING_REFERENCE' | 'INVOICE_REFERENCE' | 'NONE';
+  matchedBy: 'INVOICE_LINK' | 'BOOKING_REFERENCE' | 'INVOICE_REFERENCE' | 'NONE';
   mismatchReasons: string[];
   lastActivityAt: string;
 };
@@ -48,8 +48,8 @@ export class ReconciliationService {
       matched: records.filter((record) => record.matchStatus === 'MATCHED').slice(0, 25),
       records,
       notes: [
-        'Standalone warehouse and combined invoices currently fall back to invoice-number matching when there is no booking-linked payment reference.',
-        'Payment auto-match is strongest for booking-linked invoices because the current schema links payments to bookings, not directly to invoices.',
+        'Invoice-linked payments are now the primary reconciliation key for finance matching.',
+        'Booking-reference and invoice-number matching remain active only as fallback coverage for older or manually created records that predate direct invoice links.',
       ],
     };
   }
@@ -152,6 +152,13 @@ export class ReconciliationService {
               customerId: true,
             },
           },
+          invoice: {
+            select: {
+              id: true,
+              number: true,
+              customerId: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take,
@@ -162,7 +169,9 @@ export class ReconciliationService {
       ...new Set(
         [
           ...invoices.map((invoice) => invoice.customerId),
-          ...payments.map((payment) => payment.booking?.customerId).filter(Boolean),
+          ...payments
+            .map((payment) => payment.invoice?.customerId ?? payment.booking?.customerId)
+            .filter(Boolean),
         ] as string[],
       ),
     ];
@@ -193,10 +202,17 @@ export class ReconciliationService {
   }
 
   private buildRecords(dataset: Awaited<ReturnType<typeof this.loadDataset>>) {
+    const paymentsByInvoiceId = new Map<string, typeof dataset.payments>();
     const paymentsByBookingId = new Map<string, typeof dataset.payments>();
     const paymentsByReference = new Map<string, typeof dataset.payments>();
 
     for (const payment of dataset.payments) {
+      if (payment.invoiceId) {
+        paymentsByInvoiceId.set(payment.invoiceId, [
+          ...(paymentsByInvoiceId.get(payment.invoiceId) ?? []),
+          payment,
+        ]);
+      }
       if (payment.bookingId) {
         paymentsByBookingId.set(payment.bookingId, [
           ...(paymentsByBookingId.get(payment.bookingId) ?? []),
@@ -215,12 +231,21 @@ export class ReconciliationService {
     const consumedPaymentIds = new Set<string>();
 
     for (const invoice of dataset.invoices) {
-      const bookingPayments = invoice.bookingId
-        ? paymentsByBookingId.get(invoice.bookingId) ?? []
-        : [];
-      const referencePayments = paymentsByReference.get(invoice.number) ?? [];
+      const directPayments = paymentsByInvoiceId.get(invoice.id) ?? [];
+      const bookingPayments =
+        directPayments.length === 0 && invoice.bookingId
+          ? paymentsByBookingId.get(invoice.bookingId) ?? []
+          : [];
+      const referencePayments =
+        directPayments.length === 0 && bookingPayments.length === 0
+          ? paymentsByReference.get(invoice.number) ?? []
+          : [];
       const relatedPayments =
-        bookingPayments.length > 0 ? bookingPayments : referencePayments;
+        directPayments.length > 0
+          ? directPayments
+          : bookingPayments.length > 0
+            ? bookingPayments
+            : referencePayments;
 
       relatedPayments.forEach((payment) => consumedPaymentIds.add(payment.id));
 
@@ -246,7 +271,7 @@ export class ReconciliationService {
       );
 
       const mismatchReasons: string[] = [];
-      if (!invoice.bookingId && referencePayments.length === 0) {
+      if (!invoice.bookingId && directPayments.length === 0 && referencePayments.length === 0) {
         mismatchReasons.push('MANUAL_REFERENCE_REQUIRED');
       }
       if (paymentTotal === 0 && invoice.status !== InvoiceStatus.DRAFT) {
@@ -267,6 +292,11 @@ export class ReconciliationService {
       if (refundedOrReversed.length > 0 && paymentTotal < invoice.totalAmount) {
         mismatchReasons.push('PAYMENT_REVERSED');
       }
+
+      const activityTimes = [
+        invoice.updatedAt.getTime(),
+        ...relatedPayments.map((payment) => payment.updatedAt.getTime()),
+      ];
 
       records.push({
         key: `invoice:${invoice.id}`,
@@ -292,20 +322,21 @@ export class ReconciliationService {
         matchStatus: this.resolveMatchStatus({
           invoiceTotal: invoice.totalAmount,
           paymentTotal,
-          hasManualReferenceGap: !invoice.bookingId && referencePayments.length === 0,
+          hasManualReferenceGap:
+            !invoice.bookingId &&
+            directPayments.length === 0 &&
+            referencePayments.length === 0,
         }),
-        matchedBy: bookingPayments.length > 0
-          ? 'BOOKING_REFERENCE'
-          : referencePayments.length > 0
-            ? 'INVOICE_REFERENCE'
-            : 'NONE',
+        matchedBy:
+          directPayments.length > 0
+            ? 'INVOICE_LINK'
+            : bookingPayments.length > 0
+              ? 'BOOKING_REFERENCE'
+              : referencePayments.length > 0
+                ? 'INVOICE_REFERENCE'
+                : 'NONE',
         mismatchReasons: [...new Set(mismatchReasons)],
-        lastActivityAt: new Date(
-          Math.max(
-            invoice.updatedAt.getTime(),
-            ...relatedPayments.map((payment) => payment.updatedAt.getTime()),
-          ),
-        ).toISOString(),
+        lastActivityAt: new Date(Math.max(...activityTimes)).toISOString(),
       });
     }
 
@@ -324,6 +355,7 @@ export class ReconciliationService {
       }
 
       const linkedInvoiceId =
+        payment.invoiceId ||
         (payment.bookingId && invoiceIdsByBookingId.get(payment.bookingId)) ||
         (payment.reference ? invoiceIdsByReference.get(payment.reference) : null);
 
@@ -331,13 +363,16 @@ export class ReconciliationService {
         continue;
       }
 
+      const paymentCustomerId =
+        payment.invoice?.customerId ?? payment.booking?.customerId ?? null;
+
       records.push({
         key: `payment:${payment.id}`,
         bookingId: payment.bookingId ?? null,
         bookingReference: payment.booking?.reference ?? null,
-        customerId: payment.booking?.customerId ?? null,
-        customerLabel: payment.booking?.customerId
-          ? dataset.customersById.get(payment.booking.customerId) ?? payment.booking.customerId
+        customerId: paymentCustomerId,
+        customerLabel: paymentCustomerId
+          ? dataset.customersById.get(paymentCustomerId) ?? paymentCustomerId
           : null,
         invoiceId: null,
         invoiceNumber: null,

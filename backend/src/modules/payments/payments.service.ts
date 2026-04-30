@@ -1,13 +1,42 @@
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
   ConflictException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
-import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import {
+  InvoiceStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EscrowService } from './escrow/escrow.service';
 import { MpesaService } from './mpesa/mpesa.service';
+
+type PaymentTargetInput = {
+  bookingId?: string;
+  invoiceId?: string;
+};
+
+type PaymentContext = {
+  booking: {
+    id: string;
+    reference: string;
+    customerId: string;
+    totalPrice: number;
+    status: string;
+  } | null;
+  invoice: {
+    id: string;
+    number: string;
+    totalAmount: number;
+    status: InvoiceStatus;
+    bookingId: string | null;
+    customerId: string;
+    issuedAt: Date | null;
+    dueDate: Date | null;
+  } | null;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -18,7 +47,7 @@ export class PaymentsService {
   ) {}
 
   async initiatePayment(
-    bookingId: string,
+    target: PaymentTargetInput,
     amount: number,
     method: PaymentMethod,
     idempotencyKey: string,
@@ -28,42 +57,42 @@ export class PaymentsService {
     });
     if (existing) return existing;
 
-    const booking = await this.prisma.booking.findUnique({
-      where: { id: bookingId },
-    });
-    if (!booking) throw new NotFoundException(`Booking ${bookingId} not found`);
+    const context = await this.resolvePaymentContext(target);
+    const customerId = context.invoice?.customerId ?? context.booking?.customerId;
+    if (!customerId) {
+      throw new BadRequestException('Payment target must resolve to a billable account');
+    }
 
     const customer = await this.prisma.user.findUnique({
-      where: { id: booking.customerId },
+      where: { id: customerId },
       select: { phone: true },
     });
 
-    const existingPayment = await this.prisma.payment.findFirst({
-      where: { bookingId, status: PaymentStatus.SUCCESS },
-    });
-    if (existingPayment) {
-      throw new ConflictException('Booking already has a successful payment');
-    }
+    await this.assertChargeAmount(context, amount);
 
     return this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.create({
         data: {
-          bookingId,
+          bookingId: context.booking?.id ?? null,
+          invoiceId: context.invoice?.id ?? null,
           amount,
           method,
-          status: method === PaymentMethod.MPESA
-            ? PaymentStatus.PENDING
-            : PaymentStatus.INITIATED,
+          status:
+            method === PaymentMethod.MPESA
+              ? PaymentStatus.PENDING
+              : PaymentStatus.INITIATED,
           idempotencyKey,
           reference: `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
         },
       });
 
-      await tx.escrow.upsert({
-        where: { bookingId },
-        create: { bookingId, amount, status: 'HELD' },
-        update: { amount, status: 'HELD' },
-      });
+      if (context.booking && !context.invoice) {
+        await tx.escrow.upsert({
+          where: { bookingId: context.booking.id },
+          create: { bookingId: context.booking.id, amount, status: 'HELD' },
+          update: { amount, status: 'HELD' },
+        });
+      }
 
       if (method !== PaymentMethod.MPESA) {
         return payment;
@@ -85,11 +114,23 @@ export class PaymentsService {
   async confirmPayment(paymentId: string, mpesaRef?: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
+      select: {
+        id: true,
+        bookingId: true,
+        invoiceId: true,
+        status: true,
+        reference: true,
+      },
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
     if (payment.status === PaymentStatus.SUCCESS) {
-      return payment;
+      return this.getPayment(payment.id);
+    }
+
+    let linkedInvoiceId = payment.invoiceId;
+    if (!linkedInvoiceId && payment.bookingId) {
+      linkedInvoiceId = await this.linkInvoiceForBookingPayment(payment.id, payment.bookingId);
     }
 
     const updated = await this.prisma.payment.update({
@@ -97,27 +138,40 @@ export class PaymentsService {
       data: {
         status: PaymentStatus.SUCCESS,
         reference: mpesaRef ?? payment.reference,
+        ...(linkedInvoiceId ? { invoiceId: linkedInvoiceId } : {}),
       },
     });
 
-    const booking = await this.prisma.booking.findUnique({
-      where: { id: payment.bookingId },
-      select: { status: true },
-    });
-
-    if (booking && ['DELIVERED', 'COMPLETED'].includes(booking.status)) {
-      await this.releaseEscrowForBooking(
-        payment.bookingId,
-        'Released after successful payment confirmation',
-      );
+    if (linkedInvoiceId) {
+      await this.syncInvoicePaymentState(linkedInvoiceId);
     }
 
-    return updated;
+    if (updated.bookingId) {
+      const booking = await this.prisma.booking.findUnique({
+        where: { id: updated.bookingId },
+        select: { status: true },
+      });
+
+      if (booking && ['DELIVERED', 'COMPLETED'].includes(booking.status)) {
+        await this.releaseEscrowForBooking(
+          updated.bookingId,
+          'Released after successful payment confirmation',
+        );
+      }
+    }
+
+    return this.getPayment(updated.id);
   }
 
   async refundPayment(paymentId: string, reason?: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
+      select: {
+        id: true,
+        bookingId: true,
+        invoiceId: true,
+        status: true,
+      },
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
@@ -134,13 +188,19 @@ export class PaymentsService {
       },
     });
 
-    try {
-      await this.escrowService.refund(
-        payment.bookingId,
-        reason ?? 'Refund processed from payment service',
-      );
-    } catch {
-      // Some bookings may not have escrow yet; payment refund should still succeed.
+    if (payment.invoiceId) {
+      await this.syncInvoicePaymentState(payment.invoiceId);
+    }
+
+    if (payment.bookingId) {
+      try {
+        await this.escrowService.refund(
+          payment.bookingId,
+          reason ?? 'Refund processed from payment service',
+        );
+      } catch {
+        // Some bookings may not have escrow yet; payment refund should still succeed.
+      }
     }
 
     return refunded;
@@ -163,9 +223,10 @@ export class PaymentsService {
     return this.prisma.payment.update({
       where: { id: paymentId },
       data: {
-        status: payment.method === PaymentMethod.MPESA
-          ? PaymentStatus.PENDING
-          : PaymentStatus.INITIATED,
+        status:
+          payment.method === PaymentMethod.MPESA
+            ? PaymentStatus.PENDING
+            : PaymentStatus.INITIATED,
         retryCount: { increment: 1 },
         failureReason: null,
       },
@@ -176,7 +237,13 @@ export class PaymentsService {
     const payment = await this.prisma.payment.findFirst({
       where: {
         bookingId,
-        status: { in: [PaymentStatus.SUCCESS, PaymentStatus.PENDING, PaymentStatus.INITIATED] },
+        status: {
+          in: [
+            PaymentStatus.SUCCESS,
+            PaymentStatus.PENDING,
+            PaymentStatus.INITIATED,
+          ],
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -204,6 +271,10 @@ export class PaymentsService {
         failureReason: reason,
       },
     });
+
+    if (payment.invoiceId) {
+      await this.syncInvoicePaymentState(payment.invoiceId);
+    }
 
     try {
       await this.escrowService.refund(bookingId, reason);
@@ -247,7 +318,10 @@ export class PaymentsService {
   async getPayment(id: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { id },
-      include: { booking: { select: { id: true, reference: true, status: true } } },
+      include: {
+        booking: { select: { id: true, reference: true, status: true } },
+        invoice: { select: { id: true, number: true, status: true } },
+      },
     });
     if (!payment) throw new NotFoundException('Payment not found');
     return payment;
@@ -257,6 +331,20 @@ export class PaymentsService {
     return this.prisma.payment.findMany({
       where: { bookingId },
       orderBy: { createdAt: 'desc' },
+      include: {
+        invoice: { select: { id: true, number: true, status: true } },
+      },
+    });
+  }
+
+  async getInvoicePayments(invoiceId: string) {
+    return this.prisma.payment.findMany({
+      where: { invoiceId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        booking: { select: { id: true, reference: true, status: true } },
+        invoice: { select: { id: true, number: true, status: true } },
+      },
     });
   }
 
@@ -380,10 +468,246 @@ export class PaymentsService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: { booking: { select: { reference: true } } },
+        include: {
+          booking: { select: { reference: true } },
+          invoice: { select: { number: true, status: true } },
+        },
       }),
       this.prisma.payment.count({ where }),
     ]);
     return { payments, total, page, limit };
+  }
+
+  private async resolvePaymentContext(
+    target: PaymentTargetInput,
+  ): Promise<PaymentContext> {
+    if (!target.bookingId && !target.invoiceId) {
+      throw new BadRequestException('Either bookingId or invoiceId is required');
+    }
+
+    let booking = target.bookingId
+      ? await this.prisma.booking.findUnique({
+          where: { id: target.bookingId },
+          select: {
+            id: true,
+            reference: true,
+            customerId: true,
+            totalPrice: true,
+            status: true,
+          },
+        })
+      : null;
+    if (target.bookingId && !booking) {
+      throw new NotFoundException(`Booking ${target.bookingId} not found`);
+    }
+
+    let invoice = target.invoiceId
+      ? await this.prisma.invoice.findUnique({
+          where: { id: target.invoiceId },
+          select: {
+            id: true,
+            number: true,
+            totalAmount: true,
+            status: true,
+            bookingId: true,
+            customerId: true,
+            issuedAt: true,
+            dueDate: true,
+          },
+        })
+      : null;
+    if (target.invoiceId && !invoice) {
+      throw new NotFoundException(`Invoice ${target.invoiceId} not found`);
+    }
+
+    if (booking && !invoice) {
+      invoice = await this.prisma.invoice.findUnique({
+        where: { bookingId: booking.id },
+        select: {
+          id: true,
+          number: true,
+          totalAmount: true,
+          status: true,
+          bookingId: true,
+          customerId: true,
+          issuedAt: true,
+          dueDate: true,
+        },
+      });
+    }
+
+    if (invoice?.bookingId && !booking) {
+      booking = await this.prisma.booking.findUnique({
+        where: { id: invoice.bookingId },
+        select: {
+          id: true,
+          reference: true,
+          customerId: true,
+          totalPrice: true,
+          status: true,
+        },
+      });
+    }
+
+    if (booking && invoice?.bookingId && invoice.bookingId !== booking.id) {
+      throw new BadRequestException(
+        'bookingId and invoiceId do not belong to the same finance record',
+      );
+    }
+
+    if (invoice && invoice.status === InvoiceStatus.CANCELLED) {
+      throw new BadRequestException('Cancelled invoices cannot accept payments');
+    }
+
+    return { booking, invoice };
+  }
+
+  private async assertChargeAmount(context: PaymentContext, amount: number) {
+    if (amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than 0');
+    }
+
+    if (context.invoice) {
+      const paidAmount = await this.sumSuccessfulPaymentsForInvoice(context.invoice);
+      const remaining = Number((context.invoice.totalAmount - paidAmount).toFixed(2));
+
+      if (remaining <= 0) {
+        throw new ConflictException('Invoice already has enough successful payments');
+      }
+      if (amount > remaining) {
+        throw new BadRequestException(
+          `Payment amount exceeds the remaining invoice balance of ${remaining.toFixed(2)}`,
+        );
+      }
+      return;
+    }
+
+    if (!context.booking) {
+      throw new BadRequestException('Payment target could not be resolved');
+    }
+
+    const paidAmount = await this.sumSuccessfulPaymentsForBooking(context.booking.id);
+    const remaining = Number((context.booking.totalPrice - paidAmount).toFixed(2));
+
+    if (remaining <= 0) {
+      throw new ConflictException('Booking already has enough successful payments');
+    }
+    if (amount > remaining) {
+      throw new BadRequestException(
+        `Payment amount exceeds the remaining booking balance of ${remaining.toFixed(2)}`,
+      );
+    }
+  }
+
+  private async sumSuccessfulPaymentsForInvoice(
+    invoice: NonNullable<PaymentContext['invoice']>,
+  ) {
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        status: PaymentStatus.SUCCESS,
+        OR: [
+          { invoiceId: invoice.id },
+          ...(invoice.bookingId
+            ? [{ invoiceId: null, bookingId: invoice.bookingId }]
+            : []),
+        ],
+      },
+      select: { amount: true },
+    });
+
+    return Number(
+      payments.reduce((sum, payment) => sum + payment.amount, 0).toFixed(2),
+    );
+  }
+
+  private async sumSuccessfulPaymentsForBooking(bookingId: string) {
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        bookingId,
+        status: PaymentStatus.SUCCESS,
+      },
+      select: { amount: true },
+    });
+
+    return Number(
+      payments.reduce((sum, payment) => sum + payment.amount, 0).toFixed(2),
+    );
+  }
+
+  private async linkInvoiceForBookingPayment(paymentId: string, bookingId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { bookingId },
+      select: { id: true },
+    });
+    if (!invoice) {
+      return null;
+    }
+
+    await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { invoiceId: invoice.id },
+    });
+
+    return invoice.id;
+  }
+
+  private async syncInvoicePaymentState(invoiceId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        id: true,
+        totalAmount: true,
+        paidAmount: true,
+        paidAt: true,
+        status: true,
+        dueDate: true,
+        issuedAt: true,
+      },
+    });
+    if (!invoice || invoice.status === InvoiceStatus.CANCELLED) {
+      return;
+    }
+
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        invoiceId,
+        status: PaymentStatus.SUCCESS,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        amount: true,
+        createdAt: true,
+      },
+    });
+
+    const paidAmount = Number(
+      payments.reduce((sum, payment) => sum + payment.amount, 0).toFixed(2),
+    );
+    const nextStatus = !invoice.issuedAt
+      ? InvoiceStatus.DRAFT
+      : paidAmount >= invoice.totalAmount
+        ? InvoiceStatus.PAID
+        : invoice.dueDate && invoice.dueDate < new Date()
+          ? InvoiceStatus.OVERDUE
+          : InvoiceStatus.ISSUED;
+    const paidAt =
+      paidAmount >= invoice.totalAmount ? payments[0]?.createdAt ?? new Date() : null;
+
+    if (
+      paidAmount === invoice.paidAmount &&
+      nextStatus === invoice.status &&
+      String(paidAt ?? '') === String(invoice.paidAt ?? '')
+    ) {
+      return;
+    }
+
+    await this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        paidAmount,
+        paidAt,
+        status: nextStatus,
+      },
+    });
   }
 }

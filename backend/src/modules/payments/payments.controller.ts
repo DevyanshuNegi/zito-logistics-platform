@@ -1,10 +1,19 @@
 import {
-  Controller, Post, Get, Patch, Param, Body,
-  Req, UseGuards, Query, Headers, ParseUUIDPipe,
   BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { UserRole, PaymentStatus } from '@prisma/client';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { PaymentStatus, UserRole } from '@prisma/client';
 
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -23,14 +32,8 @@ export class PaymentsController {
     private readonly auditService: AuditService,
   ) {}
 
-  // ─── Customer / Self ──────────────────────────────────────────────────────
-
-  /**
-   * PRD §15: Initiate payment for a booking.
-   * X-Idempotency-Key header required to prevent duplicate charges.
-   */
   @Post('initiate')
-  @ApiOperation({ summary: 'Initiate payment for a booking (PRD §15)' })
+  @ApiOperation({ summary: 'Initiate payment for a booking or invoice (PRD §15, §16)' })
   initiatePayment(
     @Body() dto: InitiatePaymentDto,
     @Headers('x-idempotency-key') idempotencyKey: string,
@@ -38,64 +41,56 @@ export class PaymentsController {
     if (!idempotencyKey) {
       throw new BadRequestException('X-Idempotency-Key header is required');
     }
+    if (!dto.bookingId && !dto.invoiceId) {
+      throw new BadRequestException('Either bookingId or invoiceId is required');
+    }
     return this.paymentsService.initiatePayment(
-      dto.bookingId,
+      {
+        bookingId: dto.bookingId,
+        invoiceId: dto.invoiceId,
+      },
       dto.amount,
       dto.method,
       idempotencyKey,
     );
   }
 
-  /**
-   * PRD §15: Get payment details by ID.
-   */
   @Get(':id')
   @ApiOperation({ summary: 'Get payment by ID (PRD §15)' })
   getPayment(@Param('id', ParseUUIDPipe) id: string) {
     return this.paymentsService.getPayment(id);
   }
 
-  /**
-   * PRD §15: Get all payments for a booking.
-   */
   @Get('booking/:bookingId')
   @ApiOperation({ summary: 'Get all payments for a booking (PRD §15)' })
   getBookingPayments(@Param('bookingId', ParseUUIDPipe) bookingId: string) {
     return this.paymentsService.getBookingPayments(bookingId);
   }
 
-  /**
-   * PRD §15: Retry a failed payment. Max 3 retries.
-   */
+  @Get('invoice/:invoiceId')
+  @ApiOperation({ summary: 'Get all payments linked directly to an invoice (PRD §16, §18)' })
+  getInvoicePayments(@Param('invoiceId', ParseUUIDPipe) invoiceId: string) {
+    return this.paymentsService.getInvoicePayments(invoiceId);
+  }
+
   @Post(':id/retry')
-  @ApiOperation({ summary: 'Retry a failed payment — max 3 attempts (PRD §15)' })
+  @ApiOperation({ summary: 'Retry a failed payment - max 3 attempts (PRD §15)' })
   retryPayment(@Param('id', ParseUUIDPipe) id: string) {
     return this.paymentsService.retryPayment(id);
   }
 
-  /**
-   * PRD §15: Get escrow status for a booking.
-   */
   @Get('escrow/:bookingId')
   @ApiOperation({ summary: 'Get escrow status for a booking (PRD §15)' })
   getEscrow(@Param('bookingId', ParseUUIDPipe) bookingId: string) {
     return this.paymentsService.getEscrow(bookingId);
   }
 
-  // ─── Wallet ───────────────────────────────────────────────────────────────
-
-  /**
-   * PRD §15: Get own wallet balance.
-   */
   @Get('wallet/me')
   @ApiOperation({ summary: 'Get own wallet balance (PRD §15)' })
   getWallet(@Req() req: any) {
     return this.paymentsService.getWallet(req.user.id);
   }
 
-  /**
-   * PRD §15: Get wallet transaction history with pagination.
-   */
   @Get('wallet/me/transactions')
   @ApiOperation({ summary: 'Get wallet transaction history (PRD §15)' })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -112,11 +107,6 @@ export class PaymentsController {
     );
   }
 
-  // ─── Admin ────────────────────────────────────────────────────────────────
-
-  /**
-   * PRD §42: Admin — list all payments with optional status filter.
-   */
   @Get()
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -132,9 +122,6 @@ export class PaymentsController {
     return this.paymentsService.getAllPayments(Number(page), Number(limit), status);
   }
 
-  /**
-   * PRD §15: Admin confirm payment (e.g. after manual bank transfer verification).
-   */
   @Patch(':id/confirm')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -146,9 +133,6 @@ export class PaymentsController {
     return this.paymentsService.confirmPayment(id, body.mpesaRef);
   }
 
-  /**
-   * PRD §15: Admin refund a payment.
-   */
   @Patch(':id/refund')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)

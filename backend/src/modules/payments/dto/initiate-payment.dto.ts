@@ -1,12 +1,17 @@
-import { IsEnum, IsNotEmpty, IsNumber, IsUUID, Min } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod } from '@prisma/client';
+import { IsEnum, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class InitiatePaymentDto {
-  @ApiProperty({ description: 'Booking ID to pay for (PRD §15)' })
+  @ApiPropertyOptional({ description: 'Booking ID to pay for when charging a live trip flow (PRD §15)' })
+  @IsOptional()
   @IsUUID()
-  @IsNotEmpty()
-  bookingId: string;
+  bookingId?: string;
+
+  @ApiPropertyOptional({ description: 'Invoice ID to pay for when charging an issued finance document (PRD §16, §18)' })
+  @IsOptional()
+  @IsUUID()
+  invoiceId?: string;
 
   @ApiProperty({ description: 'Amount in KES' })
   @IsNumber()
@@ -15,7 +20,7 @@ export class InitiatePaymentDto {
 
   @ApiProperty({
     enum: PaymentMethod,
-    description: 'Payment method — MPESA, WALLET, BANK_TRANSFER (PRD §15)',
+    description: 'Payment method - MPESA, WALLET, BANK_TRANSFER, CARD, or CASH (PRD §15)',
   })
   @IsEnum(PaymentMethod)
   method: PaymentMethod;

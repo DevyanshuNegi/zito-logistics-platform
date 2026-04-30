@@ -469,6 +469,13 @@ export class AlertsService {
             agencyId: true,
           },
         },
+        invoice: {
+          select: {
+            id: true,
+            number: true,
+            agencyId: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -479,13 +486,15 @@ export class AlertsService {
       const alert = await this.upsertAlert({
         type: 'PAYMENT_FAILURE',
         severity: payment.retryCount >= 3 ? 'CRITICAL' : 'HIGH',
-        message: `Payment ${payment.reference} for booking ${payment.booking.reference} is in ${payment.status} state.`,
+        message: `Payment ${payment.reference} for ${payment.invoice?.number ?? payment.booking?.reference ?? payment.id} is in ${payment.status} state.`,
         entityType: 'PAYMENT',
         entityId: payment.id,
-        agencyId: payment.booking.agencyId,
+        agencyId: payment.booking?.agencyId ?? payment.invoice?.agencyId ?? null,
         metadata: {
           bookingId: payment.bookingId,
-          bookingReference: payment.booking.reference,
+          bookingReference: payment.booking?.reference ?? null,
+          invoiceId: payment.invoiceId ?? null,
+          invoiceNumber: payment.invoice?.number ?? null,
           paymentReference: payment.reference,
           paymentStatus: payment.status,
           retryCount: payment.retryCount,
@@ -657,6 +666,7 @@ export class AlertsService {
               id: true,
               reference: true,
               booking: { select: { agencyId: true, reference: true } },
+              invoice: { select: { agencyId: true, number: true } },
             },
           })
         : Promise.resolve([]),
@@ -710,7 +720,7 @@ export class AlertsService {
     for (const payment of payments) {
       map.set(`PAYMENT:${payment.id}`, {
         subjectLabel: `Payment ${payment.reference}`,
-        agencyId: payment.booking.agencyId,
+        agencyId: payment.booking?.agencyId ?? payment.invoice?.agencyId ?? null,
       });
     }
     for (const warehouse of warehouses) {

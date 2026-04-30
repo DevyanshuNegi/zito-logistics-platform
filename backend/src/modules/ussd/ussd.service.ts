@@ -344,7 +344,7 @@ export class UssdService {
 
     try {
       const payment = await this.paymentsService.initiatePayment(
-        session.data.bookingId,
+        { bookingId: session.data.bookingId },
         Number(session.data.amount ?? 0),
         PaymentMethod.MPESA,
         `ussd-payment:${session.sessionId}:${session.data.bookingId}`,

@@ -363,7 +363,7 @@ export class InvoicesService {
     const parsedDueDate = this.resolveDueDate(input.dueDate ?? undefined);
     const shouldIssue = !approvalRequired && (input.issueImmediately ?? true);
 
-    return this.prisma.invoice.create({
+    const invoice = await this.prisma.invoice.create({
       data: {
         number: this.generateInvoiceNumber(input.type),
         type: input.type,
@@ -392,6 +392,20 @@ export class InvoicesService {
       },
       include: this.invoiceInclude,
     });
+
+    if (input.bookingId) {
+      await this.prisma.payment.updateMany({
+        where: {
+          bookingId: input.bookingId,
+          invoiceId: null,
+        },
+        data: {
+          invoiceId: invoice.id,
+        },
+      });
+    }
+
+    return invoice;
   }
 
   private assignType(serviceType: ServiceType) {
@@ -436,21 +450,38 @@ export class InvoicesService {
   }
 
   private async syncInvoiceState(invoice: InvoiceWithRelations) {
-    if (!invoice.bookingId || invoice.status === InvoiceStatus.CANCELLED) {
+    if (invoice.status === InvoiceStatus.CANCELLED) {
       return invoice;
     }
 
     const payments = await this.prisma.payment.findMany({
       where: {
-        bookingId: invoice.bookingId,
         status: PaymentStatus.SUCCESS,
+        OR: [
+          { invoiceId: invoice.id },
+          ...(invoice.bookingId
+            ? [{ invoiceId: null, bookingId: invoice.bookingId }]
+            : []),
+        ],
       },
       orderBy: { createdAt: 'desc' },
       select: {
+        id: true,
         amount: true,
         createdAt: true,
+        invoiceId: true,
       },
     });
+
+    const legacyPaymentIds = payments
+      .filter((payment) => payment.invoiceId == null)
+      .map((payment) => payment.id);
+    if (legacyPaymentIds.length > 0) {
+      await this.prisma.payment.updateMany({
+        where: { id: { in: legacyPaymentIds } },
+        data: { invoiceId: invoice.id },
+      });
+    }
 
     const paidAmount = this.sumPayments(payments);
     const nextStatus = !invoice.issuedAt

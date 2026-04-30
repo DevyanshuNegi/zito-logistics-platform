@@ -727,8 +727,10 @@ model LossReport {
 
 model Payment {
   id             String        @id @default(uuid())
-  bookingId      String
-  booking        Booking       @relation(fields: [bookingId], references: [id])
+  bookingId      String?
+  booking        Booking?      @relation(fields: [bookingId], references: [id])
+  invoiceId      String?
+  invoice        Invoice?      @relation(fields: [invoiceId], references: [id])
 
   amount         Float
   method         PaymentMethod
@@ -742,6 +744,9 @@ model Payment {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([bookingId])
+  @@index([invoiceId])
 }
 
 model Wallet {
@@ -809,6 +814,7 @@ model Invoice {
   approvedBy         String?
   approvedAt         DateTime?
 
+  payments Payment[]
   lineItems InvoiceLineItem[]
 
   createdAt DateTime @default(now())

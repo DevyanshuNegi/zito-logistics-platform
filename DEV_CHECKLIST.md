@@ -282,3 +282,4 @@ Goal: Extend PRD v10 with owned-fleet and courier-company supply-chain workflows
 - Expo mobile now includes a courier-company tab workspace plus customer-owned-fleet management, so the new role and owned-fleet scope exist across both web and mobile surfaces.
 - Platform-fee automation is now active through admin billing generation, role-aware fee defaults, idempotent billing windows, and invoice visibility for customer, courier-company, transporter, and corporate account flows.
 - Per-vehicle platform-fee charging uses the current ACTIVE owned-fleet snapshot when available, because the current schema still has no dedicated retired-at history for perfect historical fleet reconstruction.
+- Payments now link directly to invoices when available, and reconciliation prefers invoice-linked matching first while preserving booking or invoice-number fallback for older finance records.
