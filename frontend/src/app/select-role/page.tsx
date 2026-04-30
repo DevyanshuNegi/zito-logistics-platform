@@ -1,17 +1,18 @@
 import Link from 'next/link';
 import { AuthShell } from '@/components/layout/AuthShell';
+import { BRAND } from '@/lib/brand';
 import { ROLE_PICKER_OPTIONS } from '@/lib/phase-one';
 
 export default function SelectRolePage() {
   return (
     <AuthShell
       eyebrow="Role Selection"
-      title="Choose your Phase 1 journey"
-      subtitle="Registration stays role-aware so the app can send you to the right approval and portal flow after onboarding."
+      title={`Choose your ${BRAND.appName} journey`}
+      subtitle={`Registration stays role-aware so ${BRAND.companyName} can route you into the right approval and portal flow after onboarding.`}
       footer={
         <p>
           Already registered?{' '}
-          <Link href="/login" className="text-amber-200 hover:text-amber-100">
+          <Link href="/login" className="text-cyan-200 hover:text-violet-200">
             Continue to login
           </Link>
           .
@@ -23,7 +24,7 @@ export default function SelectRolePage() {
           <Link
             key={option.role}
             href={`/register?role=${option.role}`}
-            className="rounded-3xl border border-slate-700/50 bg-slate-900/55 p-5 transition hover:border-amber-400/40 hover:bg-slate-900/80"
+            className="rounded-3xl border border-slate-700/50 bg-slate-900/55 p-5 transition hover:border-cyan-400/40 hover:bg-slate-900/80"
           >
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -32,7 +33,7 @@ export default function SelectRolePage() {
                   {option.description}
                 </p>
               </div>
-              <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-100">
+              <span className="rounded-full border border-cyan-400/30 bg-violet-500/10 px-3 py-1 text-xs font-semibold text-cyan-100">
                 {option.role}
               </span>
             </div>

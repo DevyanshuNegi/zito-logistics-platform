@@ -10,6 +10,7 @@ function RootGuard() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const role = String(user?.role || '').trim().toUpperCase();
 
   useEffect(() => {
     if (loading) return;
@@ -23,14 +24,15 @@ function RootGuard() {
 
     if (user && inAuth) {
       // Redirect to correct portal based on role
-      switch (user.role) {
-        case 'driver':       router.replace('/(driver)/trips');       break;
-        case 'transporter':  router.replace('/(transporter)/dashboard'); break;
-        case 'customer':
-        default:             router.replace('/(customer)/home');      break;
+      switch (role) {
+        case 'DRIVER':            router.replace('/(driver)/trips'); break;
+        case 'TRANSPORTER':       router.replace('/(transporter)/dashboard'); break;
+        case 'COURIER_COMPANY':   router.replace('/(courier-company)/dashboard'); break;
+        case 'CUSTOMER':
+        default:                  router.replace('/(customer)/home'); break;
       }
     }
-  }, [user, loading, segments,router]);
+  }, [user, loading, role, segments, router]);
 
   if (loading) {
     return (
@@ -45,6 +47,7 @@ function RootGuard() {
       <Stack.Screen name="(auth)"        options={{ headerShown: false }} />
       <Stack.Screen name="(driver)"      options={{ headerShown: false }} />
       <Stack.Screen name="(customer)"    options={{ headerShown: false }} />
+      <Stack.Screen name="(courier-company)" options={{ headerShown: false }} />
       <Stack.Screen name="(transporter)" options={{ headerShown: false }} />
     </Stack>
   );

@@ -72,6 +72,8 @@ export class BookingsService {
       throw new BadRequestException('At least 2 stops required: pickup and delivery');
     }
 
+    this.validateStopStructure(dto.stops);
+
     await this.capacityPlanningService.enforceLimit({
       agencyId: dto.agencyId,
       serviceType: dto.serviceType,
@@ -247,7 +249,12 @@ export class BookingsService {
     if (!booking) throw new NotFoundException('Booking not found');
 
     // Scope check: customers can only see their own bookings
-    if ((requesterRole === 'CUSTOMER' || requesterRole === 'CORPORATE') && booking.customerId !== requesterId) {
+    if (
+      (requesterRole === 'CUSTOMER' ||
+        requesterRole === 'CORPORATE' ||
+        requesterRole === 'COURIER_COMPANY') &&
+      booking.customerId !== requesterId
+    ) {
       throw new ForbiddenException('Access denied');
     }
     // Drivers can only see their assigned bookings
@@ -759,6 +766,26 @@ export class BookingsService {
     const ref = 'ZT-' + crypto.randomBytes(4).toString('hex').toUpperCase();
     const exists = await this.prisma.booking.findUnique({ where: { reference: ref } });
     return exists ? this.generateReference() : ref;
+  }
+
+  private validateStopStructure(
+    stops: Array<{ sequence: number; stopType: string }>,
+  ) {
+    const ordered = [...stops].sort((left, right) => left.sequence - right.sequence);
+    const hasPickupLike = ordered.some((stop) =>
+      ['PICKUP', 'LOAD'].includes(String(stop.stopType).trim().toUpperCase()),
+    );
+    const hasDeliveryLike = ordered.some((stop) =>
+      ['DELIVERY', 'DROPOFF', 'UNLOAD'].includes(
+        String(stop.stopType).trim().toUpperCase(),
+      ),
+    );
+
+    if (!hasPickupLike || !hasDeliveryLike) {
+      throw new BadRequestException(
+        'Bookings must include at least one pickup or load stop and one delivery or unload stop.',
+      );
+    }
   }
 
   private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {

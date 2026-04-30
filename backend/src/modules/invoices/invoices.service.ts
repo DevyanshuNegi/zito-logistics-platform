@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { BRAND, resolveBrandAsset } from '../../config/brand.config';
 import {
   InvoiceStatus,
   InvoiceType,
@@ -410,6 +411,7 @@ export class InvoicesService {
       WAREHOUSE: 'INV-WHS',
       COURIER: 'INV-CRR',
       COMBINED: 'INV-CMB',
+      PLATFORM: 'INV-PLT',
     };
 
     return `${prefixMap[type]}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -577,8 +579,40 @@ export class InvoicesService {
       );
       doc.on('error', reject);
 
-      doc.fontSize(18).text('ZITO Invoice', { align: 'center' });
-      doc.moveDown();
+      const compositeBrandPath = resolveBrandAsset('aurenza-zito-brand.png');
+      const zitoWordmarkPath = resolveBrandAsset('zito-logo.png');
+
+      if (compositeBrandPath) {
+        doc.image(compositeBrandPath, 360, 36, {
+          fit: [170, 88],
+          align: 'right',
+          valign: 'top',
+        });
+      } else if (zitoWordmarkPath) {
+        doc.roundedRect(395, 40, 130, 40, 12).fill('#ffffff');
+        doc.image(zitoWordmarkPath, 406, 50, {
+          fit: [108, 20],
+          align: 'center',
+          valign: 'center',
+        });
+      }
+
+      doc.fillColor('#0a2258');
+      doc.fontSize(24).text(BRAND.companyName, 40, 42);
+      doc.fillColor('#b8872f');
+      doc.fontSize(11).text(BRAND.companyTagline, 40, 72);
+      doc.fillColor('#475569');
+      doc.fontSize(10).text(BRAND.issuerLine, 40, 92, { width: 250 });
+      doc
+        .moveTo(40, 122)
+        .lineTo(555, 122)
+        .strokeColor('#9333ea')
+        .lineWidth(1)
+        .stroke();
+
+      doc.fillColor('#0f172a');
+      doc.fontSize(18).text(`${BRAND.appName} Invoice`, 40, 138);
+      doc.moveDown(0.6);
       doc.fontSize(12).text(`Invoice No: ${invoice.number}`);
       doc.text(`Type: ${invoice.type}`);
       doc.text(`Status: ${invoice.status}`);
@@ -591,11 +625,12 @@ export class InvoicesService {
       doc.text(`Due Date: ${invoice.dueDate?.toISOString() ?? 'N/A'}`);
       doc.moveDown();
 
-      doc.fontSize(14).text('Line Items');
+      doc.fontSize(14).fillColor('#0a2258').text('Line Items');
       doc.moveDown(0.5);
       for (const lineItem of invoice.lineItems) {
         doc
           .fontSize(11)
+          .fillColor('#0f172a')
           .text(
             `${lineItem.description} | Qty: ${lineItem.quantity} | Unit: ${lineItem.unitPrice.toFixed(2)} | Total: ${lineItem.totalPrice.toFixed(2)}`,
           );
@@ -606,7 +641,7 @@ export class InvoicesService {
       doc.text(`Tax: ${invoice.taxAmount.toFixed(2)}`);
       doc.text(`Paid: ${invoice.paidAmount.toFixed(2)}`);
       doc.text(`Balance Due: ${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}`);
-      doc.fontSize(14).text(`Grand Total: ${invoice.totalAmount.toFixed(2)}`, {
+      doc.fontSize(14).fillColor('#0a2258').text(`Grand Total: ${invoice.totalAmount.toFixed(2)}`, {
         align: 'right',
       });
 

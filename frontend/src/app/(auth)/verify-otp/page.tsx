@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api';
+import { BRAND } from '@/lib/brand';
 import { getRoleHomePath } from '@/lib/roles';
 
 type VerifyOtpResponse = {
@@ -86,7 +87,7 @@ export default function VerifyOtpPage() {
       footer={
         <p>
           Need a new code?{' '}
-          <Link href="/login" className="text-amber-200 hover:text-amber-100">
+          <Link href="/login" className="text-cyan-200 hover:text-violet-200">
             Restart login
           </Link>
           .

@@ -7,6 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BillingService } from './billing.service';
 import {
   ConsolidateInvoiceDto,
+  GeneratePlatformFeeInvoiceDto,
   GenerateWarehouseInvoiceDto,
 } from './dto/billing.dto';
 import { InterAgencyBillDto } from './dto/inter-agency-bill.dto';
@@ -29,6 +30,12 @@ export class BillingController {
   @ApiOperation({ summary: 'Generate combined corporate invoice (PRD §18)' })
   consolidate(@Body() dto: ConsolidateInvoiceDto, @Req() req: any) {
     return this.billingService.consolidate(dto, req.user.id);
+  }
+
+  @Post('platform-fee')
+  @ApiOperation({ summary: 'Generate owned-fleet platform-fee invoice (PRD Addendum §58)' })
+  generatePlatformFeeInvoice(@Body() dto: GeneratePlatformFeeInvoiceDto, @Req() req: any) {
+    return this.billingService.generatePlatformFeeInvoice(dto, req.user.id);
   }
 
   @Get('inter-agency')

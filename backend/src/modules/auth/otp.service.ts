@@ -204,7 +204,7 @@ export class OtpService {
 
   private async dispatch(contact: string, otp: string, purpose: string): Promise<void> {
     const isPhone = /^\+?[0-9]{9,15}$/.test(contact);
-    const message = `Your ZITO verification code is: ${otp}. Valid for 5 minutes. Do not share this code.`;
+    const message = `Your Zito verification code is: ${otp}. Valid for 5 minutes. Do not share this code.`;
 
     if (process.env.NODE_ENV === 'development') {
       console.log(`[OTP DEV] ${isPhone ? 'SMS' : 'Email'} → ${contact}: ${otp}`);

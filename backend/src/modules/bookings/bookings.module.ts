@@ -3,6 +3,7 @@ import { BookingsService } from './bookings.service';
 import {
   CustomerBookingsController,
   CorporateBookingsController,
+  CourierCompanyBookingsController,
   DriverTripsController,
   AdminBookingsController,
 } from './bookings.controller';
@@ -29,6 +30,7 @@ import { CapacityPlanningModule } from '../capacity-planning/capacity-planning.m
   controllers: [
     CustomerBookingsController,
     CorporateBookingsController,
+    CourierCompanyBookingsController,
     DriverTripsController,
     AdminBookingsController,
   ],

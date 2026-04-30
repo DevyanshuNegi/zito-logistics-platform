@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
+import { BrandLockup } from '@/components/layout/BrandLockup';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { useAuth } from '@/hooks/useAuth';
+import { BRAND } from '@/lib/brand';
 import { getRoleHomePath, hasAnyRole } from '@/lib/roles';
 
 type NavItem = {
@@ -59,10 +61,15 @@ export function PortalShell({
     <div className="min-h-screen text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6 sm:px-6">
         <aside className="hidden w-72 shrink-0 rounded-3xl border border-slate-700/40 bg-slate-950/55 p-5 shadow-2xl backdrop-blur lg:block">
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-sky-300/80">ZITO</p>
-              <h1 className="mt-1 text-2xl font-semibold text-white">{title}</h1>
+          <div className="mb-8 flex items-start justify-between gap-4">
+            <div className="space-y-3">
+              <BrandLockup compact showDescriptor={false} />
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">
+                  {BRAND.companyName}
+                </p>
+                <h1 className="mt-1 text-2xl font-semibold text-white">{title}</h1>
+              </div>
             </div>
             <Badge variant="brand">{user?.role ?? 'Guest'}</Badge>
           </div>
@@ -77,7 +84,7 @@ export function PortalShell({
                   className={[
                     'block rounded-2xl border px-4 py-3 text-sm font-medium transition',
                     active
-                      ? 'border-amber-400/50 bg-amber-500/15 text-amber-100 shadow-lg shadow-amber-500/10'
+                      ? 'border-cyan-400/40 bg-violet-500/15 text-cyan-100 shadow-lg shadow-cyan-500/10'
                       : 'border-slate-800/80 bg-slate-900/50 text-slate-300 hover:border-slate-600/70 hover:bg-slate-900/80',
                   ].join(' ')}
                 >
@@ -87,7 +94,7 @@ export function PortalShell({
             })}
           </nav>
 
-          <div className="mt-8 rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 text-sm text-slate-300">
+          <div className="mt-8 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 text-sm text-slate-300">
             <p className="font-medium text-sky-100">{user?.fullName ?? t('signedIn')}</p>
             <p className="mt-1 text-xs text-slate-400">{user?.email ?? user?.phone ?? t('activeSession')}</p>
             <div className="mt-4 flex gap-2">
@@ -116,8 +123,9 @@ export function PortalShell({
           <header className="mb-6 rounded-3xl border border-slate-700/40 bg-slate-950/55 px-5 py-4 shadow-2xl backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('operationsPortal')}</p>
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{BRAND.companyName}</p>
                 <h2 className="mt-1 text-2xl font-semibold text-white">{title}</h2>
+                <p className="mt-1 text-sm text-slate-400">{BRAND.appName} operations portal</p>
               </div>
               <div className="flex items-center gap-3">
                 <Badge variant="info">{user?.role ?? 'Guest'}</Badge>

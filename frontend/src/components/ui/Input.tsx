@@ -13,7 +13,7 @@ type InputProps = SharedProps &
 
 export function Input({ label, help, error, className = '', textarea, ...props }: InputProps) {
   const fieldClassName = [
-    'w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-400/70 focus:outline-none',
+    'w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400/80 focus:outline-none focus:ring-1 focus:ring-violet-500/40',
     className,
   ].join(' ');
 

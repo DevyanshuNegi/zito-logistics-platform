@@ -3,6 +3,7 @@ import { PortalShell } from '@/components/layout/PortalShell';
 
 const navItems = [
   { href: '/corporate/bookings', label: 'Bookings' },
+  { href: '/corporate/fleet', label: 'Fleet' },
   { href: '/corporate/invoices', label: 'Invoices' },
   { href: '/corporate/contracts', label: 'Contracts' },
 ];

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api';
+import { BRAND } from '@/lib/brand';
 import { getRoleHomePath } from '@/lib/roles';
 
 type LoginResponse = {
@@ -77,12 +78,12 @@ export default function LoginPage() {
   return (
     <AuthShell
       eyebrow="Unified Login"
-      title="Continue into the ZITO portal"
-      subtitle="Use your phone or email. Add your password when your account is configured for password + OTP login."
+      title={`Continue into ${BRAND.appName}`}
+      subtitle={`Use your phone or email. ${BRAND.companyName} keeps the account approval workflow separate from the app sign-in experience.`}
       footer={
         <p>
           New here?{' '}
-          <Link href="/select-role" className="text-amber-200 hover:text-amber-100">
+          <Link href="/select-role" className="text-cyan-200 hover:text-violet-200">
             Start registration
           </Link>
           .
@@ -122,7 +123,7 @@ export default function LoginPage() {
           placeholder="Leave blank for OTP-only flow"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          help="If you leave this empty, ZITO will request OTP only."
+          help={`If you leave this empty, ${BRAND.appName} will request OTP only.`}
         />
 
         <Button className="w-full" disabled={submitting} type="submit">

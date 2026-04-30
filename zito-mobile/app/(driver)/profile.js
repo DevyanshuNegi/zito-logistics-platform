@@ -99,7 +99,7 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        <Text style={s.note}>Documents are reviewed exclusively by ZITO Admin. Contact support for updates.</Text>
+        <Text style={s.note}>Documents are reviewed by the Zito operations team at Aurenza Limited. Contact support for updates.</Text>
 
         <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
           <Text style={s.logoutText}>Logout</Text>

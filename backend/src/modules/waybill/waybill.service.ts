@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ServiceType, WaybillStatus } from '@prisma/client';
+import { BRAND } from '../../config/brand.config';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -186,7 +187,7 @@ export class WaybillService {
       );
       doc.on('error', reject);
 
-      doc.fontSize(18).text('ZITO Driver Manifest', { align: 'center' });
+      doc.fontSize(18).text(`${BRAND.appName} Driver Manifest`, { align: 'center' });
       doc.moveDown();
       doc.fontSize(12).text(`Document No: ${waybill.number}`);
       doc.text(`Document Type: ${waybill.type}`);

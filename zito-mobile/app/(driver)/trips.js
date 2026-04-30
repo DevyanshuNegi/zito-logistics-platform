@@ -40,7 +40,7 @@ export default function TripsScreen() {
     finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => { fetchTrips(); }, []);
+  useEffect(() => { fetchTrips(); }, [fetchTrips]);
 
   const active = trips.filter(t => ['assigned','accepted','picked_up','in_transit'].includes(t.status));
   const history = trips.filter(t => ['delivered','completed','cancelled','rejected'].includes(t.status));

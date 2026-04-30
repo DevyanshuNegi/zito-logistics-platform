@@ -112,7 +112,7 @@ export class NotificationsService {
       IN_TRANSIT: `Your cargo is in transit for booking ${bookingRef}.`,
       ARRIVED_AT_DESTINATION: `Driver has arrived at the delivery location for booking ${bookingRef}.`,
       DELIVERED: `Your cargo has been delivered for booking ${bookingRef}. Please rate your experience.`,
-      COMPLETED: `Booking ${bookingRef} is complete. Thank you for using ZITO.`,
+      COMPLETED: `Booking ${bookingRef} is complete. Thank you for using Zito.`,
       CANCELLED: `Booking ${bookingRef} has been cancelled.`,
     };
 

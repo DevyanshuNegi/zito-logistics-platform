@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { VehicleStatus } from '@prisma/client';
@@ -20,7 +21,10 @@ export class FleetService {
     private readonly fuelService: FuelService,
   ) {}
 
-  async create(createVehicleDto: any) {
+  async create(
+    createVehicleDto: any,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
     const existing = await this.prisma.vehicle.findUnique({
       where: { plateNumber: createVehicleDto.plateNumber },
       select: { id: true },
@@ -36,6 +40,7 @@ export class FleetService {
     return this.prisma.vehicle.create({
       data: {
         ...createVehicleDto,
+        ownerUserId: this.resolveOwnerUserId(createVehicleDto.ownerUserId, actor),
         status: createVehicleDto.status ?? VehicleStatus.ACTIVE,
         insuranceExpiry: createVehicleDto.insuranceExpiry
           ? new Date(createVehicleDto.insuranceExpiry)
@@ -45,42 +50,57 @@ export class FleetService {
           : undefined,
       },
       include: {
+        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
         driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
       },
     });
   }
 
-  async findAll(filters: { status?: VehicleStatus; driverId?: string } = {}) {
+  async findAll(
+    filters: { status?: VehicleStatus; driverId?: string } = {},
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
     const where = {
       ...(filters.status && { status: filters.status }),
       ...(filters.driverId && { driverId: filters.driverId }),
+      ...this.buildOwnershipScope(actor),
     };
 
     return this.prisma.vehicle.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
+        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
         driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
         _count: { select: { bookings: true, breakdowns: true, maintenanceLogs: true } },
       },
     });
   }
 
-  async findOne(id: string) {
+  async findOne(
+    id: string,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id },
       include: {
+        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
         driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
         breakdowns: { orderBy: { createdAt: 'desc' }, take: 10 },
         maintenanceLogs: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
     });
     if (!vehicle) throw new NotFoundException('Vehicle not found');
+    this.assertVehicleAccess(vehicle, actor);
     return vehicle;
   }
 
-  async update(id: string, dto: any) {
-    await this.findOne(id);
+  async update(
+    id: string,
+    dto: any,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    await this.findOne(id, actor);
 
     if (dto.plateNumber) {
       const duplicate = await this.prisma.vehicle.findFirst({
@@ -103,30 +123,41 @@ export class FleetService {
       where: { id },
       data: {
         ...dto,
+        ownerUserId: this.resolveOwnerUserId(dto.ownerUserId, actor),
         insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
         permitExpiry: dto.permitExpiry ? new Date(dto.permitExpiry) : undefined,
       },
       include: {
+        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
         driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
       },
     });
   }
 
-  async assignDriver(id: string, driverId: string) {
-    await this.findOne(id);
+  async assignDriver(
+    id: string,
+    driverId: string,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    await this.findOne(id, actor);
     await this.assertDriverAssignable(driverId, id);
 
     return this.prisma.vehicle.update({
       where: { id },
       data: { driverId },
       include: {
+        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
         driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
       },
     });
   }
 
-  async retire(id: string, note?: string) {
-    await this.findOne(id);
+  async retire(
+    id: string,
+    note?: string,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    await this.findOne(id, actor);
 
     return this.prisma.vehicle.update({
       where: { id },
@@ -135,13 +166,19 @@ export class FleetService {
         driverId: null,
       },
       include: {
+        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
         driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
       },
     });
   }
 
-  async updateLocation(id: string, lat: number, lng: number) {
-    await this.findOne(id);
+  async updateLocation(
+    id: string,
+    lat: number,
+    lng: number,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    await this.findOne(id, actor);
 
     const vehicle = await this.fleetExpiryService.updateVehicleGps(id, lat, lng);
     const divergence = await this.fleetExpiryService.checkGpsDivergence(id);
@@ -332,5 +369,56 @@ export class FleetService {
         `Driver is already assigned to vehicle ${assignedElsewhere.plateNumber}`,
       );
     }
+  }
+
+  private normalizeRole(actor?: { role?: string; activeRole?: string }) {
+    return String(actor?.activeRole ?? actor?.role ?? '').trim().toUpperCase();
+  }
+
+  private isPrivilegedFleetRole(role: string) {
+    return ['ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF'].includes(role);
+  }
+
+  private isOwnedFleetRole(role: string) {
+    return ['CUSTOMER', 'TRANSPORTER', 'CORPORATE', 'COURIER_COMPANY'].includes(role);
+  }
+
+  private buildOwnershipScope(actor?: { id: string; role?: string; activeRole?: string }) {
+    const role = this.normalizeRole(actor);
+    if (actor?.id && this.isOwnedFleetRole(role)) {
+      return { ownerUserId: actor.id };
+    }
+    return {};
+  }
+
+  private resolveOwnerUserId(
+    ownerUserId: string | undefined,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    const role = this.normalizeRole(actor);
+    if (actor?.id && this.isOwnedFleetRole(role)) {
+      return actor.id;
+    }
+    return ownerUserId;
+  }
+
+  private assertVehicleAccess(
+    vehicle: { ownerUserId?: string | null },
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    if (!actor) {
+      return;
+    }
+
+    const role = this.normalizeRole(actor);
+    if (this.isPrivilegedFleetRole(role)) {
+      return;
+    }
+
+    if (this.isOwnedFleetRole(role) && vehicle.ownerUserId === actor.id) {
+      return;
+    }
+
+    throw new ForbiddenException('You can only manage vehicles owned by your account.');
   }
 }

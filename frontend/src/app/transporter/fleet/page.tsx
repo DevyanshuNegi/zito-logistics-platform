@@ -48,7 +48,12 @@ export default function TransporterFleetPage() {
   const [breakdowns, setBreakdowns] = useState<BreakdownResponse['breakdowns']>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [plateNumber, setPlateNumber] = useState('');
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
+  const [year, setYear] = useState('');
   const [type, setType] = useState('VAN');
+  const [capacityKg, setCapacityKg] = useState('');
+  const [capacityM3, setCapacityM3] = useState('');
   const [driverId, setDriverId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,12 +92,22 @@ export default function TransporterFleetPage() {
     try {
       await api.post('/fleet', {
         plateNumber,
+        make: make || undefined,
+        model: model || undefined,
+        year: year ? Number(year) : undefined,
         type,
+        capacityKg: Number(capacityKg),
+        capacityM3: capacityM3 ? Number(capacityM3) : undefined,
         driverId: driverId || undefined,
       });
 
       setPlateNumber('');
+      setMake('');
+      setModel('');
+      setYear('');
       setType('VAN');
+      setCapacityKg('');
+      setCapacityM3('');
       setDriverId('');
       await loadFleet();
     } catch (caught) {
@@ -116,9 +131,12 @@ export default function TransporterFleetPage() {
         </Alert>
       ) : null}
 
-      <SurfaceCard title="Add vehicle" description="Quick transporter-side vehicle onboarding for Phase 1.">
-        <form className="grid gap-4 md:grid-cols-3" onSubmit={handleCreate}>
+      <SurfaceCard title="Add vehicle" description="Quick transporter-side vehicle onboarding with the required capacity fields from the live vehicle schema.">
+        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreate}>
           <Input label="Plate number" value={plateNumber} onChange={(event) => setPlateNumber(event.target.value)} required />
+          <Input label="Make" value={make} onChange={(event) => setMake(event.target.value)} />
+          <Input label="Model" value={model} onChange={(event) => setModel(event.target.value)} />
+          <Input label="Year" type="number" value={year} onChange={(event) => setYear(event.target.value)} />
           <label className="block space-y-2">
             <span className="text-sm font-medium text-slate-200">Vehicle type</span>
             <select
@@ -133,6 +151,8 @@ export default function TransporterFleetPage() {
               ))}
             </select>
           </label>
+          <Input label="Capacity (kg)" type="number" value={capacityKg} onChange={(event) => setCapacityKg(event.target.value)} required />
+          <Input label="Capacity (m3)" type="number" value={capacityM3} onChange={(event) => setCapacityM3(event.target.value)} />
           <label className="block space-y-2">
             <span className="text-sm font-medium text-slate-200">Assign driver</span>
             <select
@@ -148,7 +168,7 @@ export default function TransporterFleetPage() {
               ))}
             </select>
           </label>
-          <div className="md:col-span-3">
+          <div className="md:col-span-2 xl:col-span-4">
             <Button disabled={saving} type="submit">
               {saving ? 'Saving vehicle...' : 'Create vehicle'}
             </Button>

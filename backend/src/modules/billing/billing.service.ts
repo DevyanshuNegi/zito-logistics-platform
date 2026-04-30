@@ -3,7 +3,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InventoryStatus, InvoiceType, Prisma } from '@prisma/client';
+import {
+  InventoryStatus,
+  InvoiceType,
+  Prisma,
+  UserRole,
+  VehicleStatus,
+} from '@prisma/client';
 import {
   COUNTRY_CONFIGS,
   SUPPORTED_COUNTRY_CODES,
@@ -13,7 +19,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import {
   ConsolidateInvoiceDto,
+  GeneratePlatformFeeInvoiceDto,
   GenerateWarehouseInvoiceDto,
+  PlatformFeeBillingMode,
 } from './dto/billing.dto';
 
 type CrossBorderHandoffRecord = {
@@ -49,10 +57,17 @@ type InterAgencyBillRecord = {
   generatedAt: string;
 };
 
+type PlatformFeeRule = {
+  mode: PlatformFeeBillingMode;
+  amount: number;
+  label: string;
+};
+
 @Injectable()
 export class BillingService {
   private readonly crossBorderHandoffPrefix = 'cross-border-handoff:';
   private readonly interAgencyBillPrefix = 'inter-agency-bill:';
+  private readonly platformFeeInvoicePrefix = 'platform-fee-invoice:';
   private readonly defaultDestinationSharePct = Number(
     process.env.INTER_AGENCY_DESTINATION_SHARE_PCT ?? 35,
   );
@@ -204,6 +219,184 @@ export class BillingService {
       issueImmediately: dto.issueImmediately,
       actorId,
     });
+  }
+
+  async generatePlatformFeeInvoice(
+    dto: GeneratePlatformFeeInvoiceDto,
+    actorId: string,
+  ) {
+    const dateFrom = new Date(dto.dateFrom);
+    const dateTo = new Date(dto.dateTo);
+    if (
+      Number.isNaN(dateFrom.getTime()) ||
+      Number.isNaN(dateTo.getTime()) ||
+      dateFrom > dateTo
+    ) {
+      throw new BadRequestException('Invalid platform-fee billing date range');
+    }
+
+    const customer = await this.prisma.user.findUnique({
+      where: { id: dto.customerId },
+      select: {
+        id: true,
+        fullName: true,
+        role: true,
+        agencyId: true,
+      },
+    });
+    if (!customer) {
+      throw new NotFoundException('Owned-fleet account not found');
+    }
+    if (!this.isPlatformFeeEligibleRole(customer.role)) {
+      throw new BadRequestException(
+        'Platform-fee billing is only available for customer, corporate, courier-company, or transporter owned-fleet accounts.',
+      );
+    }
+
+    const rule = this.resolvePlatformFeeRule(
+      customer.role,
+      dto.billingMode,
+      dto.feeAmount,
+    );
+    const idempotencyKey = this.platformFeeInvoiceKey(
+      customer.id,
+      rule.mode,
+      dateFrom,
+      dateTo,
+    );
+
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { key: idempotencyKey },
+      select: { response: true },
+    });
+    const existingInvoiceId = this.readPlatformFeeInvoiceId(existingRecord?.response);
+    if (existingInvoiceId) {
+      return {
+        invoice: await this.invoicesService.getForAdmin(existingInvoiceId),
+        platformFee: {
+          billingMode: rule.mode,
+          feeAmount: rule.amount,
+        },
+        idempotent: true,
+      };
+    }
+
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: {
+        ownerUserId: customer.id,
+        createdAt: { lte: dateTo },
+      },
+      select: {
+        id: true,
+        plateNumber: true,
+        type: true,
+        status: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (vehicles.length === 0) {
+      throw new BadRequestException(
+        'No owned vehicles were found for that account in the selected billing window.',
+      );
+    }
+
+    const activeVehicles = vehicles.filter(
+      (vehicle) => vehicle.status === VehicleStatus.ACTIVE,
+    );
+    const billableVehicles = activeVehicles.length > 0 ? activeVehicles : vehicles;
+    const lineItems =
+      rule.mode === PlatformFeeBillingMode.PER_VEHICLE
+        ? billableVehicles.map((vehicle) => ({
+            description: `Platform fee for owned vehicle ${vehicle.plateNumber} (${vehicle.type}) covering ${dto.dateFrom} to ${dto.dateTo}`,
+            quantity: 1,
+            unitPrice: rule.amount,
+          }))
+        : [
+            {
+              description: `Platform fee for ${this.describeRole(customer.role)} fleet access covering ${dto.dateFrom} to ${dto.dateTo} (${billableVehicles.length} managed vehicle(s))`,
+              quantity: 1,
+              unitPrice: rule.amount,
+            },
+          ];
+
+    const invoice = await this.invoicesService.createStandaloneInvoice({
+      type: InvoiceType.PLATFORM,
+      customerId: customer.id,
+      agencyId: customer.agencyId,
+      lineItems,
+      taxRate: dto.taxRate,
+      dueDate: dto.dueDate,
+      issueImmediately: dto.issueImmediately,
+      actorId,
+    });
+
+    await this.prisma.idempotencyRecord.upsert({
+      where: { key: idempotencyKey },
+      create: {
+        key: idempotencyKey,
+        status: 'GENERATED',
+        requestHash: idempotencyKey,
+        response: {
+          invoiceId: invoice.id,
+          customerId: customer.id,
+          billingMode: rule.mode,
+          feeAmount: rule.amount,
+          vehicleCount: billableVehicles.length,
+          billedWindow: {
+            dateFrom: dto.dateFrom,
+            dateTo: dto.dateTo,
+          },
+        } as Prisma.InputJsonValue,
+      },
+      update: {
+        status: 'GENERATED',
+        requestHash: idempotencyKey,
+        response: {
+          invoiceId: invoice.id,
+          customerId: customer.id,
+          billingMode: rule.mode,
+          feeAmount: rule.amount,
+          vehicleCount: billableVehicles.length,
+          billedWindow: {
+            dateFrom: dto.dateFrom,
+            dateTo: dto.dateTo,
+          },
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actorId,
+        action: 'PLATFORM_FEE_INVOICE_GENERATED',
+        entityType: 'INVOICE',
+        entityId: invoice.id,
+        details: {
+          customerId: customer.id,
+          customerRole: customer.role,
+          billingMode: rule.mode,
+          feeAmount: rule.amount,
+          billableVehicles: billableVehicles.map((vehicle) => vehicle.id),
+          dateFrom: dto.dateFrom,
+          dateTo: dto.dateTo,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return {
+      invoice,
+      platformFee: {
+        billingMode: rule.mode,
+        feeAmount: rule.amount,
+        billedVehicleCount: billableVehicles.length,
+        usedActiveVehicleSnapshot: activeVehicles.length > 0,
+      },
+      notes: [
+        'Platform-fee billing is idempotent per account, billing mode, and date window to avoid duplicate recurring invoices.',
+        'Per-vehicle charging prefers currently ACTIVE owned vehicles because the current schema does not yet store a dedicated retired-at history for exact historical fleet snapshots.',
+      ],
+      idempotent: false,
+    };
   }
 
   async interAgencyBill(
@@ -386,6 +579,107 @@ export class BillingService {
       total: bills.length,
       bills,
     };
+  }
+
+  private isPlatformFeeEligibleRole(role: UserRole) {
+    const eligibleRoles: UserRole[] = [
+      UserRole.CUSTOMER,
+      UserRole.CORPORATE,
+      UserRole.COURIER_COMPANY,
+      UserRole.TRANSPORTER,
+    ];
+    return eligibleRoles.includes(role);
+  }
+
+  private resolvePlatformFeeRule(
+    role: UserRole,
+    billingMode?: PlatformFeeBillingMode,
+    feeAmount?: number,
+  ): PlatformFeeRule {
+    const defaults: Record<UserRole, PlatformFeeRule> = {
+      [UserRole.CUSTOMER]: {
+        mode: PlatformFeeBillingMode.PER_VEHICLE,
+        amount: Number(process.env.PLATFORM_FEE_CUSTOMER_PER_VEHICLE ?? 750),
+        label: 'customer-owned vehicle platform access',
+      },
+      [UserRole.CORPORATE]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: Number(process.env.PLATFORM_FEE_CORPORATE_PER_FLEET ?? 4500),
+        label: 'corporate-owned fleet platform subscription',
+      },
+      [UserRole.COURIER_COMPANY]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: Number(process.env.PLATFORM_FEE_COURIER_COMPANY_PER_FLEET ?? 6500),
+        label: 'courier-company supply-chain platform subscription',
+      },
+      [UserRole.TRANSPORTER]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: Number(process.env.PLATFORM_FEE_TRANSPORTER_PER_FLEET ?? 4000),
+        label: 'transporter-owned fleet platform subscription',
+      },
+      [UserRole.DRIVER]: {
+        mode: PlatformFeeBillingMode.PER_VEHICLE,
+        amount: 0,
+        label: 'ineligible',
+      },
+      [UserRole.WAREHOUSE_PARTNER]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: 0,
+        label: 'ineligible',
+      },
+      [UserRole.AGENCY_STAFF]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: 0,
+        label: 'ineligible',
+      },
+      [UserRole.ADMIN]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: 0,
+        label: 'ineligible',
+      },
+      [UserRole.SUPER_ADMIN]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: 0,
+        label: 'ineligible',
+      },
+    };
+
+    const rule = defaults[role];
+    const resolved: PlatformFeeRule = {
+      ...rule,
+      mode: billingMode ?? rule.mode,
+      amount: feeAmount ?? rule.amount,
+    };
+
+    if (resolved.amount <= 0) {
+      throw new BadRequestException(
+        `Platform-fee amount must be greater than 0 for ${this.describeRole(role)} accounts.`,
+      );
+    }
+
+    return resolved;
+  }
+
+  private describeRole(role: UserRole) {
+    return role.toLowerCase().replace(/_/g, '-');
+  }
+
+  private platformFeeInvoiceKey(
+    customerId: string,
+    mode: PlatformFeeBillingMode,
+    dateFrom: Date,
+    dateTo: Date,
+  ) {
+    return `${this.platformFeeInvoicePrefix}${customerId}:${mode}:${dateFrom.toISOString().slice(0, 10)}:${dateTo.toISOString().slice(0, 10)}`;
+  }
+
+  private readPlatformFeeInvoiceId(value: Prisma.JsonValue | null | undefined) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const record = value as Record<string, Prisma.JsonValue>;
+    return typeof record.invoiceId === 'string' ? record.invoiceId : null;
   }
 
   private calculateBillableDays(

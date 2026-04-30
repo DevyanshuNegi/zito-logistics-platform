@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { useAuth } from '@/hooks/useAuth';
+import { BRAND } from '@/lib/brand';
 import { formatStatus } from '@/lib/format';
 
 const roleGuidance: Record<string, { title: string; checks: string[]; eta: string }> = {
@@ -68,11 +69,11 @@ export default function PendingApprovalPage() {
     <AuthShell
       eyebrow="Pending Approval"
       title={guidance.title}
-      subtitle="The PRD requires non-active accounts to stay blocked from login until activation is complete."
+      subtitle={`The PRD requires non-active accounts to stay blocked from login until ${BRAND.companyName} completes activation.`}
       footer={
         <p>
           Need to restart?{' '}
-          <Link href="/select-role" className="text-amber-200 hover:text-amber-100">
+          <Link href="/select-role" className="text-cyan-200 hover:text-violet-200">
             Choose another role
           </Link>
           .

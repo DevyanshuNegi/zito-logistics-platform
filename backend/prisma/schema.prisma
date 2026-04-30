@@ -16,6 +16,7 @@ enum UserRole {
   CUSTOMER
   DRIVER
   TRANSPORTER
+  COURIER_COMPANY
   WAREHOUSE_PARTNER
   AGENCY_STAFF
   ADMIN
@@ -103,6 +104,7 @@ enum InvoiceType {
   WAREHOUSE
   COURIER
   COMBINED
+  PLATFORM
 }
 
 enum InvoiceStatus {
@@ -190,6 +192,7 @@ model User {
   auditLogs         AuditLog[]
   wallets           Wallet[]
   notifications     Notification[]
+  ownedVehicles     Vehicle[]       @relation("VehicleOwner")
 
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -357,6 +360,8 @@ model Vehicle {
   permitExpiry      DateTime?
   permitVerified    Boolean       @default(false)
 
+  ownerUserId       String?
+  ownerUser         User?         @relation("VehicleOwner", fields: [ownerUserId], references: [id])
   driverId          String?       @unique
   driver            Driver?       @relation("AssignedVehicle", fields: [driverId], references: [id])
 
@@ -368,6 +373,7 @@ model Vehicle {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
+  @@index([ownerUserId])
   @@index([deviceGpsLat, deviceGpsLng])
 }
 

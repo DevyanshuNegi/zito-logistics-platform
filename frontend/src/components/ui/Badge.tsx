@@ -7,7 +7,7 @@ type BadgeProps = {
 
 export function Badge({ children, variant = 'neutral' }: BadgeProps) {
   const styles = {
-    brand: 'border-amber-400/40 bg-amber-500/15 text-amber-100',
+    brand: 'border-cyan-400/40 bg-violet-500/15 text-cyan-100',
     info: 'border-sky-400/40 bg-sky-500/15 text-sky-100',
     success: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100',
     danger: 'border-rose-400/40 bg-rose-500/15 text-rose-100',

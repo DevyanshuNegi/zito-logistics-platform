@@ -1,5 +1,5 @@
 // app/(customer)/track.js — PRD 5.3 Live tracking, status timeline, rating, cancel
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   ActivityIndicator, RefreshControl, Alert,
@@ -33,7 +33,7 @@ export default function TrackScreen() {
   const [ratingDone, setRatingDone] = useState(false);
   const pollRef = useRef(null);
 
-  const loadBookings = async () => {
+  const loadBookings = useCallback(async () => {
     try {
       const data = await api.get('/api/v1/customer/bookings?limit=20');
       const list = data.data || [];
@@ -41,20 +41,20 @@ export default function TrackScreen() {
       if (bookingId) {
         const found = list.find(b => b.id === bookingId);
         if (found) setSelected(found);
-      } else if (!selected && list.length > 0) {
+      } else if (!selected?.id && list.length > 0) {
         const active = list.find(b => ['pending','approved','assigned','accepted','picked_up','in_transit'].includes(b.status));
         setSelected(active || list[0]);
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
-  };
+  }, [bookingId, selected?.id]);
 
-  const refreshSelected = async (id) => {
+  const refreshSelected = useCallback(async (id) => {
     try {
       const data = await api.get(`/api/v1/customer/bookings/${id}`);
       setSelected(data.data || null);
     } catch (e) { console.error(e); }
-  };
+  }, []);
 
   useEffect(() => {
     loadBookings();
@@ -62,7 +62,7 @@ export default function TrackScreen() {
       if (selected?.id) refreshSelected(selected.id);
     }, 15000);
     return () => clearInterval(pollRef.current);
-  }, []);
+  }, [loadBookings, refreshSelected, selected?.id]);
 
   const handleCancel = async () => {
     if (!selected) return;

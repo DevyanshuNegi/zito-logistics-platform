@@ -14,7 +14,8 @@ export function Button({
   ...props
 }: ButtonProps) {
   const styles = {
-    primary: 'bg-amber-500 text-slate-950 hover:bg-amber-400',
+    primary:
+      'bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white shadow-lg shadow-cyan-500/20 hover:from-cyan-400 hover:via-blue-400 hover:to-fuchsia-500',
     secondary: 'bg-slate-800 text-slate-100 hover:bg-slate-700',
     ghost: 'bg-transparent text-slate-200 hover:bg-slate-800/70',
     danger: 'bg-rose-500 text-white hover:bg-rose-400',

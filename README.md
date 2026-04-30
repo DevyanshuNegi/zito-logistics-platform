@@ -1,6 +1,6 @@
-# ZITO
+# Zito by Aurenza Limited
 
-ZITO is a multi-role logistics platform for admin, customer, driver, transporter, agent, and agency workflows.
+Zito is the multi-role logistics platform by Aurenza Limited for admin, customer, corporate, courier-company, driver, transporter, agent, and agency workflows.
 
 Current implementation priorities:
 
@@ -13,8 +13,7 @@ Main workspaces:
 
 - `frontend/` - web admin and portal frontend
 - `backend/` - API and operational workflows
-- `app/` - Expo mobile routes
-- `src/` - shared mobile utilities and constants
+- `zito-mobile/` - Expo mobile routes, shared mobile utilities, and branding assets
 
 Deployment:
 

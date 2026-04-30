@@ -6,10 +6,11 @@ This file tracks development against the PRD v10 source set:
 - `docs/prd/ZITO_PRD_v10_ULTIMATE.txt`
 - `docs/prd/ZITO_Phased_Implementation_Plan.docx`
 - `backend/prd_plan_clean.txt`
-- The repo PRD source was re-synced on 29 April 2026 from the external VG Logistics v10 master copy, which restored missing readiness, release-gate, non-functional, fallback, testing, and go-live sections.
+- Brand identity: `Aurenza Limited` is the company name and `Zito` is the product/app name.
+- The repo PRD source was re-synced on 29 April 2026 from the external master v10 copy, which restored missing readiness, release-gate, non-functional, fallback, testing, and go-live sections.
 
-> Delivery Board: Phase 1 DONE | Phase 2 DONE | Phase 3 DONE | Phase 4 DONE | Phase 5 DONE
-> Current Focus: PRD v10 phased implementation scope is complete through Phase 5. Remaining readiness work is environment-driven infrastructure and provider configuration, not missing repo phase code.
+> Delivery Board: Phase 1 DONE | Phase 2 DONE | Phase 3 DONE | Phase 4 DONE | Phase 5 DONE | Expansion Addendum ACTIVE
+> Current Focus: PRD v10 phased implementation scope is complete through Phase 5. The active repo addendum now covers courier-company operations, owned-fleet management, and PTL multi-load/unload workflows.
 > Last Updated: 29 April 2026
 
 ## How To Read This Checklist
@@ -260,3 +261,24 @@ Goal: Offline-first expansion, multi-currency, marketplace, and USSD fallback.
 - [x] Backend build passes after Phase 5 completion: `backend/npm run build`
 - [x] Frontend typecheck passes after Phase 5 completion: `frontend/npx tsc --noEmit`
 - [x] Frontend production build passes after Phase 5 completion: `frontend/npm run build`
+
+## Post-Phase Expansion Addendum
+Goal: Extend PRD v10 with owned-fleet and courier-company supply-chain workflows beyond the original five-phase rollout.
+
+- [x] External PRD master re-synced into `docs/prd/ZITO_PRD_v10_ULTIMATE.docx`
+- [x] Repo PRD text export regenerated with Section `58. Courier Company & Owned Fleet Expansion Addendum`
+- [x] Schema addendum: `COURIER_COMPANY` role plus vehicle ownership relation
+- [x] Backend: fleet APIs scoped by owner account for customer, corporate, courier-company, and transporter roles
+- [x] Backend: courier-company booking endpoints with load/unload validation and self-scope access
+- [x] Frontend web: customer owned-fleet workspace
+- [x] Frontend web: corporate owned-fleet workspace
+- [x] Frontend web: separate courier-company portal with bookings, fleet, and multi-stop PTL request flow
+- [x] Finance automation: platform-fee charging per vehicle or per fleet
+- [x] Mobile expansion: courier-company and customer-owned-fleet mobile workspaces
+
+### Expansion Notes
+- Courier-company mode is now a formal PRD requirement, not an informal backlog idea. It is documented in the repo PRD as Section `58`.
+- Multi-load and multi-unload rules are now explicitly captured and enforced at booking validation level through ordered stop sequences.
+- Expo mobile now includes a courier-company tab workspace plus customer-owned-fleet management, so the new role and owned-fleet scope exist across both web and mobile surfaces.
+- Platform-fee automation is now active through admin billing generation, role-aware fee defaults, idempotent billing windows, and invoice visibility for customer, courier-company, transporter, and corporate account flows.
+- Per-vehicle platform-fee charging uses the current ACTIVE owned-fleet snapshot when available, because the current schema still has no dedicated retired-at history for perfect historical fleet reconstruction.

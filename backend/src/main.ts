@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { BRAND } from './config/brand.config';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestMetricsInterceptor } from './common/interceptors/request-metrics.interceptor';
 
@@ -67,10 +68,10 @@ async function bootstrap() {
   // PRD §45 - Swagger docs (dev and staging only)
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
-      .setTitle('ZITO Super App - API')
+      .setTitle(`${BRAND.appName} API | ${BRAND.companyName}`)
       .setDescription(
-        'REST API - ZITO PRD v10 ULTIMATE\n\n' +
-          '**Roles:** CUSTOMER · DRIVER · TRANSPORTER · WAREHOUSE_PARTNER · AGENCY_STAFF · ADMIN · SUPER_ADMIN · CORPORATE\n\n' +
+        `REST API for ${BRAND.appName} by ${BRAND.companyName} - PRD v10 ULTIMATE\n\n` +
+      '**Roles:** CUSTOMER · DRIVER · TRANSPORTER · COURIER_COMPANY · WAREHOUSE_PARTNER · AGENCY_STAFF · ADMIN · SUPER_ADMIN · CORPORATE\n\n' +
           '**Auth:** All endpoints require Bearer JWT except /auth/login and /auth/send-otp.\n\n' +
           '**Idempotency:** Booking, payment, and wallet endpoints require Idempotency-Key header.',
       )
@@ -123,7 +124,7 @@ async function bootstrap() {
   await app.listen(port);
 
   console.log('\n===========================================');
-  console.log('  ZITO Super App - Backend');
+  console.log(`  ${BRAND.appName} API - ${BRAND.companyName}`);
   console.log('  PRD: v10 ULTIMATE');
   console.log(`  ENV: ${process.env.NODE_ENV || 'development'}`);
   console.log(`  URL: http://localhost:${port}/api/v1`);

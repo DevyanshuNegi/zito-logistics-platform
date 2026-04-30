@@ -1,8 +1,8 @@
 {
   "name": "zito-backend",
   "version": "1.0.0",
-  "description": "ZITO Logistics Super-App — Backend API · VG Global Logistics",
-  "author": "VG Global Logistics",
+  "description": "Zito Logistics Platform — Backend API · Aurenza Limited",
+  "author": "Aurenza Limited",
   "license": "ISC",
   "type": "commonjs",
   "main": "dist/main.js",

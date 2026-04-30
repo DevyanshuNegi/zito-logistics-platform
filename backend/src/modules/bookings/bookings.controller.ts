@@ -132,6 +132,51 @@ export class CorporateBookingsController {
   }
 }
 
+@Controller('courier-company/bookings')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('COURIER_COMPANY')
+export class CourierCompanyBookingsController {
+  constructor(private readonly bookingsService: BookingsService) {}
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  create(@Request() req, @Body() dto: CreateBookingDto) {
+    return this.bookingsService.create(req.user.id, dto, req.user.role);
+  }
+
+  @Get()
+  list(
+    @Request() req,
+    @Query('status') status?: BookingStatus,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.bookingsService.listForCustomer(req.user.id, {
+      status,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  }
+
+  @Get(':id')
+  getOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req,
+  ) {
+    return this.bookingsService.getById(id, req.user.id, req.user.role);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req,
+    @Body() dto: CancelBookingDto,
+  ) {
+    return this.bookingsService.cancelByCustomer(id, req.user.id, dto);
+  }
+}
+
 // ─── Driver routes ────────────────────────────────────────────────────────────
 @Controller('driver/trips')
 @UseGuards(JwtAuthGuard, RolesGuard)

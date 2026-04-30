@@ -565,7 +565,7 @@ Searchable and filterable audit interface
 Export to CSV/PDF for compliance reporting
 Retention period: 7 years minimum
 41. 🏢 Multi-Agency Operations Flow
-Customer books → Nearest agency assigned → Warehouse/ handled locally → Delivery completed → Reporting to HQ
+Customer books → Nearest agency assigned → Warehouse/	 handled locally → Delivery completed → Reporting to HQ
 Cross-Agency Operations
 Shipments moving between agency zones are handed off with scan confirmation
 Inter-agency billing handled automatically
@@ -629,13 +629,15 @@ Fuel logs per trip
 Abnormal fuel usage alerts
 Fuel theft detection
 44.4 VEHICLE BREAKDOWN & RESCUE FLOW
-Flow: driver_report_issue → alert_agency → assign_backup_vehicle → load_transfer → trip_continue
+Flow:
+driver_report_issue → alert_agency → assign_backup_vehicle → load_transfer → trip_continue
 Features:
 Breakdown reporting option in driver app
 Automatic escalation to agency
 Backup vehicle/driver assignment
 44.5 RETURN (RTO) SYSTEM
-Lifecycle: delivery_failed → return_initiated → return_in_transit → warehouse_received → closed
+Lifecycle:
+delivery_failed → return_initiated → return_in_transit → warehouse_received → closed
 Applicable To:
 Courier
 PTL shipments
@@ -665,7 +667,8 @@ Trip completion incentives
 Cancellation penalties
 Rating-based rewards
 44.10 OPERATIONS ESCALATION SYSTEM
-Escalation Flow: Level 1 → Level 2 → Manager → Super Admin
+Escalation Flow:
+Level 1 → Level 2 → Manager → Super Admin
 Includes:
 SLA timers
 Automatic escalation
@@ -1003,4 +1006,13 @@ Backup restore and rollback drills are completed successfully
 A pilot or controlled live validation is completed and reviewed by operations leadership
 Final Verdict
 Enterprise-Grade Logistics + ERP + Warehouse Platform
-Africa-Scale Ready • Investor-Ready • Production-Ready
+Africa-Scale Ready  •  Investor-Ready  •  Production-Ready
+58. Courier Company & Owned Fleet Expansion Addendum
+Objective: Extend Zito beyond standard customer and transporter usage by enabling customer-owned fleets, dedicated courier-company operations, and platform-managed PTL supply-chain orchestration.
+Role Model: Add a dedicated COURIER_COMPANY role with separate login and portal routing. Courier companies operate as demand-side partners that can create PTL and courier requests, manage their own fleet, and hire platform capacity when internal supply is insufficient.
+Owned Fleet Scope: Customer, Corporate, Courier Company, and Transporter accounts may register and manage vehicles they own under their own account scope, with ownership-based access control enforced across fleet workflows.
+Commercial Model: The platform must support platform-fee charging per owned vehicle, per managed fleet, or per transaction depending on commercial agreement. Fee policy may be contract-driven, subscription-driven, or usage-driven.
+Courier Supply Chain Mode: Courier companies may request PTL, courier, or FTL capacity from the Zito platform. The platform should match owned-fleet preference first when configured, then fall back to transporter or marketplace supply under the same booking and tracking chain.
+Multi-Load / Multi-Unload Rules: Courier-company requests must support multiple loading points and multiple unloading points. Booking validation must require at least one load or pickup stop and at least one unload or delivery stop, while preserving ordered stop sequencing for routing, scanning, and handoff visibility.
+Operations & Traceability: Every parcel or shipment movement under courier-company mode must remain linked to vehicle, driver, booking, scan, waybill or LR, and destination chain-of-custody records exactly like the base logistics flow.
+Implementation Guidance: The app should expose separate courier-company web and mobile workspaces, customer-owned fleet management, and future finance automation for platform-fee billing. Where billing automation is not yet live, the PRD must mark it as a pending finance-control follow-up rather than implying completion.

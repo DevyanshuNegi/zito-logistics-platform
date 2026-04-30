@@ -50,6 +50,48 @@ export class InvoicesController {
     };
   }
 
+  @Get('courier-company/invoices')
+  @Roles(UserRole.COURIER_COMPANY)
+  @ApiOperation({ summary: 'Courier-company invoice list and download access (PRD Addendum §58)' })
+  listCourierCompanyInvoices(@Req() req: any) {
+    return this.invoicesService.listForCustomer(req.user.id);
+  }
+
+  @Get('courier-company/invoices/:id/pdf')
+  @Roles(UserRole.COURIER_COMPANY)
+  @ApiOperation({ summary: 'Courier-company invoice PDF download payload (PRD Addendum §58)' })
+  async getCourierCompanyInvoicePdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+  ) {
+    const pdf = await this.invoicesService.generatePdfForCustomer(id, req.user.id);
+    return {
+      fileName: pdf.fileName,
+      contentBase64: pdf.buffer.toString('base64'),
+    };
+  }
+
+  @Get('transporter/invoices')
+  @Roles(UserRole.TRANSPORTER)
+  @ApiOperation({ summary: 'Transporter invoice list and download access (PRD Addendum §58)' })
+  listTransporterInvoices(@Req() req: any) {
+    return this.invoicesService.listForCustomer(req.user.id);
+  }
+
+  @Get('transporter/invoices/:id/pdf')
+  @Roles(UserRole.TRANSPORTER)
+  @ApiOperation({ summary: 'Transporter invoice PDF download payload (PRD Addendum §58)' })
+  async getTransporterInvoicePdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+  ) {
+    const pdf = await this.invoicesService.generatePdfForCustomer(id, req.user.id);
+    return {
+      fileName: pdf.fileName,
+      contentBase64: pdf.buffer.toString('base64'),
+    };
+  }
+
   @Get('corporate/invoices')
   @Roles(UserRole.CORPORATE)
   @ApiOperation({ summary: 'Corporate outstanding invoices and credit usage (PRD §18, §20)' })

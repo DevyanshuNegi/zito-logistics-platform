@@ -15,6 +15,11 @@ export const ROLE_PICKER_OPTIONS = [
     description: 'Manage fleet readiness, driver assignments, and breakdowns.',
   },
   {
+    role: 'COURIER_COMPANY',
+    label: 'Courier Company',
+    description: 'Run PTL and courier operations, manage owned fleet, and hire supply from the Zito platform.',
+  },
+  {
     role: 'AGENCY_STAFF',
     label: 'Agency Staff',
     description: 'Handle operational support, tickets, and day-to-day coordination.',

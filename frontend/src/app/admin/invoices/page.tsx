@@ -75,6 +75,16 @@ export default function AdminInvoicesPage() {
     taxRate: '0',
     issueImmediately: true,
   });
+  const [platformInvoiceForm, setPlatformInvoiceForm] = useState({
+    customerId: '',
+    dateFrom: '',
+    dateTo: '',
+    billingMode: 'PER_VEHICLE',
+    feeAmount: '',
+    dueDate: '',
+    taxRate: '0',
+    issueImmediately: true,
+  });
 
   const outstandingTotal = useMemo(
     () =>
@@ -182,6 +192,24 @@ export default function AdminInvoicesPage() {
     );
   }
 
+  async function handleGeneratePlatformFeeInvoice(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await refreshAfter('Platform-fee invoice generated.', () =>
+      api.post('/admin/billing/platform-fee', {
+        customerId: platformInvoiceForm.customerId,
+        dateFrom: platformInvoiceForm.dateFrom,
+        dateTo: platformInvoiceForm.dateTo,
+        billingMode: platformInvoiceForm.billingMode,
+        feeAmount: platformInvoiceForm.feeAmount
+          ? Number(platformInvoiceForm.feeAmount)
+          : undefined,
+        dueDate: platformInvoiceForm.dueDate || undefined,
+        taxRate: Number(platformInvoiceForm.taxRate || '0'),
+        issueImmediately: platformInvoiceForm.issueImmediately,
+      }),
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -230,7 +258,7 @@ export default function AdminInvoicesPage() {
         </div>
       </SurfaceCard>
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid gap-6 xl:grid-cols-4">
         <SurfaceCard title="Generate trip invoice" description="Manual entry point for completed bookings that need a finance document now.">
           <form className="space-y-4" onSubmit={handleGenerateBookingInvoice}>
             <Input
@@ -314,6 +342,48 @@ export default function AdminInvoicesPage() {
               Issue immediately when below approval threshold
             </label>
             <Button type="submit">Generate combined invoice</Button>
+          </form>
+        </SurfaceCard>
+
+        <SurfaceCard title="Owned-fleet platform fee" description="Generate recurring platform-fee invoices for customer, corporate, courier-company, or transporter fleets.">
+          <form className="space-y-4" onSubmit={handleGeneratePlatformFeeInvoice}>
+            <Input label="Account ID" required value={platformInvoiceForm.customerId} onChange={(event) => setPlatformInvoiceForm((current) => ({ ...current, customerId: event.target.value }))} />
+            <Input label="Date from" type="date" required value={platformInvoiceForm.dateFrom} onChange={(event) => setPlatformInvoiceForm((current) => ({ ...current, dateFrom: event.target.value }))} />
+            <Input label="Date to" type="date" required value={platformInvoiceForm.dateTo} onChange={(event) => setPlatformInvoiceForm((current) => ({ ...current, dateTo: event.target.value }))} />
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-200">Billing mode</span>
+              <select
+                className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+                value={platformInvoiceForm.billingMode}
+                onChange={(event) =>
+                  setPlatformInvoiceForm((current) => ({
+                    ...current,
+                    billingMode: event.target.value,
+                  }))
+                }
+              >
+                <option value="PER_VEHICLE">Per vehicle</option>
+                <option value="PER_FLEET">Per fleet</option>
+              </select>
+            </label>
+            <Input label="Fee override" help="Leave blank to use the default fee configured for the selected account role." type="number" min="0" step="0.01" value={platformInvoiceForm.feeAmount} onChange={(event) => setPlatformInvoiceForm((current) => ({ ...current, feeAmount: event.target.value }))} />
+            <Input label="Due date" type="date" value={platformInvoiceForm.dueDate} onChange={(event) => setPlatformInvoiceForm((current) => ({ ...current, dueDate: event.target.value }))} />
+            <Input label="Tax rate" type="number" min="0" step="0.01" value={platformInvoiceForm.taxRate} onChange={(event) => setPlatformInvoiceForm((current) => ({ ...current, taxRate: event.target.value }))} />
+            <label className="flex items-center gap-3 text-sm text-slate-200">
+              <input
+                checked={platformInvoiceForm.issueImmediately}
+                className="h-4 w-4 accent-amber-400"
+                type="checkbox"
+                onChange={(event) =>
+                  setPlatformInvoiceForm((current) => ({
+                    ...current,
+                    issueImmediately: event.target.checked,
+                  }))
+                }
+              />
+              Issue immediately when below approval threshold
+            </label>
+            <Button type="submit">Generate platform-fee invoice</Button>
           </form>
         </SurfaceCard>
       </div>

@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 import { PortalShell } from '@/components/layout/PortalShell';
 
-const navItems = [{ href: '/transporter/fleet', label: 'Fleet' }];
+const navItems = [
+  { href: '/transporter/fleet', label: 'Fleet' },
+  { href: '/transporter/invoices', label: 'Invoices' },
+];
 
 export default function TransporterLayout({ children }: { children: ReactNode }) {
   return (

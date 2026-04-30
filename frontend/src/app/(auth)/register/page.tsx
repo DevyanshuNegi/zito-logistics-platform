@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api';
+import { BRAND } from '@/lib/brand';
 import { ROLE_PICKER_OPTIONS } from '@/lib/phase-one';
 import { getRoleHomePath } from '@/lib/roles';
 
@@ -80,12 +81,12 @@ export default function RegisterPage() {
   return (
     <AuthShell
       eyebrow="Registration"
-      title="Create your ZITO account"
-      subtitle="Every new account starts in the approval workflow defined by the PRD. Once an admin verifies and activates you, login opens automatically."
+      title={`Create your ${BRAND.appName} account`}
+      subtitle={`Every new account enters the approval workflow defined by the PRD. ${BRAND.companyName} verifies and activates the profile before sign-in opens automatically.`}
       footer={
         <p>
           Already have an account?{' '}
-          <Link href="/login" className="text-amber-200 hover:text-amber-100">
+          <Link href="/login" className="text-cyan-200 hover:text-violet-200">
             Go to login
           </Link>
           .
@@ -136,7 +137,7 @@ export default function RegisterPage() {
         <label className="block space-y-2">
           <span className="text-sm font-medium text-slate-200">Role</span>
           <select
-            className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+            className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-cyan-400/80 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
             value={role}
             onChange={(event) => setRole(event.target.value)}
           >

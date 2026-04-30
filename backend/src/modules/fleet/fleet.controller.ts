@@ -23,25 +23,26 @@ import { CreateFuelLogDto, FuelLogQueryDto } from './fuel/dto/fuel.dto';
 export class FleetController {
   constructor(private readonly fleetService: FleetService) {}
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Post()
-  create(@Body() createVehicleDto: any) {
-    return this.fleetService.create(createVehicleDto);
+  create(@Body() createVehicleDto: any, @Req() req: any) {
+    return this.fleetService.create(createVehicleDto, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Post('bulk-onboard')
   bulkOnboard(@Body() dto: BulkOnboardFleetDto, @Req() req: any) {
     return this.fleetService.bulkOnboard(dto.vehicles, req.user.id);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Get()
   findAll(
+    @Req() req: any,
     @Query('status') status?: VehicleStatus,
     @Query('driverId') driverId?: string,
   ) {
-    return this.fleetService.findAll({ status, driverId });
+    return this.fleetService.findAll({ status, driverId }, req.user);
   }
 
   @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
@@ -107,43 +108,46 @@ export class FleetController {
     return this.fleetService.detectFuelTheft(logId);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.fleetService.findOne(id);
+  findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.fleetService.findOne(id, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Patch(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
-    return this.fleetService.update(id, dto);
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any, @Req() req: any) {
+    return this.fleetService.update(id, dto, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Patch(':id/assign-driver')
   assignDriver(
     @Param('id', ParseUUIDPipe) id: string,
     @Body('driverId') driverId: string,
+    @Req() req: any,
   ) {
-    return this.fleetService.assignDriver(id, driverId);
+    return this.fleetService.assignDriver(id, driverId, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Patch(':id/retire')
   retire(
     @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
     @Body('note') note?: string,
   ) {
-    return this.fleetService.retire(id, note);
+    return this.fleetService.retire(id, note, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Patch(':id/gps')
   updateGps(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { lat: number; lng: number },
+    @Req() req: any,
   ) {
-    return this.fleetService.updateLocation(id, body.lat, body.lng);
+    return this.fleetService.updateLocation(id, body.lat, body.lng, req.user);
   }
 
   @Roles('DRIVER', 'ADMIN')

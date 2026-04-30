@@ -40,7 +40,7 @@ export class BookingStopDto {
   @IsNotEmpty()
   contactPhone: string;
 
-  // PICKUP | DROPOFF | INTERMEDIATE
+  // PICKUP | DELIVERY | LOAD | UNLOAD | INTERMEDIATE
   @IsString()
   stopType: string;
 }

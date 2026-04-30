@@ -3,7 +3,8 @@
 ## Active Source
 `docs/prd/ZITO_PRD_v10_ULTIMATE.docx` is the only PRD to follow in this repo.
 `docs/prd/ZITO_PRD_v10_ULTIMATE.txt` is the searchable text export generated from the same file.
-The repo copy was re-synced on 29 April 2026 from the external VG Logistics v10 master document, restoring the missing readiness, release, non-functional, fallback, testing, and go-live sections.
+Brand identity in the active PRD is `Aurenza Limited` as the company and `Zito` as the product/app.
+The repo copy was re-synced on 29 April 2026 from the external master v10 document, restoring the missing readiness, release, non-functional, fallback, testing, and go-live sections.
 
 ## Phase 1 Status
 - Core Platform scope is implemented across the backend and the Next.js web portal.
@@ -65,6 +66,15 @@ The repo copy was re-synced on 29 April 2026 from the external VG Logistics v10 
 - Multi-country expansion coverage from PRD section 49 is now active with country pricing and tax overlays for Kenya, Uganda, Tanzania, and Rwanda, cross-border agency handoff records backed by parcel-scan confirmation, and inter-agency settlement generation.
 - USSD fallback coverage from PRD section 23 is now active through `/ussd`, with a session-backed book-track-pay menu flow plus SMS confirmations after USSD booking or payment initiation.
 
+## Expansion Addendum Status
+- The repo PRD now includes `58. Courier Company & Owned Fleet Expansion Addendum`, synced from the external master and appended to the repo copy on 29 April 2026.
+- Schema addendum coverage is active with the `COURIER_COMPANY` role plus vehicle ownership linkage between `User` and `Vehicle`.
+- Fleet APIs now enforce owner-account scope for customer, corporate, courier-company, and transporter roles, which enables self-managed fleet operations without exposing other accounts' vehicles.
+- Booking validation now supports courier-company multi-load and multi-unload flow by requiring at least one pickup or load stop and at least one delivery or unload stop.
+- Web coverage is active for `/customer/fleet`, `/corporate/fleet`, and the separate `/courier-company/*` portal, including multi-stop PTL request composition and owned-fleet management.
+- Platform-fee charging per vehicle or fleet is now active through `/admin/billing/platform-fee`, with role-aware default fee rules, idempotent billing-window protection, platform invoice generation, and self-serve invoice visibility for courier-company and transporter accounts.
+- Mobile courier-company and customer-owned-fleet coverage is now active through the Expo app routes, including customer-owned-fleet management and a dedicated courier-company tab workspace.
+
 ## Legacy Cleanup
 Legacy PRD files and PRD-linked testing documentation under `docs/prd/` and `docs/testing/` have been removed from the repo.
 Stale top-level repo references to older PRD versions have been updated to point at the current baseline.
@@ -78,12 +88,12 @@ Stale top-level repo references to older PRD versions have been updated to point
 
 ## Repo Areas Already Carrying This PRD Forward
 - Backend APIs: auth, OTP, users, bookings, contracts, payments, agencies, staff, transport, warehouse, inventory, scan, waybill, loss-detection, RTO, SLA, and reconciliation.
-- Frontend portals: role-based admin, customer, corporate, driver, staff, transporter, and warehouse views covering the delivered Phase 1 to Phase 3 slices.
-- Mobile flows: auth, customer booking or tracking, driver trips or earnings, and transporter dashboard or fleet workflows remain part of the wider PRD footprint.
+- Frontend portals: role-based admin, customer, corporate, courier-company, driver, staff, transporter, and warehouse views covering the delivered Phase 1 to Phase 5 slices plus the active addendum.
+- Mobile flows: auth, customer booking or tracking, customer-owned fleet, courier-company dashboard or fleet workflows, driver trips or earnings, and transporter dashboard or fleet workflows remain part of the wider PRD footprint.
 
 ## Follow-up Audit Hotspots
 - The phased implementation area from PRD v10 is complete through Phase 5, so remaining follow-up is operational rather than a missing repo phase slice.
 - Multi-region Render or AWS rollout is still environment-driven and not provisioned inside this repo, even though the country-config and inter-agency code paths are now in place.
-- Standalone warehouse and combined invoices still rely on booking or invoice-number references for reconciliation because the current payment schema is booking-linked rather than invoice-linked.
+- Standalone warehouse, combined, and platform-fee invoices still rely on booking or invoice-number references for reconciliation because the current payment schema is booking-linked rather than invoice-linked.
 - Promo-code, loyalty-point, and referral execution still rely on wallet-transaction and audit-log conventions rather than dedicated program tables, so future commercial expansion may still justify a dedicated ledger model.
 - Keep executable engineering tests for safety, but do not use old PRD versions as the functional source of truth anymore.

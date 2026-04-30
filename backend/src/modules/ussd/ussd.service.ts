@@ -90,7 +90,7 @@ export class UssdService {
         step: 'ROOT',
         data: {},
       });
-      return this.con('Welcome to ZITO\n1. Book parcel\n2. Track booking\n3. Pay booking');
+      return this.con('Welcome to Zito\n1. Book parcel\n2. Track booking\n3. Pay booking');
     }
 
     if (latestInput === '1') {
@@ -261,7 +261,7 @@ export class UssdService {
 
       await this.smsService.send(
         session.phoneNumber,
-        `ZITO booking ${result.booking.reference} created. Total KES ${result.booking.totalPrice}. Our team will confirm route details if map coordinates need review.`,
+        `Zito booking ${result.booking.reference} created. Total KES ${result.booking.totalPrice}. Our team will confirm route details if map coordinates need review.`,
       );
       await this.clearSession(session.sessionId);
 
@@ -352,7 +352,7 @@ export class UssdService {
 
       await this.smsService.send(
         session.phoneNumber,
-        `ZITO payment initiated for ${session.data.bookingReference}. Follow the M-Pesa prompt to complete payment.`,
+        `Zito payment initiated for ${session.data.bookingReference}. Follow the M-Pesa prompt to complete payment.`,
       );
       await this.clearSession(session.sessionId);
 

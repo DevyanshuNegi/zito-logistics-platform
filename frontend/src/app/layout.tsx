@@ -2,10 +2,11 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { AppPreferencesProvider } from '@/contexts/AppPreferencesContext';
+import { BRAND } from '@/lib/brand';
 
 export const metadata: Metadata = {
-  title: 'ZITO - Logistics Super-App',
-  description: 'ZITO is an asset-less, next-generation logistics super-app.',
+  title: `${BRAND.appName} | ${BRAND.companyName}`,
+  description: BRAND.appDescription,
 };
 
 export default function RootLayout({
