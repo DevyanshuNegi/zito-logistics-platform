@@ -37,6 +37,7 @@ export type OtpSession = {
   mode: LoginMode;
   email?: string | null;
   countryCode?: string | null;
+  countryOptionCode?: string | null;
   phoneNumber?: string | null;
   resendAvailableAt?: string | null;
   otpExpiresAt?: string | null;
@@ -146,6 +147,7 @@ export function getOtpSession(): OtpSession | null {
       (parsed.contact.includes('@') ? 'email_otp' : 'phone_otp'),
     email: parsed.email ?? null,
     countryCode: parsed.countryCode ?? null,
+    countryOptionCode: parsed.countryOptionCode ?? null,
     phoneNumber: parsed.phoneNumber ?? null,
     resendAvailableAt: parsed.resendAvailableAt ?? null,
     otpExpiresAt: parsed.otpExpiresAt ?? null,

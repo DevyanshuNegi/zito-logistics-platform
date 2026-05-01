@@ -5,11 +5,22 @@ import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
+import { CountryCodeSelect } from '@/components/ui/CountryCodeSelect';
 import { Input } from '@/components/ui/Input';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api';
+import {
+  buildPhoneContact,
+  DEFAULT_COUNTRY_CODE,
+  normalizePhoneNumber,
+} from '@/lib/auth-login';
 import { BRAND } from '@/lib/brand';
+import {
+  DEFAULT_COUNTRY_ISO_CODE,
+  findCountryCodeOptionByDialCode,
+  findCountryCodeOptionByIsoCode,
+} from '@/lib/country-codes';
 import { ROLE_PICKER_OPTIONS } from '@/lib/phase-one';
 import { getRoleHomePath } from '@/lib/roles';
 
@@ -27,11 +38,21 @@ export default function RegisterPage() {
   const { user, loading, savePendingRegistration } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [countryOptionCode, setCountryOptionCode] = useState(DEFAULT_COUNTRY_ISO_CODE);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState(fallbackRole);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const selectedCountryOption =
+    findCountryCodeOptionByIsoCode(countryOptionCode) ??
+    findCountryCodeOptionByDialCode(DEFAULT_COUNTRY_CODE);
+  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+  const registrationPhone = buildPhoneContact(
+    selectedCountryOption?.dialCode ?? DEFAULT_COUNTRY_CODE,
+    normalizedPhone,
+  );
 
   useEffect(() => {
     if (!loading && user) {
@@ -56,7 +77,7 @@ export default function RegisterPage() {
       const response = await api.post<RegisterResponse>('/auth/register', {
         fullName,
         email: email || undefined,
-        phone,
+        phone: registrationPhone,
         password: password || undefined,
         role,
       });
@@ -65,7 +86,7 @@ export default function RegisterPage() {
         id: response.data.id,
         fullName,
         email: email || undefined,
-        phone,
+        phone: registrationPhone,
         role,
         status: response.data.status,
       });
@@ -108,19 +129,29 @@ export default function RegisterPage() {
           required
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Email"
-            type="email"
-            placeholder="name@company.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+        <Input
+          label="Email"
+          type="email"
+          placeholder="name@company.com"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+
+        <div className="grid gap-4 sm:grid-cols-[220px,1fr]">
+          <CountryCodeSelect
+            label="Country code"
+            value={countryOptionCode}
+            onChange={setCountryOptionCode}
+            help="Search by country name, ISO code, or dial code."
           />
           <Input
-            label="Phone"
-            placeholder="+254700000000"
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
+            label="Phone number"
+            placeholder="9876543210"
+            value={phoneNumber}
+            onChange={(event) => setPhoneNumber(normalizePhoneNumber(event.target.value))}
+            autoComplete="tel-national"
+            inputMode="numeric"
+            help="Enter the local number without the country code."
             required
           />
         </div>
@@ -151,7 +182,11 @@ export default function RegisterPage() {
           </select>
         </label>
 
-        <Button className="w-full" disabled={submitting} type="submit">
+        <Button
+          className="w-full"
+          disabled={submitting || fullName.trim().length === 0 || normalizedPhone.length < 6}
+          type="submit"
+        >
           {submitting ? 'Creating account...' : 'Register'}
         </Button>
       </form>

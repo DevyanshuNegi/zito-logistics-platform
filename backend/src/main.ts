@@ -5,6 +5,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { BRAND } from './config/brand.config';
+import { corsOriginValidator } from './config/cors.config';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestMetricsInterceptor } from './common/interceptors/request-metrics.interceptor';
 
@@ -23,18 +24,8 @@ async function bootstrap() {
   app.use(compression());
 
   // PRD §28, §42 - CORS locked to whitelisted origins only
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3001')
-    .split(',')
-    .map((origin) => origin.trim());
-
   app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS blocked: origin ${origin} not permitted`));
-      }
-    },
+    origin: corsOriginValidator,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',

@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
+import { CountryCodeSelect } from '@/components/ui/CountryCodeSelect';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api';
@@ -19,6 +20,11 @@ import {
   secondsUntil,
   type LoginMode,
 } from '@/lib/auth-login';
+import {
+  DEFAULT_COUNTRY_ISO_CODE,
+  findCountryCodeOptionByDialCode,
+  findCountryCodeOptionByIsoCode,
+} from '@/lib/country-codes';
 import { getRoleHomePath } from '@/lib/roles';
 
 type OtpRequestResponse = {
@@ -74,7 +80,7 @@ export default function LoginPage() {
   } = useAuth();
   const [step, setStep] = useState<LoginStep>('contact');
   const [mode, setMode] = useState<LoginMode>('phone_otp');
-  const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY_CODE);
+  const [countryOptionCode, setCountryOptionCode] = useState(DEFAULT_COUNTRY_ISO_CODE);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -88,8 +94,14 @@ export default function LoginPage() {
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [passwordFallbackUnlocked, setPasswordFallbackUnlocked] = useState(false);
 
+  const selectedCountryOption =
+    findCountryCodeOptionByIsoCode(countryOptionCode) ??
+    findCountryCodeOptionByDialCode(DEFAULT_COUNTRY_CODE);
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
-  const normalizedDialCode = useMemo(() => normalizeCountryCode(countryCode), [countryCode]);
+  const normalizedDialCode = useMemo(
+    () => normalizeCountryCode(selectedCountryOption?.dialCode ?? DEFAULT_COUNTRY_CODE),
+    [selectedCountryOption],
+  );
   const normalizedLocalPhone = useMemo(() => normalizePhoneNumber(phoneNumber), [phoneNumber]);
   const currentContact = useMemo(() => {
     if (mode === 'phone_otp') {
@@ -132,7 +144,12 @@ export default function LoginPage() {
     setStep('otp');
     setMode(otpSession.mode);
     setEmail(otpSession.email ?? (otpSession.contact.includes('@') ? otpSession.contact : ''));
-    setCountryCode(otpSession.countryCode ?? DEFAULT_COUNTRY_CODE);
+    setCountryOptionCode(
+      otpSession.countryOptionCode ??
+        findCountryCodeOptionByDialCode(otpSession.countryCode ?? DEFAULT_COUNTRY_CODE)
+          ?.isoCode ??
+        DEFAULT_COUNTRY_ISO_CODE,
+    );
     setPhoneNumber(
       otpSession.phoneNumber ??
         (!otpSession.contact.includes('@') ? otpSession.contact.replace(/\D/g, '') : ''),
@@ -236,6 +253,7 @@ export default function LoginPage() {
         mode: otpMode,
         email: otpMode === 'email_otp' ? normalizedEmail : null,
         countryCode: otpMode === 'phone_otp' ? normalizedDialCode : null,
+        countryOptionCode: otpMode === 'phone_otp' ? selectedCountryOption?.isoCode ?? null : null,
         phoneNumber: otpMode === 'phone_otp' ? normalizedLocalPhone : null,
         resendAvailableAt: response.data.resendAvailableAt ?? null,
         otpExpiresAt: response.data.otpExpiresAt ?? null,
@@ -426,14 +444,12 @@ export default function LoginPage() {
           ) : null}
 
           {mode === 'phone_otp' ? (
-            <div className="grid gap-4 sm:grid-cols-[150px,1fr]">
-              <Input
+            <div className="grid gap-4 sm:grid-cols-[220px,1fr]">
+              <CountryCodeSelect
                 label="Country code"
-                placeholder="+91"
-                value={countryCode}
-                onChange={(event) => setCountryCode(normalizeCountryCode(event.target.value))}
-                autoComplete="tel-country-code"
-                required
+                value={countryOptionCode}
+                onChange={setCountryOptionCode}
+                help="Search by country name, ISO code, or dial code."
               />
               <Input
                 label="Phone number"

@@ -11,6 +11,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
+import { websocketCorsOptions } from '../../config/cors.config';
 
 /**
  * PRD §26: Real-time GPS tracking gateway.
@@ -26,12 +27,7 @@ import { TrackingService } from './tracking.service';
  *   driver-offline       — Sent to admin:map when driver disconnects
  */
 @WebSocketGateway({
-  cors: {
-    origin: (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3001')
-      .split(',')
-      .map((o) => o.trim()),
-    credentials: true,
-  },
+  cors: websocketCorsOptions,
   namespace: '/tracking',
   transports: ['websocket', 'polling'],
 })
