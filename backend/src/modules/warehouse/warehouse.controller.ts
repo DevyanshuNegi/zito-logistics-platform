@@ -45,6 +45,7 @@ export class WarehouseController {
     'AGENCY_STAFF',
     'TRANSPORTER',
     'WAREHOUSE_PARTNER',
+    'COURIER_COMPANY',
   )
   @Get()
   findAll(@Req() req: any, @Query('agencyId') agencyId?: string) {
@@ -62,6 +63,7 @@ export class WarehouseController {
     'AGENCY_STAFF',
     'TRANSPORTER',
     'WAREHOUSE_PARTNER',
+    'COURIER_COMPANY',
   )
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
@@ -92,6 +94,7 @@ export class WarehouseController {
     'AGENCY_STAFF',
     'TRANSPORTER',
     'WAREHOUSE_PARTNER',
+    'COURIER_COMPANY',
   )
   @Get(':id/capacity')
   getCapacity(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {

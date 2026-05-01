@@ -82,11 +82,11 @@ export default function RegisterPage() {
     <AuthShell
       eyebrow="Registration"
       title={`Create your ${BRAND.appName} account`}
-      subtitle={`Every new account enters the approval workflow defined by the PRD. ${BRAND.companyName} verifies and activates the profile before sign-in opens automatically.`}
+      subtitle="Every new account goes through approval before sign-in opens automatically."
       footer={
         <p>
           Already have an account?{' '}
-          <Link href="/login" className="text-cyan-200 hover:text-violet-200">
+          <Link href="/login" className="text-cyan-200 hover:text-cyan-100">
             Go to login
           </Link>
           .
@@ -131,7 +131,7 @@ export default function RegisterPage() {
           placeholder="At least 6 characters"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          help="Optional in the backend, but recommended for the PRD login flow."
+          help="Optional for registration. Login uses a one-time code."
         />
 
         <label className="block space-y-2">

@@ -63,7 +63,7 @@ export default function CourierCompanyDashboard() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
       >
         <Text style={s.title}>Courier Company</Text>
-        <Text style={s.subtitle}>Manage PTL requests, owned fleet, and platform-linked supply from one mobile workspace.</Text>
+        <Text style={s.subtitle}>Manage county-to-county movements, owned fleet, and CFA-linked execution from one mobile workspace.</Text>
 
         <View style={s.kpiGrid}>
           <KpiCard label="Load Plans" value={String(bookings.length)} tone={colors.primary} />
@@ -75,7 +75,7 @@ export default function CourierCompanyDashboard() {
         <View style={s.note}>
           <Text style={s.noteTitle}>Expansion Scope</Text>
           <Text style={s.noteText}>
-            Courier-company mode supports owned vehicles, platform-hired fallback, and multi-load or multi-unload distribution flows. Platform-fee billing is still a finance follow-up.
+            Courier-company mode supports owned vehicles, Zito CFA network execution, and multi-load or multi-unload distribution flows. Platform-fee billing is still a finance follow-up.
           </Text>
         </View>
       </ScrollView>

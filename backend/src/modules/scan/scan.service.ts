@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,6 +22,13 @@ type ScanPayload = {
   clientReference?: string;
   occurredAt?: string;
   syncMode?: 'ONLINE' | 'OFFLINE';
+};
+
+type ScanAccessContext = {
+  viewerRole?: string;
+  viewerUserId?: string;
+  viewerAgencyId?: string | null;
+  viewerDriverId?: string | null;
 };
 
 type ScanSyncResolution = 'CREATED' | 'MERGED_DUPLICATE' | 'REJECTED_STALE';
@@ -45,6 +53,83 @@ export class ScanService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
   ) {}
+
+  private normalizeRole(role?: string) {
+    return String(role ?? '').trim().toUpperCase();
+  }
+
+  private isPrivilegedRole(role: string) {
+    return ['SUPER_ADMIN', 'ADMIN', 'TRANSPORTER'].includes(role);
+  }
+
+  private async assertItemAccess(
+    item: {
+      bookingId: string;
+      currentVehicleId?: string | null;
+      booking?: {
+        customerId?: string;
+        agencyId?: string | null;
+        driverId?: string | null;
+        vehicleId?: string | null;
+      } | null;
+    },
+    data: Pick<ScanPayload, 'vehicleId'>,
+    context: ScanAccessContext,
+    tx: Prisma.TransactionClient | PrismaService,
+  ) {
+    const role = this.normalizeRole(context.viewerRole);
+
+    if (this.isPrivilegedRole(role)) {
+      return;
+    }
+
+    if (role === 'AGENCY_STAFF') {
+      if (!context.viewerAgencyId || item.booking?.agencyId !== context.viewerAgencyId) {
+        throw new ForbiddenException('You can only scan items linked to your agency.');
+      }
+      return;
+    }
+
+    if (role === 'DRIVER') {
+      if (!context.viewerDriverId || item.booking?.driverId !== context.viewerDriverId) {
+        throw new ForbiddenException('You can only scan items linked to your assigned booking.');
+      }
+      return;
+    }
+
+    if (!['CUSTOMER', 'CORPORATE', 'COURIER_COMPANY'].includes(role)) {
+      throw new ForbiddenException('You do not have permission to record this scan.');
+    }
+
+    if (!context.viewerUserId || item.booking?.customerId !== context.viewerUserId) {
+      throw new ForbiddenException('You can only scan items that belong to your own bookings.');
+    }
+
+    if (!data.vehicleId) {
+      return;
+    }
+
+    const vehicle = await tx.vehicle.findUnique({
+      where: { id: data.vehicleId },
+      select: {
+        id: true,
+        ownerUserId: true,
+      },
+    });
+
+    if (!vehicle) {
+      throw new NotFoundException('Vehicle not found');
+    }
+
+    const vehicleMatchesBooking =
+      item.booking?.vehicleId === vehicle.id || item.currentVehicleId === vehicle.id;
+
+    if (!vehicleMatchesBooking && vehicle.ownerUserId !== context.viewerUserId) {
+      throw new ForbiddenException(
+        'You can only scan against your own fleet or the vehicle assigned to this booking.',
+      );
+    }
+  }
 
   private buildSyncKey(clientReference: string) {
     return `scan-sync:${clientReference}`;
@@ -482,14 +567,26 @@ export class ScanService {
     }
   }
 
-  async validateMovement(data: ScanPayload) {
+  async validateMovement(data: ScanPayload, context: ScanAccessContext = {}) {
     const item = await this.prisma.inventoryItem.findUnique({
       where: { id: data.itemId },
+      include: {
+        booking: {
+          select: {
+            customerId: true,
+            agencyId: true,
+            driverId: true,
+            vehicleId: true,
+          },
+        },
+      },
     });
 
     if (!item) {
       throw new NotFoundException('Item not found');
     }
+
+    await this.assertItemAccess(item, data, context, this.prisma);
 
     const latestScan = await this.prisma.scanEvent.findFirst({
       where: { itemId: data.itemId },
@@ -515,19 +612,33 @@ export class ScanService {
     }
   }
 
-  async recordScan(data: ScanPayload, performedBy: string) {
+  async recordScan(
+    data: ScanPayload,
+    performedBy: string,
+    context: ScanAccessContext = {},
+  ) {
     return this.prisma.$transaction(async tx => {
       const occurredAt = this.normalizeOccurredAt(data.occurredAt);
       const item = await tx.inventoryItem.findUnique({
         where: { id: data.itemId },
         include: {
-          booking: true,
+          booking: {
+            select: {
+              id: true,
+              customerId: true,
+              agencyId: true,
+              driverId: true,
+              vehicleId: true,
+            },
+          },
         },
       });
 
       if (!item) {
         throw new NotFoundException('Item not found');
       }
+
+      await this.assertItemAccess(item, data, context, tx);
 
       const deduplicated = await this.deduplicateScan(
         item,
@@ -604,33 +715,51 @@ export class ScanService {
     });
   }
 
-  async loadToVehicle(data: any, performedBy: string) {
+  async loadToVehicle(
+    data: any,
+    performedBy: string,
+    context: ScanAccessContext = {},
+  ) {
     return this.recordScan(
       {
         ...data,
         checkpoint: ScanCheckpoint.VEHICLE_LOAD,
       },
       performedBy,
+      context,
     );
   }
 
-  async unloadFromVehicle(data: any, performedBy: string) {
+  async unloadFromVehicle(
+    data: any,
+    performedBy: string,
+    context: ScanAccessContext = {},
+  ) {
     return this.recordScan(
       {
         ...data,
         checkpoint: ScanCheckpoint.VEHICLE_UNLOAD,
       },
       performedBy,
+      context,
     );
   }
 
-  async confirmDelivery(data: any, performedBy: string) {
+  async confirmDelivery(
+    data: any,
+    performedBy: string,
+    context: ScanAccessContext = {},
+  ) {
     const item = await this.prisma.inventoryItem.findUnique({
       where: { id: data.itemId },
       include: {
         booking: {
           select: {
             id: true,
+            customerId: true,
+            agencyId: true,
+            driverId: true,
+            vehicleId: true,
             deliveryOtp: true,
             deliveryProofUrl: true,
           },
@@ -645,6 +774,8 @@ export class ScanService {
     if (!item.booking) {
       throw new NotFoundException('Booking not found for this item');
     }
+
+    await this.assertItemAccess(item, data, context, this.prisma);
 
     if (!item.booking.deliveryOtp) {
       throw new BadRequestException('Delivery OTP is not available for booking');
@@ -668,6 +799,7 @@ export class ScanService {
         syncMode: data.syncMode,
       },
       performedBy,
+      context,
     );
 
     if (result.accepted) {

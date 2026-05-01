@@ -86,7 +86,6 @@ backend/uploads/
 
 # ── Deployment Vendor / Runtime ─────────────────────────────
 
-.render/
 
 # ── Keep lock files (IMPORTANT — DO NOT IGNORE) ──────────────
 

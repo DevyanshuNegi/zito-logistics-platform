@@ -24,12 +24,17 @@ All users authenticate through a single entry point with role-based routing post
 identifier = phone OR email
 Login Methods
 Phone OTP (primary method)
-Email + Password
-Email OTP (fallback)
+Email OTP (secondary method)
+Email + Password (fallback after OTP failures and for password-enabled accounts)
 Account Lifecycle
 pending → verified → active → suspended → rejected
 Rule: Only ACTIVE accounts may log in. Any other status results in a blocked session with a descriptive error.
 OTP Handling & Security Rules:
+Target defaults:
+OTP validity = 5 minutes
+Resend cooldown = 30 seconds
+UI must show resend countdown before another code can be requested
+Maximum resend attempts = 4 resends after the first code, 5 total OTP requests
 OTP validity: configurable (e.g., 2–5 minutes)
 Resend OTP allowed after cooldown (e.g., 30 seconds)
 Maximum resend attempts limit (e.g., 3–5 attempts)
@@ -38,7 +43,12 @@ Rules:
 Expired OTP must be rejected
 Multiple failed attempts → temporary account lock
 OTP must be single-use only
+OTP must be stored hashed at rest
+Verification target must be masked in the UI
+Failed OTP responses must show attempts remaining whenever the account is not yet locked
 Fallback:
+If OTP fails repeatedly, allow alternative login method (email/password) inside the same login flow when the account has password sign-in enabled
+Phone sign-in must use separate country-code and local-number fields
 If OTP fails repeatedly → allow alternative login method (email/password)
 Session Continuity & Recovery:
 If app is closed or network lost, user should resume last step
@@ -1012,11 +1022,11 @@ Final Verdict
 Enterprise-Grade Logistics + ERP + Warehouse Platform
 Africa-Scale Ready  •  Investor-Ready  •  Production-Ready
 58. Courier Company & Owned Fleet Expansion Addendum
-Objective: Extend Zito beyond standard customer and transporter usage by enabling customer-owned fleets, dedicated courier-company operations, and platform-managed PTL supply-chain orchestration.
-Role Model: Add a dedicated COURIER_COMPANY role with separate login and portal routing. Courier companies operate as demand-side partners that can create PTL and courier requests, manage their own fleet, and hire platform capacity when internal supply is insufficient.
+Objective: Extend Zito beyond standard customer and transporter usage by enabling customer-owned fleets, dedicated courier-company operations, and CFA-managed county-to-county supply-chain orchestration through the Zito portal.
+Role Model: Add a dedicated COURIER_COMPANY role with separate login and portal routing. Courier companies operate inside the Zito CFA portal, where they create and manage PTL, courier, and FTL movement plans, manage their own fleet when available, and work through the Zito network when shared execution support is required.
 Owned Fleet Scope: Customer, Corporate, Courier Company, and Transporter accounts may register and manage vehicles they own under their own account scope, with ownership-based access control enforced across fleet workflows.
 Commercial Model: The platform must support platform-fee charging per owned vehicle, per managed fleet, or per transaction depending on commercial agreement. Fee policy may be contract-driven, subscription-driven, or usage-driven.
-Courier Supply Chain Mode: Courier companies may request PTL, courier, or FTL capacity from the Zito platform. The platform should match owned-fleet preference first when configured, then fall back to transporter or marketplace supply under the same booking and tracking chain.
+Courier Supply Chain Mode: Courier companies use the Zito portal as their operations workspace for county-to-county supply-chain execution. Each movement plan must store whether execution is owned-fleet, CFA-network, or blended, while preserving one booking, tracking, scan, and handoff chain across the journey.
 Multi-Load / Multi-Unload Rules: Courier-company requests must support multiple loading points and multiple unloading points. Booking validation must require at least one load or pickup stop and at least one unload or delivery stop, while preserving ordered stop sequencing for routing, scanning, and handoff visibility.
 Operations & Traceability: Every parcel or shipment movement under courier-company mode must remain linked to vehicle, driver, booking, scan, waybill or LR, and destination chain-of-custody records exactly like the base logistics flow.
-Implementation Guidance: The app should expose separate courier-company web and mobile workspaces, customer-owned fleet management, and future finance automation for platform-fee billing. Where billing automation is not yet live, the PRD must mark it as a pending finance-control follow-up rather than implying completion.
+Implementation Guidance: The app should expose separate courier-company web and mobile workspaces, dispatch visibility, scan operations, waybill access, customer-owned fleet management, and future finance automation for platform-fee billing. Where billing automation is not yet live, the PRD must mark it as a pending finance-control follow-up rather than implying completion.

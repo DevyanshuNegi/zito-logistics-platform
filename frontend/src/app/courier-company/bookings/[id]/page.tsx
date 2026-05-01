@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { ApiError, api } from '@/lib/api';
+import { formatCourierCapacitySource } from '@/lib/courier-capacity';
 import { formatDateTime, formatMoney, formatStatus } from '@/lib/format';
 
 type BookingStop = {
@@ -25,9 +26,15 @@ type BookingDetail = {
   totalPrice: number;
   createdAt?: string;
   serviceType?: string | null;
+  capacitySource?: string | null;
   cargoType?: string | null;
   vehicleType?: string | null;
   specialInstructions?: string | null;
+  _count?: {
+    parcels?: number;
+    scanEvents?: number;
+    waybills?: number;
+  } | null;
   stops?: BookingStop[];
   driver?: {
     user?: {
@@ -108,6 +115,15 @@ export default function CourierCompanyBookingDetailPage() {
         description={`Created ${formatDateTime(booking.createdAt)}.`}
         actions={
           <div className="flex flex-wrap gap-3">
+            <Link href="/courier-company/dispatch">
+              <Button variant="secondary">Open dispatch</Button>
+            </Link>
+            <Link href="/courier-company/scan">
+              <Button variant="secondary">Open scan ops</Button>
+            </Link>
+            <Link href="/courier-company/waybills">
+              <Button variant="secondary">Open waybills</Button>
+            </Link>
             <Link href="/courier-company/fleet">
               <Button variant="secondary">Open owned fleet</Button>
             </Link>
@@ -140,10 +156,25 @@ export default function CourierCompanyBookingDetailPage() {
               {booking.driver?.user?.fullName ?? 'Awaiting assignment'}
             </p>
           </div>
+          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Execution</p>
+            <p className="mt-3 text-lg font-semibold text-white">
+              {formatCourierCapacitySource(booking.capacitySource)}
+            </p>
+          </div>
+          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Ops trail</p>
+            <p className="mt-3 text-lg font-semibold text-white">
+              {booking._count?.scanEvents ?? 0} scan(s)
+            </p>
+            <p className="mt-1 text-sm text-slate-400">
+              {booking._count?.waybills ?? 0} waybill(s) • {booking._count?.parcels ?? 0} parcel(s)
+            </p>
+          </div>
         </div>
       </SurfaceCard>
 
-      <SurfaceCard title="Movement plan" description="The courier-company load plan can include multiple loading and unloading points for PTL or courier distribution.">
+      <SurfaceCard title="Movement plan" description="The courier-company load plan can include multiple loading and unloading points across the county-to-county chain.">
         <div className="space-y-4">
           {(booking.stops ?? []).map((stop) => (
             <div key={`${stop.sequence}-${stop.address}`} className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
@@ -159,7 +190,7 @@ export default function CourierCompanyBookingDetailPage() {
         </div>
       </SurfaceCard>
 
-      <SurfaceCard title="Commercial summary" description="Operational context for the courier-company request.">
+      <SurfaceCard title="Commercial summary" description="Operational context for the courier-company movement plan.">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Service line</p>
@@ -168,6 +199,9 @@ export default function CourierCompanyBookingDetailPage() {
             </p>
             <p className="mt-1 text-sm text-slate-400">
               Vehicle: {booking.vehicleType ?? booking.vehicle?.type ?? 'Pending'}
+            </p>
+            <p className="mt-1 text-sm text-slate-400">
+              Execution: {formatCourierCapacitySource(booking.capacitySource)}
             </p>
           </div>
           <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">

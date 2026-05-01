@@ -92,6 +92,7 @@ bower_components/
 *.sqlite
 *.db
 *.sql
+!backend/prisma/migrations/**/*.sql
 *.dump
 *.pg_dump
 
@@ -109,11 +110,6 @@ backend/uploads/
 *.pem
 *.key
 *.cert
-
-# =========================
-# Deployment Vendor Local Config
-# =========================
-.render/
 
 # =========================
 # Expo / Mobile (PRD §9)

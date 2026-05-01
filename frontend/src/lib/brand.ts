@@ -5,13 +5,12 @@ export const BRAND = {
   companyTagline: 'Connecting possibilities. Delivering value.',
   appDescriptor: 'Your logistics. Simplified.',
   appDescription:
-    'Zito is the logistics platform by Aurenza Limited for booking, tracking, warehousing, invoicing, and operational control.',
-  productLine: 'Zito by Aurenza Limited',
-  issuerLine: 'Issued by Aurenza Limited via the Zito platform',
+    'Zito is the logistics platform for booking, tracking, warehousing, invoicing, and operational control.',
+  productLine: 'Zito Logistics Platform',
+  issuerLine: 'Issued by Aurenza Limited',
   assets: {
     companyLogo: '/aurenza-limited.png',
     appLogo: '/zito-logo.png',
-    appWordmark: '/zito-wordmark.png',
     appIcon: '/zito-app-icon.png',
   },
 } as const;

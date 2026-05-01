@@ -16,13 +16,32 @@ import {
 export class ScanController {
   constructor(private readonly scanService: ScanService) {}
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AGENCY_STAFF', 'DRIVER', 'TRANSPORTER')
+  @Roles(
+    'SUPER_ADMIN',
+    'ADMIN',
+    'AGENCY_STAFF',
+    'DRIVER',
+    'TRANSPORTER',
+    'COURIER_COMPANY',
+  )
   @Post('validate')
-  validateMovement(@Body() data: ValidateScanDto) {
-    return this.scanService.validateMovement(data);
+  validateMovement(@Body() data: ValidateScanDto, @Req() req: any) {
+    return this.scanService.validateMovement(data, {
+      viewerRole: req.user.activeRole ?? req.user.role,
+      viewerUserId: req.user.id,
+      viewerAgencyId: req.user.agencyId,
+      viewerDriverId: req.user.driverId,
+    });
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AGENCY_STAFF', 'DRIVER', 'TRANSPORTER')
+  @Roles(
+    'SUPER_ADMIN',
+    'ADMIN',
+    'AGENCY_STAFF',
+    'DRIVER',
+    'TRANSPORTER',
+    'COURIER_COMPANY',
+  )
   @Post()
   recordScan(@Body() data: RecordScanDto, @Req() req: any) {
     const performedBy = req.user.id;
@@ -31,10 +50,22 @@ export class ScanController {
       data.driverId = req.user.driverId;
     }
 
-    return this.scanService.recordScan(data, performedBy);
+    return this.scanService.recordScan(data, performedBy, {
+      viewerRole: activeRole,
+      viewerUserId: req.user.id,
+      viewerAgencyId: req.user.agencyId,
+      viewerDriverId: req.user.driverId,
+    });
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AGENCY_STAFF', 'DRIVER', 'TRANSPORTER')
+  @Roles(
+    'SUPER_ADMIN',
+    'ADMIN',
+    'AGENCY_STAFF',
+    'DRIVER',
+    'TRANSPORTER',
+    'COURIER_COMPANY',
+  )
   @Post('vehicle-load')
   loadToVehicle(@Body() data: VehicleLoadDto, @Req() req: any) {
     const performedBy = req.user.id;
@@ -47,10 +78,23 @@ export class ScanController {
             : undefined,
       },
       performedBy,
+      {
+        viewerRole: req.user.activeRole ?? req.user.role,
+        viewerUserId: req.user.id,
+        viewerAgencyId: req.user.agencyId,
+        viewerDriverId: req.user.driverId,
+      },
     );
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AGENCY_STAFF', 'DRIVER', 'TRANSPORTER')
+  @Roles(
+    'SUPER_ADMIN',
+    'ADMIN',
+    'AGENCY_STAFF',
+    'DRIVER',
+    'TRANSPORTER',
+    'COURIER_COMPANY',
+  )
   @Post('vehicle-unload')
   unloadFromVehicle(@Body() data: VehicleUnloadDto, @Req() req: any) {
     const performedBy = req.user.id;
@@ -63,10 +107,16 @@ export class ScanController {
             : undefined,
       },
       performedBy,
+      {
+        viewerRole: req.user.activeRole ?? req.user.role,
+        viewerUserId: req.user.id,
+        viewerAgencyId: req.user.agencyId,
+        viewerDriverId: req.user.driverId,
+      },
     );
   }
 
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AGENCY_STAFF', 'DRIVER')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'AGENCY_STAFF', 'DRIVER', 'COURIER_COMPANY')
   @Post('confirm-delivery')
   confirmDelivery(@Body() data: ConfirmDeliveryDto, @Req() req: any) {
     const performedBy = req.user.id;
@@ -79,6 +129,12 @@ export class ScanController {
             : undefined,
       },
       performedBy,
+      {
+        viewerRole: req.user.activeRole ?? req.user.role,
+        viewerUserId: req.user.id,
+        viewerAgencyId: req.user.agencyId,
+        viewerDriverId: req.user.driverId,
+      },
     );
   }
 }

@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { OtpService } from './otp.service';
 import { RolesGuard } from './guards/roles.guard';
 import { SessionStateService } from './session-state.service';
 import { SessionGuard } from '../../common/guards/session.guard';
@@ -23,6 +24,7 @@ import { ReauthGuard } from '../../common/guards/reauth.guard';
     AuthService,
     PrismaService,
     JwtStrategy,
+    OtpService,
     RolesGuard,
     SessionStateService,
     SessionGuard,

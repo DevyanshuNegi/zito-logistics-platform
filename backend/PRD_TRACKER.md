@@ -70,8 +70,8 @@ The repo copy was re-synced on 29 April 2026 from the external master v10 docume
 - The repo PRD now includes `58. Courier Company & Owned Fleet Expansion Addendum`, synced from the external master and appended to the repo copy on 29 April 2026.
 - Schema addendum coverage is active with the `COURIER_COMPANY` role plus vehicle ownership linkage between `User` and `Vehicle`.
 - Fleet APIs now enforce owner-account scope for customer, corporate, courier-company, and transporter roles, which enables self-managed fleet operations without exposing other accounts' vehicles.
-- Booking validation now supports courier-company multi-load and multi-unload flow by requiring at least one pickup or load stop and at least one delivery or unload stop.
-- Web coverage is active for `/customer/fleet`, `/corporate/fleet`, and the separate `/courier-company/*` portal, including multi-stop PTL request composition and owned-fleet management.
+- Booking validation now supports courier-company multi-load and multi-unload flow by requiring at least one pickup or load stop and at least one delivery or unload stop, while the booking model now stores whether execution is `OWNED_FLEET`, `CFA_NETWORK`, or `BLENDED`.
+- Web coverage is active for `/customer/fleet`, `/corporate/fleet`, and the separate `/courier-company/*` portal, including multi-stop movement-plan composition, dispatch visibility, scan operations, waybill access, and owned-fleet management.
 - Platform-fee charging per vehicle or fleet is now active through `/admin/billing/platform-fee`, with role-aware default fee rules, idempotent billing-window protection, platform invoice generation, and self-serve invoice visibility for courier-company and transporter accounts.
 - Mobile courier-company and customer-owned-fleet coverage is now active through the Expo app routes, including customer-owned-fleet management and a dedicated courier-company tab workspace.
 

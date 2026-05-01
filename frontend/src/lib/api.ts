@@ -1,3 +1,5 @@
+import type { LoginMode } from './auth-login';
+
 export type SessionUser = {
   id: string;
   fullName?: string | null;
@@ -27,6 +29,17 @@ export type PendingRegistration = {
   phone?: string | null;
   role?: string | null;
   status?: string | null;
+};
+
+export type OtpSession = {
+  tempToken: string;
+  contact: string;
+  mode: LoginMode;
+  email?: string | null;
+  countryCode?: string | null;
+  phoneNumber?: string | null;
+  resendAvailableAt?: string | null;
+  otpExpiresAt?: string | null;
 };
 
 export class ApiError extends Error {
@@ -83,7 +96,7 @@ export function getStoredSession(): StoredSessionSnapshot {
   return {
     accessToken,
     refreshToken,
-    user: userRaw ? JSON.parse(userRaw) as SessionUser : null,
+    user: userRaw ? (JSON.parse(userRaw) as SessionUser) : null,
   };
 }
 
@@ -105,15 +118,38 @@ export function clearSession() {
   window.localStorage.removeItem(USER_KEY);
 }
 
-export function persistOtpSession(tempToken: string, contact: string) {
+export function persistOtpSession(session: OtpSession) {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(OTP_KEY, JSON.stringify({ tempToken, contact }));
+  window.localStorage.setItem(OTP_KEY, JSON.stringify(session));
 }
 
-export function getOtpSession(): { tempToken: string; contact: string } | null {
+export function getOtpSession(): OtpSession | null {
   if (!canUseStorage()) return null;
   const value = window.localStorage.getItem(OTP_KEY);
-  return value ? JSON.parse(value) as { tempToken: string; contact: string } : null;
+  if (!value) {
+    return null;
+  }
+
+  const parsed = JSON.parse(value) as Partial<OtpSession> & {
+    tempToken?: string;
+    contact?: string;
+  };
+  if (!parsed.tempToken || !parsed.contact) {
+    return null;
+  }
+
+  return {
+    tempToken: parsed.tempToken,
+    contact: parsed.contact,
+    mode:
+      parsed.mode ??
+      (parsed.contact.includes('@') ? 'email_otp' : 'phone_otp'),
+    email: parsed.email ?? null,
+    countryCode: parsed.countryCode ?? null,
+    phoneNumber: parsed.phoneNumber ?? null,
+    resendAvailableAt: parsed.resendAvailableAt ?? null,
+    otpExpiresAt: parsed.otpExpiresAt ?? null,
+  };
 }
 
 export function clearOtpSession() {
@@ -129,7 +165,7 @@ export function persistPendingRegistration(registration: PendingRegistration) {
 export function getPendingRegistration() {
   if (!canUseStorage()) return null;
   const value = window.localStorage.getItem(PENDING_KEY);
-  return value ? JSON.parse(value) as PendingRegistration : null;
+  return value ? (JSON.parse(value) as PendingRegistration) : null;
 }
 
 export function clearPendingRegistration() {

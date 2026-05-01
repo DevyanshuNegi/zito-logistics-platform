@@ -39,11 +39,12 @@ export class InventoryController {
     'WAREHOUSE_PARTNER',
     'TRANSPORTER',
     'CUSTOMER',
+    'COURIER_COMPANY',
   )
   @Get()
   listItems(@Query() query: InventoryQueryDto, @Req() req: any) {
     const activeRole = req.user.activeRole ?? req.user.role;
-    if (activeRole === 'CUSTOMER') {
+    if (activeRole === 'CUSTOMER' || activeRole === 'COURIER_COMPANY') {
       query.ownerId = req.user.id;
     }
 
@@ -57,6 +58,7 @@ export class InventoryController {
     'WAREHOUSE_PARTNER',
     'TRANSPORTER',
     'CUSTOMER',
+    'COURIER_COMPANY',
   )
   @Get('owner/:ownerId')
   filterByOwner(
@@ -64,7 +66,10 @@ export class InventoryController {
     @Req() req: any,
   ) {
     const activeRole = req.user.activeRole ?? req.user.role;
-    if (activeRole === 'CUSTOMER' && req.user.id !== ownerId) {
+    if (
+      (activeRole === 'CUSTOMER' || activeRole === 'COURIER_COMPANY') &&
+      req.user.id !== ownerId
+    ) {
       throw new ForbiddenException('Forbidden');
     }
 
@@ -92,13 +97,17 @@ export class InventoryController {
     'WAREHOUSE_PARTNER',
     'TRANSPORTER',
     'CUSTOMER',
+    'COURIER_COMPANY',
   )
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     const item = await this.inventoryService.getItemById(id);
     const activeRole = req.user.activeRole ?? req.user.role;
 
-    if (activeRole === 'CUSTOMER' && item.ownerId !== req.user.id) {
+    if (
+      (activeRole === 'CUSTOMER' || activeRole === 'COURIER_COMPANY') &&
+      item.ownerId !== req.user.id
+    ) {
       throw new ForbiddenException('Forbidden');
     }
 

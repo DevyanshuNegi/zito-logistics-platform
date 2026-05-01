@@ -29,8 +29,14 @@ export class AuthController {
 
   @Post('login')
   @ApiOperation({ summary: 'PRD §3: Unified login via email/phone' })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(@Req() req: any, @Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto, {
+      ipAddress: this.getClientIp(req),
+      deviceInfo:
+        typeof req.headers['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : null,
+    });
   }
 
   @Post('verify-otp')

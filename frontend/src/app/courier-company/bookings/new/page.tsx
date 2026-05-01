@@ -7,8 +7,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { ApiError, api } from '@/lib/api';
+import {
+  COURIER_CAPACITY_OPTIONS,
+  formatCourierCapacitySource,
+} from '@/lib/courier-capacity';
 import { formatMoney } from '@/lib/format';
-import { estimateDistanceKm } from '@/lib/geo';
+import { estimateDistanceKm, parseCoordinate } from '@/lib/geo';
 import { SERVICE_TYPES, VEHICLE_TYPES } from '@/lib/phase-one';
 import { useAppPreferences } from '@/contexts/AppPreferencesContext';
 
@@ -75,7 +79,7 @@ export default function CourierCompanyNewBookingPage() {
   const [cargoDescription, setCargoDescription] = useState('');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [isScheduled, setIsScheduled] = useState(false);
-  const [useOwnedFleet, setUseOwnedFleet] = useState(false);
+  const [capacitySource, setCapacitySource] = useState('CFA_NETWORK');
   const [stops, setStops] = useState<StopForm[]>([
     createStop('LOAD', 'load-1'),
     createStop('UNLOAD', 'unload-1'),
@@ -93,17 +97,22 @@ export default function CourierCompanyNewBookingPage() {
       const start = stops[index];
       const end = stops[index + 1];
       const coordinates = [
-        Number(start.latitude),
-        Number(start.longitude),
-        Number(end.latitude),
-        Number(end.longitude),
+        parseCoordinate(start.latitude),
+        parseCoordinate(start.longitude),
+        parseCoordinate(end.latitude),
+        parseCoordinate(end.longitude),
       ];
 
-      if (coordinates.some((value) => !Number.isFinite(value))) {
+      if (coordinates.some((value) => value == null)) {
         return null;
       }
 
-      total += estimateDistanceKm(coordinates[0], coordinates[1], coordinates[2], coordinates[3]);
+      total += estimateDistanceKm(
+        coordinates[0]!,
+        coordinates[1]!,
+        coordinates[2]!,
+        coordinates[3]!,
+      );
     }
 
     return total;
@@ -120,6 +129,9 @@ export default function CourierCompanyNewBookingPage() {
 
   useEffect(() => {
     if (step !== 3 || estimatedDistance == null) {
+      setQuote(null);
+      setQuoteError(null);
+      setQuoteLoading(false);
       return;
     }
 
@@ -171,26 +183,34 @@ export default function CourierCompanyNewBookingPage() {
     setSaving(true);
     setError(null);
 
+    const normalizedStops = stops.map((stop) => ({
+      ...stop,
+      latitude: parseCoordinate(stop.latitude),
+      longitude: parseCoordinate(stop.longitude),
+    }));
+
+    if (normalizedStops.some((stop) => stop.latitude == null || stop.longitude == null)) {
+      setError('Every stop needs a valid latitude and longitude before the movement plan can be created.');
+      setSaving(false);
+      return;
+    }
+
     try {
       const response = await api.post<CreateBookingResponse>('/courier-company/bookings', {
         serviceType,
+        capacitySource,
         vehicleType,
         cargoType: cargoType || undefined,
         cargoWeightKg: cargoWeightKg ? Number(cargoWeightKg) : undefined,
         cargoDescription: cargoDescription || undefined,
-        specialInstructions: [
-          specialInstructions,
-          useOwnedFleet ? 'Preferred capacity source: owned fleet first.' : 'Preferred capacity source: platform-hired fleet allowed.',
-        ]
-          .filter(Boolean)
-          .join(' '),
+        specialInstructions: specialInstructions || undefined,
         isScheduled,
         idempotencyKey: generateIdempotencyKey(),
-        stops: stops.map((stop, index) => ({
+        stops: normalizedStops.map((stop, index) => ({
           sequence: index + 1,
           address: stop.address,
-          latitude: Number(stop.latitude),
-          longitude: Number(stop.longitude),
+          latitude: stop.latitude!,
+          longitude: stop.longitude!,
           contactName: stop.contactName,
           contactPhone: stop.contactPhone,
           stopType: stop.stopType,
@@ -241,7 +261,7 @@ export default function CourierCompanyNewBookingPage() {
       </div>
 
       {step === 1 ? (
-        <SurfaceCard title="Service and load profile" description="Courier-company requests can run on your own fleet, on Zito-hired supply, or on a blended capacity model.">
+        <SurfaceCard title="Service and load profile" description="Plan the county-to-county movement, then choose whether it runs on owned fleet, the Zito CFA network, or a blended execution model.">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-slate-200">Service type</span>
@@ -288,15 +308,33 @@ export default function CourierCompanyNewBookingPage() {
               />
               Mark this as a scheduled movement plan
             </label>
-            <label className="flex items-center gap-3 text-sm text-slate-300">
-              <input
-                checked={useOwnedFleet}
-                className="h-4 w-4 rounded border-slate-700 bg-slate-950/60"
-                onChange={(event) => setUseOwnedFleet(event.target.checked)}
-                type="checkbox"
-              />
-              Use owned fleet first before marketplace or platform-hired capacity
-            </label>
+            <div className="md:col-span-2">
+              <p className="text-sm font-medium text-slate-200">Execution model</p>
+              <p className="mt-2 text-sm text-slate-400">
+                Zito acts as the CFA operations backbone while the courier company works from this portal.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {COURIER_CAPACITY_OPTIONS.map((option) => {
+                  const selected = capacitySource === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      className={[
+                        'rounded-3xl border p-4 text-left transition',
+                        selected
+                          ? 'border-amber-400/50 bg-amber-500/12 text-amber-50'
+                          : 'border-slate-700/60 bg-slate-950/60 text-slate-200',
+                      ].join(' ')}
+                      onClick={() => setCapacitySource(option.value)}
+                      type="button"
+                    >
+                      <p className="font-semibold">{option.label}</p>
+                      <p className="mt-2 text-sm text-slate-400">{option.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </SurfaceCard>
       ) : null}
@@ -304,7 +342,7 @@ export default function CourierCompanyNewBookingPage() {
       {step === 2 ? (
         <SurfaceCard
           title="Loading and unloading stops"
-          description="Courier-company requests can define multiple loading and unloading points. At least one load and one unload stop are required."
+          description="Courier-company requests can define multiple loading and unloading points across the county-to-county chain. At least one load and one unload stop are required."
           actions={
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="secondary" onClick={() => addStop('LOAD')}>
@@ -329,7 +367,7 @@ export default function CourierCompanyNewBookingPage() {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-white">Stop {index + 1}</p>
-                    <p className="text-xs text-slate-400">Sequence-aware load planning for courier distribution.</p>
+                    <p className="text-xs text-slate-400">Sequence-aware county-to-county handoff planning.</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <select
@@ -365,7 +403,7 @@ export default function CourierCompanyNewBookingPage() {
       ) : null}
 
       {step === 3 ? (
-        <SurfaceCard title="Confirm courier-company request" description="Review the multi-stop load plan before it enters the booking and assignment flow.">
+        <SurfaceCard title="Confirm movement plan" description="Review the load plan before it enters CFA coordination, assignment, and traceability flows.">
           <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
             <div className="space-y-4">
               {stops.map((stop, index) => (
@@ -386,6 +424,9 @@ export default function CourierCompanyNewBookingPage() {
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Service</p>
                 <p className="mt-2 text-lg font-semibold text-white">{serviceType}</p>
                 <p className="mt-1 text-sm text-slate-400">{vehicleType}</p>
+                <p className="mt-1 text-sm text-slate-400">
+                  Execution: {formatCourierCapacitySource(capacitySource)}
+                </p>
               </div>
 
               <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
@@ -419,7 +460,7 @@ export default function CourierCompanyNewBookingPage() {
               </div>
 
               <Button className="w-full" disabled={saving} type="submit">
-                {saving ? 'Creating request...' : 'Create courier-company request'}
+                {saving ? 'Creating movement...' : 'Create movement plan'}
               </Button>
             </div>
           </div>

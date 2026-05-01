@@ -206,7 +206,7 @@ export function OwnedFleetWorkspace({
         </form>
       </SurfaceCard>
 
-      <SurfaceCard title="Owned fleet roster" description="Vehicle records created under this account can be used for self-managed logistics or platform-linked assignments.">
+      <SurfaceCard title="Owned fleet roster" description="Vehicle records created under this account can be used for self-managed logistics or network-linked assignments.">
         {loading ? (
           <Spinner />
         ) : (

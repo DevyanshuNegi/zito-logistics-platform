@@ -9,6 +9,7 @@ import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
 import { ApiError, api } from '@/lib/api';
+import { formatCourierCapacitySource } from '@/lib/courier-capacity';
 import { formatDateTime, formatMoney, formatStatus } from '@/lib/format';
 
 type BookingStop = {
@@ -23,7 +24,13 @@ type Booking = {
   totalPrice: number;
   createdAt?: string;
   serviceType?: string | null;
+  capacitySource?: string | null;
   stops?: BookingStop[];
+  _count?: {
+    waybills?: number;
+    parcels?: number;
+    scanEvents?: number;
+  } | null;
 };
 
 type BookingResponse = {
@@ -86,13 +93,13 @@ export default function CourierCompanyBookingsPage() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Load plans" value={String(total)} helper="Courier-company bookings owned by this account." />
-        <StatCard label="Active" value={String(activeCount)} helper="Requests still waiting on execution, assignment, or delivery." tone="info" />
-        <StatCard label="Multi-stop" value={String(multiStopCount)} helper="Requests using multiple load or unload stops." tone="success" />
+        <StatCard label="Load plans" value={String(total)} helper="Movement plans owned by this courier account." />
+        <StatCard label="Active" value={String(activeCount)} helper="County-to-county jobs still in execution or handoff." tone="info" />
+        <StatCard label="Multi-stop" value={String(multiStopCount)} helper="Plans using multiple load or unload stops." tone="success" />
       </div>
 
       <Alert title="Courier-company mode" variant="info">
-        This portal is built for PTL and courier operations where one company can run its own vehicles, hire capacity from Zito, and manage multiple load or unload points inside the same request.
+        This portal gives the courier company an operations workspace while Zito acts as the CFA backbone for county-to-county execution, visibility, and shared network support.
       </Alert>
 
       {error ? (
@@ -103,10 +110,10 @@ export default function CourierCompanyBookingsPage() {
 
       <SurfaceCard
         title="Courier-company bookings"
-        description="Track active PTL and courier movement plans, including multiple loading and unloading stops."
+        description="Track active PTL, courier, and county-to-county movement plans, including multiple loading and unloading stops."
         actions={
           <Link href="/courier-company/bookings/new">
-            <Button>New PTL request</Button>
+            <Button>New movement</Button>
           </Link>
         }
       >
@@ -134,6 +141,18 @@ export default function CourierCompanyBookingsPage() {
                   <div className="text-xs text-slate-300">
                     <p>Loads: {countStops(booking.stops, ['PICKUP', 'LOAD'])}</p>
                     <p>Unloads: {countStops(booking.stops, ['DELIVERY', 'DROPOFF', 'UNLOAD'])}</p>
+                  </div>
+                ),
+              },
+              {
+                key: 'capacity',
+                header: 'Execution',
+                render: (booking) => (
+                  <div className="text-xs text-slate-300">
+                    <p>{formatCourierCapacitySource(booking.capacitySource)}</p>
+                    <p className="text-slate-500">
+                      {booking._count?.waybills ?? 0} waybill(s) • {booking._count?.scanEvents ?? 0} scan(s)
+                    </p>
                   </div>
                 ),
               },

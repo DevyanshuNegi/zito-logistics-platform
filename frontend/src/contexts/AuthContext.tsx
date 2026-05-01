@@ -18,6 +18,7 @@ import {
   persistOtpSession,
   persistPendingRegistration,
   persistSession,
+  type OtpSession,
   type PendingRegistration,
   type SessionUser,
   type StoredSession,
@@ -32,7 +33,7 @@ type AuthContextValue = {
   pendingRegistration: PendingRegistration | null;
   login: (session: StoredSession) => void;
   logout: () => void;
-  saveOtpSession: (tempToken: string, contact: string) => void;
+  saveOtpSession: (session: OtpSession) => void;
   clearOtp: () => void;
   savePendingRegistration: (registration: PendingRegistration) => void;
   clearPending: () => void;
@@ -88,8 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRefreshToken(null);
       setOtpSession(null);
     },
-    saveOtpSession: (tempToken, contact) => {
-      persistOtpSession(tempToken, contact);
+    saveOtpSession: (session) => {
+      persistOtpSession(session);
       setOtpSession(getOtpSession());
     },
     clearOtp: () => {

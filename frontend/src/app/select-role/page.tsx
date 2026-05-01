@@ -8,11 +8,11 @@ export default function SelectRolePage() {
     <AuthShell
       eyebrow="Role Selection"
       title={`Choose your ${BRAND.appName} journey`}
-      subtitle={`Registration stays role-aware so ${BRAND.companyName} can route you into the right approval and portal flow after onboarding.`}
+      subtitle="Choose the role that matches how you will work inside Zito."
       footer={
         <p>
           Already registered?{' '}
-          <Link href="/login" className="text-cyan-200 hover:text-violet-200">
+          <Link href="/login" className="text-cyan-200 hover:text-cyan-100">
             Continue to login
           </Link>
           .

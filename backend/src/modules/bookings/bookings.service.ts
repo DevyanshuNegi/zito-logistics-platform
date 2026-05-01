@@ -6,7 +6,12 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BookingStatus, ServiceType, VehicleStatus } from '@prisma/client';
+import {
+  BookingCapacitySource,
+  BookingStatus,
+  ServiceType,
+  VehicleStatus,
+} from '@prisma/client';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateStatusDto, DRIVER_ALLOWED_TRANSITIONS } from './dto/update-status.dto';
 import { AssignDriverDto } from './dto/assign-driver.dto';
@@ -92,13 +97,14 @@ export class BookingsService {
     const reference = await this.generateReference();
 
     const booking = await this.prisma.booking.create({
-      data: {
-        reference,
-        customerId,
-        agencyId: dto.agencyId ?? null,
-        serviceType: dto.serviceType,
-        requiredVehicleType: dto.vehicleType,
-        status: BookingStatus.CREATED,
+        data: {
+          reference,
+          customerId,
+          agencyId: dto.agencyId ?? null,
+          serviceType: dto.serviceType,
+          capacitySource: dto.capacitySource ?? BookingCapacitySource.CFA_NETWORK,
+          requiredVehicleType: dto.vehicleType,
+          status: BookingStatus.CREATED,
         idempotencyKey: dto.idempotencyKey,
         cargoType: dto.cargoType ?? null,
         cargoWeightKg: dto.cargoWeightKg ?? null,
@@ -128,12 +134,20 @@ export class BookingsService {
         stops: { orderBy: { sequence: 'asc' } },
         driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
         vehicle: { select: { id: true, plateNumber: true, type: true } },
+        _count: {
+          select: {
+            parcels: true,
+            scanEvents: true,
+            waybills: true,
+          },
+        },
       },
     });
 
     await this.writeAudit(customerId, 'BOOKING_CREATED', 'BOOKING', booking.id, {
       reference: booking.reference,
       serviceType: booking.serviceType,
+      capacitySource: booking.capacitySource,
       totalPrice: booking.totalPrice,
     });
 
@@ -170,9 +184,16 @@ export class BookingsService {
         skip,
         take: limit,
         include: {
-          stops: { orderBy: { sequence: 'asc' }, take: 2 },
+          stops: { orderBy: { sequence: 'asc' }, take: 3 },
           driver: { include: { user: { select: { fullName: true, phone: true } } } },
           vehicle: { select: { plateNumber: true, type: true } },
+          _count: {
+            select: {
+              parcels: true,
+              scanEvents: true,
+              waybills: true,
+            },
+          },
         },
       }),
       this.prisma.booking.count({ where }),
@@ -243,6 +264,21 @@ export class BookingsService {
         escrow: true,
         supportTickets: { orderBy: { createdAt: 'desc' }, take: 5 },
         waybills: true,
+        parcels: {
+          select: {
+            id: true,
+            parcelId: true,
+            status: true,
+            currentVehicleId: true,
+          },
+        },
+        _count: {
+          select: {
+            parcels: true,
+            scanEvents: true,
+            waybills: true,
+          },
+        },
       },
     });
 

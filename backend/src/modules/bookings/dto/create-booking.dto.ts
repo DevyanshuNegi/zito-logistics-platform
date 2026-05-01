@@ -12,7 +12,11 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ServiceType, VehicleType } from '@prisma/client';
+import {
+  BookingCapacitySource,
+  ServiceType,
+  VehicleType,
+} from '@prisma/client';
 
 export class BookingStopDto {
   @IsNumber()
@@ -48,6 +52,10 @@ export class BookingStopDto {
 export class CreateBookingDto {
   @IsEnum(ServiceType)
   serviceType: ServiceType;
+
+  @IsEnum(BookingCapacitySource)
+  @IsOptional()
+  capacitySource?: BookingCapacitySource;
 
   // Must match VehicleType enum — used to look up RateCard
   @IsEnum(VehicleType)

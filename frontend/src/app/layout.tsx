@@ -5,7 +5,7 @@ import { AppPreferencesProvider } from '@/contexts/AppPreferencesContext';
 import { BRAND } from '@/lib/brand';
 
 export const metadata: Metadata = {
-  title: `${BRAND.appName} | ${BRAND.companyName}`,
+  title: BRAND.appName,
   description: BRAND.appDescription,
   icons: {
     icon: '/zito-app-icon.png',

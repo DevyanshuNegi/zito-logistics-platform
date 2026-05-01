@@ -3,9 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ServiceType, WaybillStatus } from '@prisma/client';
+import { Prisma, ServiceType, WaybillStatus } from '@prisma/client';
 import { BRAND } from '../../config/brand.config';
 import { PrismaService } from '../../prisma/prisma.service';
+
+type WaybillAccessContext = {
+  viewerRole?: string;
+  viewerUserId?: string;
+  viewerAgencyId?: string | null;
+  viewerDriverId?: string | null;
+};
 
 @Injectable()
 export class WaybillService {
@@ -54,6 +61,51 @@ export class WaybillService {
     },
   };
 
+  private normalizeRole(role?: string) {
+    return String(role ?? '').trim().toUpperCase();
+  }
+
+  private buildBookingAccessWhere(
+    context: WaybillAccessContext = {},
+  ): Prisma.BookingWhereInput {
+    const role = this.normalizeRole(context.viewerRole);
+
+    if (role === 'AGENCY_STAFF') {
+      return {
+        agencyId: context.viewerAgencyId ?? '__no_agency__',
+      };
+    }
+
+    if (role === 'DRIVER') {
+      return {
+        driverId: context.viewerDriverId ?? '__no_driver__',
+      };
+    }
+
+    if (['CUSTOMER', 'CORPORATE', 'COURIER_COMPANY'].includes(role)) {
+      return {
+        customerId: context.viewerUserId ?? '__no_owner__',
+      };
+    }
+
+    return {};
+  }
+
+  private buildWaybillAccessWhere(
+    context: WaybillAccessContext = {},
+  ): Prisma.WaybillWhereInput {
+    const bookingWhere = this.buildBookingAccessWhere(context);
+    if (Object.keys(bookingWhere).length === 0) {
+      return {};
+    }
+
+    return {
+      booking: {
+        is: bookingWhere,
+      },
+    };
+  }
+
   private assignType(serviceType: ServiceType) {
     return serviceType === ServiceType.FTL ? 'LR' : 'WAYBILL';
   }
@@ -63,9 +115,10 @@ export class WaybillService {
     return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   }
 
-  async listWaybills(filters: any = {}) {
+  async listWaybills(filters: any = {}, context: WaybillAccessContext = {}) {
     return this.prisma.waybill.findMany({
       where: {
+        ...this.buildWaybillAccessWhere(context),
         ...(filters.bookingId && { bookingId: filters.bookingId }),
         ...(filters.status && { status: filters.status }),
         ...(filters.type && { type: filters.type }),
@@ -75,9 +128,12 @@ export class WaybillService {
     });
   }
 
-  async createWaybill(data: any) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id: data.bookingId },
+  async createWaybill(data: any, context: WaybillAccessContext = {}) {
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        id: data.bookingId,
+        ...this.buildBookingAccessWhere(context),
+      },
       include: {
         parcels: {
           select: {
@@ -96,7 +152,7 @@ export class WaybillService {
     const itemIds =
       data.itemIds && data.itemIds.length > 0
         ? [...new Set(data.itemIds)]
-        : booking.parcels.map(item => item.id);
+        : booking.parcels.map((item) => item.id);
 
     if (itemIds.length === 0) {
       throw new BadRequestException(
@@ -105,7 +161,7 @@ export class WaybillService {
     }
 
     const invalidItemIds = itemIds.filter(
-      itemId => !booking.parcels.some(parcel => parcel.id === itemId),
+      (itemId) => !booking.parcels.some((parcel) => parcel.id === itemId),
     );
     if (invalidItemIds.length > 0) {
       throw new BadRequestException(
@@ -130,17 +186,20 @@ export class WaybillService {
     });
   }
 
-  async findOne(id: string) {
-    const waybill = await this.prisma.waybill.findUnique({
-      where: { id },
+  async findOne(id: string, context: WaybillAccessContext = {}) {
+    const waybill = await this.prisma.waybill.findFirst({
+      where: {
+        id,
+        ...this.buildWaybillAccessWhere(context),
+      },
       include: this.waybillInclude,
     });
     if (!waybill) throw new NotFoundException('Waybill not found');
     return waybill;
   }
 
-  async lockWaybill(id: string) {
-    const waybill = await this.findOne(id);
+  async lockWaybill(id: string, context: WaybillAccessContext = {}) {
+    const waybill = await this.findOne(id, context);
 
     if (waybill.isLocked) {
       return waybill;
@@ -153,8 +212,12 @@ export class WaybillService {
     });
   }
 
-  async updateStatus(id: string, status: WaybillStatus) {
-    const waybill = await this.findOne(id);
+  async updateStatus(
+    id: string,
+    status: WaybillStatus,
+    context: WaybillAccessContext = {},
+  ) {
+    const waybill = await this.findOne(id, context);
     if (waybill.isLocked || waybill.status === WaybillStatus.CLOSED) {
       throw new BadRequestException('Waybill is locked and cannot be edited');
     }
@@ -171,8 +234,8 @@ export class WaybillService {
     });
   }
 
-  async generatePdf(id: string) {
-    const waybill = await this.findOne(id);
+  async generatePdf(id: string, context: WaybillAccessContext = {}) {
+    const waybill = await this.findOne(id, context);
     const PDFDocument = require('pdfkit');
     const doc = new PDFDocument({ margin: 40 });
     const chunks: Buffer[] = [];

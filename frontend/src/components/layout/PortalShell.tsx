@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { useAuth } from '@/hooks/useAuth';
-import { BRAND } from '@/lib/brand';
 import { getRoleHomePath, hasAnyRole } from '@/lib/roles';
 
 type NavItem = {
@@ -65,10 +64,10 @@ export function PortalShell({
             <div className="space-y-3">
               <BrandLockup compact showDescriptor={false} />
               <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/80">
-                  {BRAND.companyName}
-                </p>
                 <h1 className="mt-1 text-2xl font-semibold text-white">{title}</h1>
+                <p className="mt-1 text-xs uppercase tracking-[0.24em] text-slate-400">
+                  Zito Workspace
+                </p>
               </div>
             </div>
             <Badge variant="brand">{user?.role ?? 'Guest'}</Badge>
@@ -123,9 +122,9 @@ export function PortalShell({
           <header className="mb-6 rounded-3xl border border-slate-700/40 bg-slate-950/55 px-5 py-4 shadow-2xl backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{BRAND.companyName}</p>
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Zito Workspace</p>
                 <h2 className="mt-1 text-2xl font-semibold text-white">{title}</h2>
-                <p className="mt-1 text-sm text-slate-400">{BRAND.appName} operations portal</p>
+                <p className="mt-1 text-sm text-slate-400">Operations portal</p>
               </div>
               <div className="flex items-center gap-3">
                 <Badge variant="info">{user?.role ?? 'Guest'}</Badge>

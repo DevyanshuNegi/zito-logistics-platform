@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { ApiError, api } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
-import { estimateDistanceKm } from '@/lib/geo';
+import { estimateDistanceKm, parseCoordinate } from '@/lib/geo';
 import { SERVICE_TYPES, VEHICLE_TYPES } from '@/lib/phase-one';
 import { useAppPreferences } from '@/contexts/AppPreferencesContext';
 
@@ -71,16 +71,19 @@ export default function CorporateNewBookingPage() {
   );
 
   const estimatedDistance = useMemo(() => {
-    const values = [pickupLat, pickupLng, dropLat, dropLng].map((value) => Number(value));
-    if (values.some((value) => !Number.isFinite(value))) {
+    const values = [pickupLat, pickupLng, dropLat, dropLng].map(parseCoordinate);
+    if (values.some((value) => value == null)) {
       return null;
     }
 
-    return estimateDistanceKm(values[0], values[1], values[2], values[3]);
+    return estimateDistanceKm(values[0]!, values[1]!, values[2]!, values[3]!);
   }, [dropLat, dropLng, pickupLat, pickupLng]);
 
   useEffect(() => {
     if (step !== 3 || estimatedDistance == null) {
+      setQuote(null);
+      setQuoteError(null);
+      setQuoteLoading(false);
       return;
     }
 
@@ -118,6 +121,22 @@ export default function CorporateNewBookingPage() {
     setSaving(true);
     setError(null);
 
+    const pickupLatitude = parseCoordinate(pickupLat);
+    const pickupLongitude = parseCoordinate(pickupLng);
+    const dropLatitude = parseCoordinate(dropLat);
+    const dropLongitude = parseCoordinate(dropLng);
+
+    if (
+      pickupLatitude == null ||
+      pickupLongitude == null ||
+      dropLatitude == null ||
+      dropLongitude == null
+    ) {
+      setError('Pickup and drop-off coordinates are required and must be valid numbers.');
+      setSaving(false);
+      return;
+    }
+
     try {
       const response = await api.post<CreateBookingResponse>('/corporate/bookings', {
         serviceType,
@@ -132,8 +151,8 @@ export default function CorporateNewBookingPage() {
           {
             sequence: 1,
             address: pickupAddress,
-            latitude: Number(pickupLat),
-            longitude: Number(pickupLng),
+            latitude: pickupLatitude,
+            longitude: pickupLongitude,
             contactName: pickupContactName,
             contactPhone: pickupContactPhone,
             stopType: 'PICKUP',
@@ -141,8 +160,8 @@ export default function CorporateNewBookingPage() {
           {
             sequence: 2,
             address: dropAddress,
-            latitude: Number(dropLat),
-            longitude: Number(dropLng),
+            latitude: dropLatitude,
+            longitude: dropLongitude,
             contactName: dropContactName,
             contactPhone: dropContactPhone,
             stopType: 'DROPOFF',

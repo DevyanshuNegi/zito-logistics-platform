@@ -58,6 +58,12 @@ enum ServiceType {
   WAREHOUSE
 }
 
+enum BookingCapacitySource {
+  OWNED_FLEET
+  CFA_NETWORK
+  BLENDED
+}
+
 enum InventoryStatus {
   RECEIVED
   STORED
@@ -434,6 +440,7 @@ model Booking {
   reference       String        @unique
   status          BookingStatus @default(CREATED)
   serviceType     ServiceType   @default(COURIER)
+  capacitySource  BookingCapacitySource @default(CFA_NETWORK)
 
   customerId      String
   agencyId        String?

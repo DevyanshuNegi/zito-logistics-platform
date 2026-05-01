@@ -1,22 +1,35 @@
 import {
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import {
-  AccountStatus,
-  Prisma,
-  UserRole,
-} from '@prisma/client';
+import { AccountStatus, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { KycDocumentDto } from './dto/kyc-document.dto';
 import { LoginDto } from './dto/login.dto';
+import { OtpService } from './otp.service';
 import { RegisterDto } from './dto/register.dto';
 import { SessionStateService } from './session-state.service';
+
+type AuthRequestContext = {
+  ipAddress?: string | null;
+  deviceInfo?: string | null;
+};
+
+type AuthLookupUser = {
+  id: string;
+  email: string | null;
+  phone: string;
+  password: string | null;
+  role: UserRole;
+  status: AccountStatus;
+  fullName: string | null;
+};
 
 @Injectable()
 export class AuthService {
@@ -24,6 +37,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly sessionStateService: SessionStateService,
+    private readonly otpService: OtpService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -126,97 +140,61 @@ export class AuthService {
     };
   }
 
-  async login(body: LoginDto) {
+  async login(body: LoginDto, context?: AuthRequestContext) {
     if (!body) {
       throw new UnauthorizedException('Request body missing');
     }
 
-    const { email, phone, contact, password, method } = body;
-    const identifier = contact || email || phone;
-
-    const lock = await (this.prisma as any).loginAttempt.findUnique({
-      where: { identifier },
-    });
-    if (lock && lock.lockExpiresAt && lock.lockExpiresAt > new Date()) {
-      throw new UnauthorizedException({
-        message: 'Account temporarily locked',
-        data: {
-          lockExpiresAt: lock.lockExpiresAt,
-          reason: 'Too many failed verification attempts',
-        },
-      });
+    const identifier = this.normalizeIdentifier(body.contact || body.email || body.phone);
+    if (!identifier) {
+      throw new UnauthorizedException('Email or phone is required.');
     }
 
-    const user = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ email: identifier }, { phone: identifier }],
-      },
-    });
-
+    const user = await this.findUserByIdentifier(identifier);
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid email, phone, or password.');
     }
 
-    if (user.status && user.status !== AccountStatus.ACTIVE) {
-      throw new UnauthorizedException({
-        message: `Account is ${user.status.toLowerCase()}`,
-        data: { status: user.status },
-      });
+    this.assertAccountIsActive(user);
+
+    if (body.method === 'email_password' || (body.password && !body.method)) {
+      return this.loginWithPassword(user, identifier, body.password, context);
     }
 
-    if (method === 'email_password' || (password && !method)) {
-      const isMatch = await bcrypt.compare(password, user.password || '');
-      if (!isMatch) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
+    await this.assertOtpNotLocked(identifier);
+
+    const otpResult = await this.otpService.sendOtp(identifier, 'login');
+    if (!otpResult.sent) {
+      throw new HttpException(
+        {
+          message: `Please wait ${otpResult.cooldownRemaining}s before requesting a new OTP.`,
+          data: {
+            cooldownRemaining: otpResult.cooldownRemaining,
+            resendRemaining: otpResult.resendRemaining,
+            resendAvailableAt: new Date(
+              Date.now() + otpResult.cooldownRemaining * 1000,
+            ).toISOString(),
+          },
+        },
+        429,
+      );
     }
-
-    const existingOtp = await (this.prisma as any).loginOtp.findFirst({
-      where: { contact: identifier },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    let resendCount = 0;
-    if (existingOtp) {
-      const elapsedMs = Date.now() - new Date(existingOtp.createdAt).getTime();
-      if (elapsedMs < 30000) {
-        throw new UnauthorizedException(
-          `Please wait ${Math.ceil((30000 - elapsedMs) / 1000)}s before requesting a new OTP.`,
-        );
-      }
-      if (existingOtp.resendCount >= 4) {
-        throw new UnauthorizedException(
-          'Maximum resend attempts reached. Please try again later.',
-        );
-      }
-      resendCount = existingOtp.resendCount + 1;
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-    await (this.prisma as any).loginOtp.deleteMany({ where: { contact: identifier } });
-    await (this.prisma as any).loginOtp.create({
-      data: {
-        contact: identifier,
-        otp,
-        expiresAt,
-        resendCount,
-      },
-    });
 
     const tempToken = this.jwtService.sign(
       { contact: identifier, purpose: 'otp' },
-      { expiresIn: '10m' },
+      { expiresIn: `${this.otpService.getOtpExpirySeconds()}s` },
     );
-
-    console.log(`[DEV] OTP for ${identifier}: ${otp}`);
 
     return {
       message: 'OTP sent successfully',
       data: {
         temp_token: tempToken,
         contact: identifier,
+        otpExpiresAt: otpResult.expiresAt?.toISOString() ?? null,
+        resendAvailableAt: new Date(
+          Date.now() + otpResult.cooldownRemaining * 1000,
+        ).toISOString(),
+        resendRemaining: otpResult.resendRemaining,
         user: {
           fullName: user.fullName,
         },
@@ -227,7 +205,7 @@ export class AuthService {
   async verifyOtp(
     tempToken: string,
     otp: string,
-    context?: { ipAddress?: string | null; deviceInfo?: string | null },
+    context?: AuthRequestContext,
   ) {
     let contact: string;
     try {
@@ -242,113 +220,20 @@ export class AuthService {
       );
     }
 
-    const lock = await (this.prisma as any).loginAttempt.findUnique({
-      where: { identifier: contact },
-    });
-    if (lock && lock.lockExpiresAt && lock.lockExpiresAt > new Date()) {
-      throw new UnauthorizedException({
-        message: 'Account locked',
-        data: {
-          lockExpiresAt: lock.lockExpiresAt,
-          reason: 'Too many failed verification attempts',
-        },
-      });
-    }
-
-    const user = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ email: contact }, { phone: contact }],
-      },
-    });
+    const user = await this.findUserByIdentifier(contact);
     if (!user) {
       throw new UnauthorizedException('User no longer exists');
     }
 
-    if (user.status !== AccountStatus.ACTIVE) {
-      throw new UnauthorizedException({
-        message: `Account is ${user.status.toLowerCase()}`,
-        data: { status: user.status },
-      });
+    this.assertAccountIsActive(user);
+
+    try {
+      await this.otpService.verifyOtp(contact, otp);
+    } catch (error) {
+      throw this.rewrapOtpError(error, this.canUsePasswordFallback(user, contact));
     }
 
-    const otpRecord = await (this.prisma as any).loginOtp.findFirst({
-      where: { contact, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!otpRecord || otpRecord.otp !== otp) {
-      const attempt = await (this.prisma as any).loginAttempt.upsert({
-        where: { identifier: contact },
-        update: { count: { increment: 1 }, lastAttemptAt: new Date() },
-        create: { identifier: contact, count: 1 },
-      });
-
-      if (attempt.count >= 5) {
-        const lockExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
-        await (this.prisma as any).loginAttempt.update({
-          where: { identifier: contact },
-          data: { lockExpiresAt },
-        });
-        throw new UnauthorizedException({
-          message: 'Maximum attempts reached',
-          data: {
-            lockExpiresAt,
-            reason: 'Account locked for 15 minutes due to repeated failures',
-          },
-        });
-      }
-
-      throw new UnauthorizedException({
-        message: 'Invalid or expired OTP',
-        data: {
-          attemptsRemaining: 5 - attempt.count,
-        },
-      });
-    }
-
-    await (this.prisma as any).loginOtp.deleteMany({ where: { contact } });
-    await (this.prisma as any).loginAttempt.deleteMany({ where: { identifier: contact } });
-
-    await this.detectSuspiciousLogin(
-      user.id,
-      context?.ipAddress ?? null,
-      context?.deviceInfo ?? null,
-    );
-
-    const sessionId = randomUUID();
-    const payload = {
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      sessionId,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
-    const refreshToken = this.jwtService.sign(
-      { userId: user.id, sessionId, purpose: 'refresh' },
-      { expiresIn: '90d' },
-    );
-
-    await this.logSession(
-      user.id,
-      sessionId,
-      context?.ipAddress ?? null,
-      context?.deviceInfo ?? null,
-    );
-
-    return {
-      message: 'Login successful',
-      data: {
-        token: accessToken,
-        refreshToken,
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          fullName: user.fullName,
-        },
-      },
-    };
+    return this.issueSession(user, context);
   }
 
   async reauth(userId: string, password: string) {
@@ -423,6 +308,182 @@ export class AuthService {
         inactivityTimeoutMinutes: this.sessionStateService.getTimeoutMinutes(),
       },
     };
+  }
+
+  private async loginWithPassword(
+    user: AuthLookupUser,
+    identifier: string,
+    password: string | undefined,
+    context?: AuthRequestContext,
+  ) {
+    if (!user.email || identifier !== user.email) {
+      throw new UnauthorizedException({
+        message: 'Email and password sign-in requires an email address.',
+        data: {
+          passwordFallbackEligible: false,
+        },
+      });
+    }
+
+    if (!user.password) {
+      throw new UnauthorizedException({
+        message: 'Password sign-in is not enabled for this account. Use the one-time code flow instead.',
+        data: {
+          passwordFallbackEligible: false,
+        },
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password || '', user.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    return this.issueSession(user, context);
+  }
+
+  private async issueSession(user: AuthLookupUser, context?: AuthRequestContext) {
+    await this.detectSuspiciousLogin(
+      user.id,
+      context?.ipAddress ?? null,
+      context?.deviceInfo ?? null,
+    );
+
+    const sessionId = randomUUID();
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      sessionId,
+    };
+
+    const accessToken = this.jwtService.sign(payload);
+    const refreshToken = this.jwtService.sign(
+      { userId: user.id, sessionId, purpose: 'refresh' },
+      { expiresIn: '90d' },
+    );
+
+    await this.logSession(
+      user.id,
+      sessionId,
+      context?.ipAddress ?? null,
+      context?.deviceInfo ?? null,
+    );
+
+    return {
+      message: 'Login successful',
+      data: {
+        token: accessToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          fullName: user.fullName,
+        },
+      },
+    };
+  }
+
+  private async findUserByIdentifier(identifier: string): Promise<AuthLookupUser | null> {
+    return this.prisma.user.findFirst({
+      where: {
+        OR: [{ email: identifier }, { phone: identifier }],
+      },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        password: true,
+        role: true,
+        status: true,
+        fullName: true,
+      },
+    });
+  }
+
+  private assertAccountIsActive(user: AuthLookupUser) {
+    if (user.status !== AccountStatus.ACTIVE) {
+      throw new UnauthorizedException({
+        message: `Account is ${user.status.toLowerCase()}`,
+        data: { status: user.status },
+      });
+    }
+  }
+
+  private async assertOtpNotLocked(identifier: string) {
+    const lock = await this.prisma.loginAttempt.findUnique({
+      where: { identifier },
+      select: { lockExpiresAt: true },
+    });
+
+    if (!lock?.lockExpiresAt || lock.lockExpiresAt <= new Date()) {
+      return;
+    }
+
+    throw new HttpException(
+      {
+        message: 'Account temporarily locked.',
+        data: {
+          lockExpiresAt: lock.lockExpiresAt,
+          reason: 'Too many failed verification attempts',
+        },
+      },
+      429,
+    );
+  }
+
+  private canUsePasswordFallback(user: AuthLookupUser, contact: string) {
+    return Boolean(user.email && user.password && user.email === contact);
+  }
+
+  private rewrapOtpError(error: unknown, passwordFallbackEligible: boolean) {
+    const status =
+      typeof (error as { getStatus?: () => number })?.getStatus === 'function'
+        ? (error as { getStatus: () => number }).getStatus()
+        : 401;
+    const response =
+      typeof (error as { getResponse?: () => unknown })?.getResponse === 'function'
+        ? (error as { getResponse: () => unknown }).getResponse()
+        : null;
+
+    if (response && typeof response === 'object') {
+      const payload = response as { message?: unknown; data?: unknown };
+      const data =
+        payload.data && typeof payload.data === 'object'
+          ? (payload.data as Record<string, unknown>)
+          : {};
+
+      return new HttpException(
+        {
+          message:
+            typeof payload.message === 'string'
+              ? payload.message
+              : 'OTP verification failed.',
+          data: {
+            ...data,
+            passwordFallbackEligible,
+          },
+        },
+        status,
+      );
+    }
+
+    return new HttpException(
+      {
+        message:
+          typeof response === 'string'
+            ? response
+            : error instanceof Error
+              ? error.message
+              : 'OTP verification failed.',
+        data: {
+          passwordFallbackEligible,
+        },
+      },
+      status,
+    );
   }
 
   private async logSession(
@@ -552,6 +613,19 @@ export class AuthService {
         metadata,
       },
     });
+  }
+
+  private normalizeIdentifier(identifier?: string | null) {
+    if (!identifier) {
+      return '';
+    }
+
+    const trimmed = identifier.trim();
+    if (trimmed.includes('@')) {
+      return trimmed.toLowerCase();
+    }
+
+    return trimmed.replace(/\s+/g, '');
   }
 
   private sanitizeDeviceInfo(deviceInfo?: string | null) {
