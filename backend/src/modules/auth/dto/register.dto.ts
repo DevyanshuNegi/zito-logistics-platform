@@ -22,11 +22,11 @@ export class RegisterDto {
   @IsNotEmpty()
   phone: string;
 
-  @ApiProperty({ example: 'password123', description: 'Secure password (min 6 characters)', minLength: 6, required: false })
+  @ApiProperty({ example: 'password123', description: 'Secure password (min 6 characters)', minLength: 6 })
   @IsString()
-  @IsOptional()
+  @IsNotEmpty()
   @MinLength(6)
-  password?: string;
+  password: string;
 
   @ApiProperty({ enum: UserRole, default: UserRole.CUSTOMER, description: 'Assigned platform role' })
   @IsEnum(UserRole)

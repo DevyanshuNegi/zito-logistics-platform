@@ -7,8 +7,8 @@ export default function SelectRolePage() {
   return (
     <AuthShell
       eyebrow="Role Selection"
-      title={`Choose your ${BRAND.appName} journey`}
-      subtitle="Choose the role that matches how you will work inside Zito."
+      title={`Choose your ${BRAND.appName} account type`}
+      subtitle="Choose the external role that matches how you will work with Zito."
       footer={
         <p>
           Already registered?{' '}

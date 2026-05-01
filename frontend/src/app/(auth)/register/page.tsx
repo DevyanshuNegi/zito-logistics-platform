@@ -63,7 +63,7 @@ export default function RegisterPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const queryRole = new URLSearchParams(window.location.search).get('role');
-    if (queryRole) {
+    if (queryRole && ROLE_PICKER_OPTIONS.some((option) => option.role === queryRole)) {
       setRole(queryRole);
     }
   }, []);
@@ -76,16 +76,16 @@ export default function RegisterPage() {
     try {
       const response = await api.post<RegisterResponse>('/auth/register', {
         fullName,
-        email: email || undefined,
+        email: email.trim() ? email.trim().toLowerCase() : undefined,
         phone: registrationPhone,
-        password: password || undefined,
+        password: password.trim(),
         role,
       });
 
       savePendingRegistration({
         id: response.data.id,
         fullName,
-        email: email || undefined,
+        email: email.trim() ? email.trim().toLowerCase() : undefined,
         phone: registrationPhone,
         role,
         status: response.data.status,
@@ -137,23 +137,27 @@ export default function RegisterPage() {
           onChange={(event) => setEmail(event.target.value)}
         />
 
-        <div className="grid gap-4 sm:grid-cols-[220px,1fr]">
-          <CountryCodeSelect
-            label="Country code"
-            value={countryOptionCode}
-            onChange={setCountryOptionCode}
-            help="Search by country name, ISO code, or dial code."
-          />
-          <Input
-            label="Phone number"
-            placeholder="9876543210"
-            value={phoneNumber}
-            onChange={(event) => setPhoneNumber(normalizePhoneNumber(event.target.value))}
-            autoComplete="tel-national"
-            inputMode="numeric"
-            help="Enter the local number without the country code."
-            required
-          />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <div className="sm:w-[132px] sm:shrink-0">
+            <CountryCodeSelect
+              label="Country code"
+              value={countryOptionCode}
+              onChange={setCountryOptionCode}
+              compact
+            />
+          </div>
+          <div className="sm:min-w-0 sm:flex-1">
+            <Input
+              label="Phone number"
+              placeholder="9876543210"
+              value={phoneNumber}
+              onChange={(event) => setPhoneNumber(normalizePhoneNumber(event.target.value))}
+              autoComplete="tel-national"
+              inputMode="numeric"
+              help="Enter the local number without the country code."
+              required
+            />
+          </div>
         </div>
 
         <Input
@@ -162,7 +166,8 @@ export default function RegisterPage() {
           placeholder="At least 6 characters"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          help="Optional for registration. Login uses a one-time code."
+          help="Required for email sign-in after OTP verification."
+          required
         />
 
         <label className="block space-y-2">
@@ -172,19 +177,22 @@ export default function RegisterPage() {
             value={role}
             onChange={(event) => setRole(event.target.value)}
           >
-            {[fallbackRole, ...ROLE_PICKER_OPTIONS.map((option) => option.role)]
-              .filter((value, index, array) => array.indexOf(value) === index)
-              .map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
+            {ROLE_PICKER_OPTIONS.map((option) => (
+              <option key={option.role} value={option.role}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </label>
 
         <Button
           className="w-full"
-          disabled={submitting || fullName.trim().length === 0 || normalizedPhone.length < 6}
+          disabled={
+            submitting ||
+            fullName.trim().length === 0 ||
+            normalizedPhone.length < 6 ||
+            password.trim().length < 6
+          }
           type="submit"
         >
           {submitting ? 'Creating account...' : 'Register'}

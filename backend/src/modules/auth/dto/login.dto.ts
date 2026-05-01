@@ -21,12 +21,12 @@ export class LoginDto {
   @IsOptional()
   contact?: string;
 
-  @ApiProperty({ example: 'password123', description: 'Required for email_password method', required: false })
+  @ApiProperty({ example: 'password123', description: 'Reserved for future internal flows; public login starts with OTP.', required: false })
   @IsString()
   @IsOptional()
   password?: string;
 
-  @ApiProperty({ example: 'email_password', description: 'Login method: email_password or otp', required: false })
+  @ApiProperty({ example: 'otp', description: 'Initial public login method. Public login always starts with OTP.', required: false })
   @IsString()
   @IsOptional()
   method?: string;

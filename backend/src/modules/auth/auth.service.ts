@@ -31,6 +31,14 @@ type AuthLookupUser = {
   fullName: string | null;
 };
 
+const PUBLIC_SELF_SERVICE_ROLES = new Set<UserRole>([
+  UserRole.CUSTOMER,
+  UserRole.DRIVER,
+  UserRole.TRANSPORTER,
+  UserRole.COURIER_COMPANY,
+  UserRole.CORPORATE,
+]);
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -42,6 +50,9 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     const { email, phone, password, fullName, role, agencyId } = dto;
+    const requestedRole = role || UserRole.CUSTOMER;
+
+    this.assertAllowedPublicRole(requestedRole);
 
     const existingUser = await this.prisma.user.findFirst({
       where: {
@@ -53,7 +64,7 @@ export class AuthService {
       throw new ConflictException('User with this email or phone number already exists');
     }
 
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : undefined;
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await this.prisma.user.create({
       data: {
@@ -61,10 +72,10 @@ export class AuthService {
         email,
         phone,
         password: hashedPassword,
-        role: role || UserRole.CUSTOMER,
+        role: requestedRole,
         status: AccountStatus.PENDING,
         agencyId,
-        driverProfile: role === UserRole.DRIVER ? { create: {} } : undefined,
+        driverProfile: requestedRole === UserRole.DRIVER ? { create: {} } : undefined,
       },
     });
 
@@ -157,10 +168,6 @@ export class AuthService {
 
     this.assertAccountIsActive(user);
 
-    if (body.method === 'email_password' || (body.password && !body.method)) {
-      return this.loginWithPassword(user, identifier, body.password, context);
-    }
-
     await this.assertOtpNotLocked(identifier);
 
     const otpResult = await this.otpService.sendOtp(identifier, 'login');
@@ -230,7 +237,62 @@ export class AuthService {
     try {
       await this.otpService.verifyOtp(contact, otp);
     } catch (error) {
-      throw this.rewrapOtpError(error, this.canUsePasswordFallback(user, contact));
+      throw this.rewrapOtpError(error);
+    }
+
+    if (this.requiresEmailPassword(user, contact)) {
+      const passwordToken = this.jwtService.sign(
+        { contact, purpose: 'email_password_after_otp' },
+        { expiresIn: '10m' },
+      );
+
+      return {
+        message: 'OTP verified. Enter password to complete sign-in.',
+        data: {
+          requiresPassword: true as const,
+          temp_token: passwordToken,
+          contact,
+        },
+      };
+    }
+
+    return this.issueSession(user, context);
+  }
+
+  async completeEmailLogin(
+    tempToken: string,
+    password: string,
+    context?: AuthRequestContext,
+  ) {
+    let contact: string;
+    try {
+      const decoded = this.jwtService.verify(tempToken);
+      if (decoded.purpose !== 'email_password_after_otp') {
+        throw new Error();
+      }
+      contact = decoded.contact;
+    } catch {
+      throw new UnauthorizedException(
+        'Invalid or expired password session. Start the email login flow again.',
+      );
+    }
+
+    const user = await this.findUserByIdentifier(contact);
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+
+    this.assertAccountIsActive(user);
+
+    if (!this.requiresEmailPassword(user, contact)) {
+      throw new UnauthorizedException(
+        'This account does not support email password completion on the public login flow.',
+      );
+    }
+
+    const isMatch = await bcrypt.compare(password || '', user.password || '');
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid password.');
     }
 
     return this.issueSession(user, context);
@@ -308,38 +370,6 @@ export class AuthService {
         inactivityTimeoutMinutes: this.sessionStateService.getTimeoutMinutes(),
       },
     };
-  }
-
-  private async loginWithPassword(
-    user: AuthLookupUser,
-    identifier: string,
-    password: string | undefined,
-    context?: AuthRequestContext,
-  ) {
-    if (!user.email || identifier !== user.email) {
-      throw new UnauthorizedException({
-        message: 'Email and password sign-in requires an email address.',
-        data: {
-          passwordFallbackEligible: false,
-        },
-      });
-    }
-
-    if (!user.password) {
-      throw new UnauthorizedException({
-        message: 'Password sign-in is not enabled for this account. Use the one-time code flow instead.',
-        data: {
-          passwordFallbackEligible: false,
-        },
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password || '', user.password);
-    if (!isMatch) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    return this.issueSession(user, context);
   }
 
   private async issueSession(user: AuthLookupUser, context?: AuthRequestContext) {
@@ -434,11 +464,11 @@ export class AuthService {
     );
   }
 
-  private canUsePasswordFallback(user: AuthLookupUser, contact: string) {
+  private requiresEmailPassword(user: AuthLookupUser, contact: string) {
     return Boolean(user.email && user.password && user.email === contact);
   }
 
-  private rewrapOtpError(error: unknown, passwordFallbackEligible: boolean) {
+  private rewrapOtpError(error: unknown) {
     const status =
       typeof (error as { getStatus?: () => number })?.getStatus === 'function'
         ? (error as { getStatus: () => number }).getStatus()
@@ -461,10 +491,7 @@ export class AuthService {
             typeof payload.message === 'string'
               ? payload.message
               : 'OTP verification failed.',
-          data: {
-            ...data,
-            passwordFallbackEligible,
-          },
+          data,
         },
         status,
       );
@@ -478,11 +505,19 @@ export class AuthService {
             : error instanceof Error
               ? error.message
               : 'OTP verification failed.',
-        data: {
-          passwordFallbackEligible,
-        },
+        data: {},
       },
       status,
+    );
+  }
+
+  private assertAllowedPublicRole(role: UserRole) {
+    if (PUBLIC_SELF_SERVICE_ROLES.has(role)) {
+      return;
+    }
+
+    throw new ConflictException(
+      'This role is provisioned internally and cannot be created from the public registration flow.',
     );
   }
 

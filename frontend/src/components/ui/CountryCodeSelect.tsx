@@ -21,6 +21,7 @@ type CountryCodeSelectProps = {
   help?: string;
   error?: string;
   disabled?: boolean;
+  compact?: boolean;
 };
 
 export function CountryCodeSelect({
@@ -30,6 +31,7 @@ export function CountryCodeSelect({
   help,
   error,
   disabled = false,
+  compact = false,
 }: CountryCodeSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -85,33 +87,60 @@ export function CountryCodeSelect({
     }
   }
 
+  const triggerClassName = [
+    'flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-700/70 bg-slate-950/60 text-left text-sm text-slate-100 transition focus:border-cyan-400/80 focus:outline-none focus:ring-1 focus:ring-violet-500/40',
+    compact ? 'h-[50px] px-4 py-0' : 'px-4 py-3',
+    disabled ? 'cursor-not-allowed opacity-60' : 'hover:border-slate-600/80',
+  ].join(' ');
+
   return (
     <div ref={containerRef} className="relative">
       <label className="block space-y-2">
         <span className="text-sm font-medium text-slate-200">{label}</span>
         <button
           type="button"
-          className={[
-            'flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-left text-sm text-slate-100 transition focus:border-cyan-400/80 focus:outline-none focus:ring-1 focus:ring-violet-500/40',
-            disabled ? 'cursor-not-allowed opacity-60' : 'hover:border-slate-600/80',
-          ].join(' ')}
+          className={triggerClassName}
           aria-controls={listId}
           aria-expanded={open}
           disabled={disabled}
           onClick={() => setOpen((current) => !current)}
           onKeyDown={handleTriggerKeyDown}
         >
-          <span className="min-w-0">
-            <span className="block truncate font-medium">
-              {selectedOption ? selectedOption.dialCode : 'Select a country code'}
+          {compact ? (
+            <span className="min-w-0 truncate font-semibold text-slate-50">
+              {selectedOption ? selectedOption.dialCode : 'Code'}
             </span>
-            <span className="block truncate text-xs text-slate-400">
-              {selectedOption
-                ? `${selectedOption.name} (${selectedOption.isoCode})`
-                : 'Search by country, ISO code, or dial code'}
+          ) : (
+            <span className="min-w-0">
+              <span className="block truncate font-medium">
+                {selectedOption ? selectedOption.dialCode : 'Select a country code'}
+              </span>
+              <span className="block truncate text-xs text-slate-400">
+                {selectedOption
+                  ? `${selectedOption.name} (${selectedOption.isoCode})`
+                  : 'Search by country, ISO code, or dial code'}
+              </span>
             </span>
+          )}
+          <span
+            aria-hidden="true"
+            className={['shrink-0 text-slate-500 transition', open ? 'rotate-180' : ''].join(' ')}
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M4 6.5L8 10L12 6.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </span>
-          <span className="text-xs text-slate-500">{open ? 'Close' : 'Search'}</span>
         </button>
         {error ? <span className="text-xs text-rose-300">{error}</span> : null}
         {!error && help ? <span className="text-xs text-slate-400">{help}</span> : null}

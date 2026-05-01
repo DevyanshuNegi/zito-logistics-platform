@@ -27,6 +27,14 @@ import {
 } from '@/lib/country-codes';
 import { getRoleHomePath } from '@/lib/roles';
 
+type SessionUser = {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+  fullName?: string | null;
+  role: string;
+};
+
 type OtpRequestResponse = {
   data: {
     temp_token: string;
@@ -41,17 +49,21 @@ type LoginSuccessResponse = {
   data: {
     token: string;
     refreshToken?: string | null;
-    user: {
-      id: string;
-      email?: string | null;
-      phone?: string | null;
-      fullName?: string | null;
-      role: string;
-    };
+    user: SessionUser;
   };
 };
 
-type LoginStep = 'contact' | 'otp';
+type OtpPasswordGateResponse = {
+  data: {
+    requiresPassword: true;
+    temp_token: string;
+    contact: string;
+  };
+};
+
+type OtpVerificationResponse = LoginSuccessResponse | OtpPasswordGateResponse;
+
+type LoginStep = 'contact' | 'otp' | 'password';
 
 type ErrorData = {
   status?: string;
@@ -59,12 +71,17 @@ type ErrorData = {
   attemptsRemaining?: number;
   resendAvailableAt?: string | null;
   resendRemaining?: number;
-  passwordFallbackEligible?: boolean;
 };
 
 function extractErrorData(error: ApiError): ErrorData {
   const details = error.details as { data?: ErrorData } | undefined;
   return details?.data ?? {};
+}
+
+function isPasswordGateResponse(
+  response: OtpVerificationResponse,
+): response is OtpPasswordGateResponse {
+  return response.data != null && 'requiresPassword' in response.data;
 }
 
 export default function LoginPage() {
@@ -90,9 +107,9 @@ export default function LoginPage() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [requestingOtp, setRequestingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [submittingPassword, setSubmittingPassword] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
-  const [passwordFallbackUnlocked, setPasswordFallbackUnlocked] = useState(false);
 
   const selectedCountryOption =
     findCountryCodeOptionByIsoCode(countryOptionCode) ??
@@ -138,10 +155,11 @@ export default function LoginPage() {
     if (!otpSession) {
       setStep('contact');
       setOtp('');
+      setPassword('');
       return;
     }
 
-    setStep('otp');
+    setStep(otpSession.stage === 'password' ? 'password' : 'otp');
     setMode(otpSession.mode);
     setEmail(otpSession.email ?? (otpSession.contact.includes('@') ? otpSession.contact : ''));
     setCountryOptionCode(
@@ -155,7 +173,11 @@ export default function LoginPage() {
         (!otpSession.contact.includes('@') ? otpSession.contact.replace(/\D/g, '') : ''),
     );
     setCooldownRemaining(secondsUntil(otpSession.resendAvailableAt));
-    setPasswordFallbackUnlocked(false);
+    setInfoMessage(
+      otpSession.stage === 'password'
+        ? 'OTP verified. Enter your email password to complete sign-in.'
+        : null,
+    );
   }, [loading, otpSession, user]);
 
   function clearTransientState() {
@@ -193,77 +215,38 @@ export default function LoginPage() {
       setCooldownRemaining(secondsUntil(data.resendAvailableAt));
     }
 
-    if (data.passwordFallbackEligible) {
-      setPasswordFallbackUnlocked(true);
-    }
-
     saveApprovalDraft(identifier, status);
   }
 
   async function handleContactSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     clearTransientState();
-
-    if (mode === 'email_password') {
-      setRequestingOtp(true);
-      try {
-        const response = await api.post<LoginSuccessResponse>('/auth/login', {
-          email: normalizedEmail,
-          password,
-          method: 'email_password',
-        });
-
-        login({
-          user: {
-            id: response.data.user.id,
-            email: response.data.user.email,
-            phone: response.data.user.phone,
-            fullName: response.data.user.fullName,
-            role: response.data.user.role,
-          },
-          accessToken: response.data.token,
-          refreshToken: response.data.refreshToken ?? null,
-        });
-
-        router.replace(getRoleHomePath(response.data.user.role));
-      } catch (caught) {
-        if (caught instanceof ApiError) {
-          applyApiError(caught, normalizedEmail);
-        } else {
-          setError('Unable to sign in with password right now.');
-        }
-      } finally {
-        setRequestingOtp(false);
-      }
-
-      return;
-    }
-
     setRequestingOtp(true);
+
     try {
       const response = await api.post<OtpRequestResponse>('/auth/login', {
         contact: currentContact,
         method: 'otp',
       });
 
-      const otpMode: LoginMode = mode === 'phone_otp' ? 'phone_otp' : 'email_otp';
       saveOtpSession({
         tempToken: response.data.temp_token,
         contact: response.data.contact,
-        mode: otpMode,
-        email: otpMode === 'email_otp' ? normalizedEmail : null,
-        countryCode: otpMode === 'phone_otp' ? normalizedDialCode : null,
-        countryOptionCode: otpMode === 'phone_otp' ? selectedCountryOption?.isoCode ?? null : null,
-        phoneNumber: otpMode === 'phone_otp' ? normalizedLocalPhone : null,
+        mode,
+        stage: 'otp',
+        email: mode === 'email_otp' ? normalizedEmail : null,
+        countryCode: mode === 'phone_otp' ? normalizedDialCode : null,
+        countryOptionCode: mode === 'phone_otp' ? selectedCountryOption?.isoCode ?? null : null,
+        phoneNumber: mode === 'phone_otp' ? normalizedLocalPhone : null,
         resendAvailableAt: response.data.resendAvailableAt ?? null,
         otpExpiresAt: response.data.otpExpiresAt ?? null,
       });
 
       setStep('otp');
       setOtp('');
+      setPassword('');
       setCooldownRemaining(secondsUntil(response.data.resendAvailableAt));
       setInfoMessage(`A 6-digit code has been sent to ${maskContact(response.data.contact)}.`);
-      setPasswordFallbackUnlocked(false);
     } catch (caught) {
       if (caught instanceof ApiError) {
         applyApiError(caught, currentContact);
@@ -288,7 +271,7 @@ export default function LoginPage() {
     setVerifyingOtp(true);
 
     try {
-      const response = await api.post<LoginSuccessResponse>(
+      const response = await api.post<OtpVerificationResponse>(
         '/auth/verify-otp',
         { otp },
         {
@@ -296,6 +279,27 @@ export default function LoginPage() {
           token: '',
         },
       );
+
+      if (isPasswordGateResponse(response)) {
+        saveOtpSession({
+          tempToken: response.data.temp_token,
+          contact: response.data.contact,
+          mode: 'email_otp',
+          stage: 'password',
+          email: normalizedEmail || response.data.contact,
+          countryCode: null,
+          countryOptionCode: null,
+          phoneNumber: null,
+          resendAvailableAt: null,
+          otpExpiresAt: null,
+        });
+        setStep('password');
+        setOtp('');
+        setPassword('');
+        setCooldownRemaining(0);
+        setInfoMessage('OTP verified. Enter your email password to complete sign-in.');
+        return;
+      }
 
       login({
         user: {
@@ -321,11 +325,58 @@ export default function LoginPage() {
     }
   }
 
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!otpSession) {
+      setError('Your login session expired. Start again.');
+      setStep('contact');
+      return;
+    }
+
+    setError(null);
+    setApprovalStatus(null);
+    setSubmittingPassword(true);
+
+    try {
+      const response = await api.post<LoginSuccessResponse>(
+        '/auth/complete-email-login',
+        { password },
+        {
+          headers: { Authorization: `Bearer ${otpSession.tempToken}` },
+          token: '',
+        },
+      );
+
+      login({
+        user: {
+          id: response.data.user.id,
+          email: response.data.user.email,
+          phone: response.data.user.phone,
+          fullName: response.data.user.fullName,
+          role: response.data.user.role,
+        },
+        accessToken: response.data.token,
+        refreshToken: response.data.refreshToken ?? null,
+      });
+
+      router.replace(getRoleHomePath(response.data.user.role));
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        applyApiError(caught, otpSession.contact);
+      } else {
+        setError('Unable to complete email sign-in right now.');
+      }
+    } finally {
+      setSubmittingPassword(false);
+    }
+  }
+
   function resetToContactStep(nextMode: LoginMode = mode) {
     clearOtp();
     setStep('contact');
     setMode(nextMode);
     setOtp('');
+    setPassword('');
     setCooldownRemaining(0);
     clearTransientState();
   }
@@ -335,15 +386,15 @@ export default function LoginPage() {
   const canSubmitContact =
     mode === 'phone_otp'
       ? normalizedDialCode.length > 1 && normalizedLocalPhone.length >= 6
-      : mode === 'email_password'
-        ? normalizedEmail.length > 0 && password.length > 0
-        : normalizedEmail.length > 0;
+      : normalizedEmail.length > 0;
+  const canVerifyOtp = otp.length === 6;
+  const canSubmitPassword = password.trim().length >= 6;
 
   return (
     <AuthShell
       eyebrow="Sign In"
       title={`Sign in to ${BRAND.appName}`}
-      subtitle="Use your phone number first, or switch to email if needed. We verify sign-in with a one-time code and keep the recovery path on the same screen."
+      subtitle="Public sign-in is for external users. Use phone OTP or email OTP, then finish email sign-in with your password."
       footer={
         <p>
           New here?{' '}
@@ -368,6 +419,7 @@ export default function LoginPage() {
               onClick={() => {
                 clearTransientState();
                 setMode('phone_otp');
+                setPassword('');
               }}
             >
               Phone OTP
@@ -376,7 +428,7 @@ export default function LoginPage() {
               type="button"
               className={[
                 'rounded-2xl px-4 py-2.5 text-sm font-semibold transition',
-                mode !== 'phone_otp'
+                mode === 'email_otp'
                   ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white'
                   : 'text-slate-300 hover:bg-slate-800/70',
               ].join(' ')}
@@ -388,42 +440,6 @@ export default function LoginPage() {
               Email
             </button>
           </div>
-
-          {mode !== 'phone_otp' ? (
-            <div className="flex items-center gap-2 rounded-3xl border border-slate-700/40 bg-slate-900/40 p-1">
-              <button
-                type="button"
-                className={[
-                  'flex-1 rounded-2xl px-3 py-2 text-sm font-medium transition',
-                  mode === 'email_otp'
-                    ? 'bg-slate-100 text-slate-950'
-                    : 'text-slate-300 hover:bg-slate-800/70',
-                ].join(' ')}
-                onClick={() => {
-                  clearTransientState();
-                  setMode('email_otp');
-                }}
-              >
-                One-time code
-              </button>
-              <button
-                type="button"
-                className={[
-                  'flex-1 rounded-2xl px-3 py-2 text-sm font-medium transition',
-                  mode === 'email_password'
-                    ? 'bg-slate-100 text-slate-950'
-                    : 'text-slate-300 hover:bg-slate-800/70',
-                ].join(' ')}
-                disabled={!passwordFallbackUnlocked}
-                onClick={() => {
-                  clearTransientState();
-                  setMode('email_password');
-                }}
-              >
-                Email password
-              </button>
-            </div>
-          ) : null}
 
           {error ? (
             <Alert variant={approvalStatus ? 'warning' : 'danger'} title="Sign-in blocked">
@@ -444,22 +460,26 @@ export default function LoginPage() {
           ) : null}
 
           {mode === 'phone_otp' ? (
-            <div className="grid gap-4 sm:grid-cols-[220px,1fr]">
-              <CountryCodeSelect
-                label="Country code"
-                value={countryOptionCode}
-                onChange={setCountryOptionCode}
-                help="Search by country name, ISO code, or dial code."
-              />
-              <Input
-                label="Phone number"
-                placeholder="9876543210"
-                value={phoneNumber}
-                onChange={(event) => setPhoneNumber(normalizePhoneNumber(event.target.value))}
-                autoComplete="tel-national"
-                inputMode="numeric"
-                required
-              />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div className="sm:w-[132px] sm:shrink-0">
+                <CountryCodeSelect
+                  label="Country code"
+                  value={countryOptionCode}
+                  onChange={setCountryOptionCode}
+                  compact
+                />
+              </div>
+              <div className="sm:min-w-0 sm:flex-1">
+                <Input
+                  label="Phone number"
+                  placeholder="9876543210"
+                  value={phoneNumber}
+                  onChange={(event) => setPhoneNumber(normalizePhoneNumber(event.target.value))}
+                  autoComplete="tel-national"
+                  inputMode="numeric"
+                  required
+                />
+              </div>
             </div>
           ) : (
             <Input
@@ -473,35 +493,13 @@ export default function LoginPage() {
             />
           )}
 
-          {mode === 'email_password' ? (
-            <Input
-              label="Password"
-              type="password"
-              placeholder="Enter your account password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          ) : null}
-
-          {mode !== 'email_password' && mode !== 'phone_otp' && !passwordFallbackUnlocked ? (
-            <p className="text-xs text-slate-400">
-              Password sign-in becomes available here after OTP trouble on your email login.
-            </p>
-          ) : null}
-
           <Button className="w-full" disabled={requestingOtp || !canSubmitContact} type="submit">
-            {requestingOtp
-              ? mode === 'email_password'
-                ? 'Signing in...'
-                : 'Sending code...'
-              : mode === 'email_password'
-                ? 'Sign in with password'
-                : 'Continue'}
+            {requestingOtp ? 'Sending code...' : 'Continue'}
           </Button>
         </form>
-      ) : (
+      ) : null}
+
+      {step === 'otp' ? (
         <form className="space-y-4" onSubmit={handleVerifyOtp}>
           {infoMessage ? (
             <Alert title="Code sent" variant="success">
@@ -529,7 +527,7 @@ export default function LoginPage() {
             </p>
             <p className="mt-2 text-lg font-semibold text-white">{maskedVerificationTarget}</p>
             <p className="mt-2 text-xs text-slate-400">
-              Your one-time code was sent to the masked destination above.
+              Enter the one-time code sent to the masked destination above.
             </p>
             <button
               type="button"
@@ -549,12 +547,16 @@ export default function LoginPage() {
             inputMode="numeric"
             autoComplete="one-time-code"
             className="text-center text-2xl font-semibold tracking-[0.45em]"
-            help="Use the latest code sent to your email or phone."
+            help={
+              otpSession?.mode === 'email_otp'
+                ? 'After OTP verification, email users continue to password confirmation.'
+                : 'Use the latest code sent to your phone.'
+            }
             required
           />
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Button className="w-full" disabled={verifyingOtp || otp.length !== 6} type="submit">
+            <Button className="w-full" disabled={verifyingOtp || !canVerifyOtp} type="submit">
               {verifyingOtp ? 'Verifying...' : 'Verify code'}
             </Button>
             <Button
@@ -575,19 +577,60 @@ export default function LoginPage() {
                   : 'Resend code'}
             </Button>
           </div>
-
-          {passwordFallbackUnlocked && (otpSession?.mode ?? mode) === 'email_otp' ? (
-            <Button
-              className="w-full"
-              type="button"
-              variant="ghost"
-              onClick={() => resetToContactStep('email_password')}
-            >
-              Use email and password instead
-            </Button>
-          ) : null}
         </form>
-      )}
+      ) : null}
+
+      {step === 'password' ? (
+        <form className="space-y-4" onSubmit={handlePasswordSubmit}>
+          {infoMessage ? (
+            <Alert title="OTP verified" variant="success">
+              {infoMessage}
+            </Alert>
+          ) : null}
+
+          {error ? (
+            <Alert title="Password required" variant="danger">
+              {error}
+            </Alert>
+          ) : null}
+
+          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+              Email sign-in
+            </p>
+            <p className="mt-2 text-lg font-semibold text-white">{maskedVerificationTarget}</p>
+            <p className="mt-2 text-xs text-slate-400">
+              OTP is complete. Enter your email password to finish sign-in.
+            </p>
+            <button
+              type="button"
+              className="mt-3 text-sm text-cyan-200 transition hover:text-cyan-100"
+              onClick={() => resetToContactStep('email_otp')}
+            >
+              Start again
+            </button>
+          </div>
+
+          <Input
+            label="Password"
+            type="password"
+            placeholder="Enter your email password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="current-password"
+            help="Email users complete sign-in with password after OTP."
+            required
+          />
+
+          <Button
+            className="w-full"
+            disabled={submittingPassword || !canSubmitPassword}
+            type="submit"
+          >
+            {submittingPassword ? 'Signing in...' : 'Sign in'}
+          </Button>
+        </form>
+      ) : null}
     </AuthShell>
   );
 }

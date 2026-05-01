@@ -1,4 +1,4 @@
-export type LoginMode = 'phone_otp' | 'email_otp' | 'email_password';
+export type LoginMode = 'phone_otp' | 'email_otp';
 
 export const DEFAULT_COUNTRY_CODE = '+91';
 

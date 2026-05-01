@@ -35,6 +35,7 @@ export type OtpSession = {
   tempToken: string;
   contact: string;
   mode: LoginMode;
+  stage?: 'otp' | 'password';
   email?: string | null;
   countryCode?: string | null;
   countryOptionCode?: string | null;
@@ -145,6 +146,7 @@ export function getOtpSession(): OtpSession | null {
     mode:
       parsed.mode ??
       (parsed.contact.includes('@') ? 'email_otp' : 'phone_otp'),
+    stage: parsed.stage === 'password' ? 'password' : 'otp',
     email: parsed.email ?? null,
     countryCode: parsed.countryCode ?? null,
     countryOptionCode: parsed.countryOptionCode ?? null,

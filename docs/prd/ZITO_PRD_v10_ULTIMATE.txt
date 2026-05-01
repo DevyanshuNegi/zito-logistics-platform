@@ -25,10 +25,23 @@ identifier = phone OR email
 Login Methods
 Phone OTP (primary method)
 Email OTP (secondary method)
-Email + Password (fallback after OTP failures and for password-enabled accounts)
+Email Password (required after successful Email OTP verification)
 Account Lifecycle
 pending → verified → active → suspended → rejected
 Rule: Only ACTIVE accounts may log in. Any other status results in a blocked session with a descriptive error.
+Implemented Login Experience:
+The sign-in experience must be Zito-only. Do not show legal-entity branding, customer-company names, or contract-party labels on the login screen.
+Company/legal names belong in contracts, invoices, approval records, and formal documents, not on the public sign-in interface.
+The auth screen must feel utility-first and professional, not like a marketing landing page.
+Only one Zito identity should be presented per viewport section; avoid repeated or conflicting logo and wordmark combinations in the same auth surface.
+OTP-first flow must remain on a single screen: contact step â†’ OTP step â†’ role-based redirect after successful verification.
+UI must support phone-first sign-in with separate country-code and local-number fields, plus email sign-in as the secondary path.
+The OTP step must show a masked verification target, change-contact action, resend countdown, and attempts-remaining messaging when the account is not yet locked.
+Canonical flow rule:
+contact step -> OTP step for all public users -> password step only for email users -> role-based redirect after successful verification.
+Phone login completes after OTP only.
+Email login requires password after OTP verification and must not expose password entry on the initial contact step.
+When email OTP trouble occurs and the account supports passwords, the same login screen must unlock email/password fallback without sending the user to a separate login page.
 OTP Handling & Security Rules:
 Target defaults:
 OTP validity = 5 minutes
@@ -47,6 +60,8 @@ OTP must be stored hashed at rest
 Verification target must be masked in the UI
 Failed OTP responses must show attempts remaining whenever the account is not yet locked
 Fallback:
+Public self-service auth is for external roles only: Individual Customer, Driver, Transporter, Courier Company, and Corporate.
+Agency Staff and other internal roles must be provisioned through internal processes, not the public registration or outsider login flow.
 If OTP fails repeatedly, allow alternative login method (email/password) inside the same login flow when the account has password sign-in enabled
 Phone sign-in must use separate country-code and local-number fields
 If OTP fails repeatedly → allow alternative login method (email/password)
@@ -583,8 +598,9 @@ Inter-agency billing handled automatically
 Customer visibility maintained throughout agency handoffs
 Super Admin monitors all cross-agency movements
 42. 💼 Staff Login System
-Separate Login Portals
+Separate Role Workspaces (post-login)
 Access Rules
+All staff roles authenticate through internal processes and dedicated workspaces, not the outsider self-service registration flow.
 Staff cannot access customer app features
 Customers cannot access admin or staff panels
 Drivers have a separate driver-only mobile interface

@@ -1,7 +1,7 @@
 export const ROLE_PICKER_OPTIONS = [
   {
     role: 'CUSTOMER',
-    label: 'Customer',
+    label: 'Individual Customer',
     description: 'Book trips, pay, track drivers, and raise support tickets.',
   },
   {
@@ -17,12 +17,7 @@ export const ROLE_PICKER_OPTIONS = [
   {
     role: 'COURIER_COMPANY',
     label: 'Courier Company',
-    description: 'Run PTL and courier operations, manage owned fleet, and hire supply from the Zito platform.',
-  },
-  {
-    role: 'AGENCY_STAFF',
-    label: 'Agency Staff',
-    description: 'Handle operational support, tickets, and day-to-day coordination.',
+    description: 'Run county-to-county courier operations, manage owned fleet, and work through the Zito CFA network when needed.',
   },
   {
     role: 'CORPORATE',

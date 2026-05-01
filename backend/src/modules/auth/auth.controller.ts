@@ -6,6 +6,7 @@ import { ReauthGuard } from '../../common/guards/reauth.guard';
 import { SessionGuard } from '../../common/guards/session.guard';
 import { AuthService } from './auth.service';
 import { Roles } from './decorators/roles.decorator';
+import { CompleteEmailLoginDto } from './dto/complete-email-login.dto';
 import { ForceLogoutDto } from './dto/force-logout.dto';
 import { KycUploadDto } from './dto/kyc-upload.dto';
 import { LoginDto } from './dto/login.dto';
@@ -44,6 +45,19 @@ export class AuthController {
   async verifyOtp(@Req() req: any, @Body() verifyOtpDto: VerifyOtpDto) {
     const token = req.headers['authorization']?.split(' ')[1];
     return this.authService.verifyOtp(token, verifyOtpDto.otp, {
+      ipAddress: this.getClientIp(req),
+      deviceInfo:
+        typeof req.headers['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : null,
+    });
+  }
+
+  @Post('complete-email-login')
+  @ApiOperation({ summary: 'PRD Â§3: Complete email sign-in after OTP verification' })
+  async completeEmailLogin(@Req() req: any, @Body() dto: CompleteEmailLoginDto) {
+    const token = req.headers['authorization']?.split(' ')[1];
+    return this.authService.completeEmailLogin(token, dto.password, {
       ipAddress: this.getClientIp(req),
       deviceInfo:
         typeof req.headers['user-agent'] === 'string'
