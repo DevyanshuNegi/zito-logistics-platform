@@ -11,6 +11,7 @@ import {
 import { NextIntlClientProvider } from 'next-intl';
 import { api } from '@/lib/api';
 import {
+  APP_TIME_ZONE,
   APP_MESSAGES,
   DEFAULT_APP_CURRENCY,
   DEFAULT_APP_LOCALE,
@@ -147,7 +148,11 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppPreferencesContext.Provider value={value}>
-      <NextIntlClientProvider locale={locale} messages={APP_MESSAGES[locale]}>
+      <NextIntlClientProvider
+        locale={locale}
+        messages={APP_MESSAGES[locale]}
+        timeZone={APP_TIME_ZONE}
+      >
         {children}
       </NextIntlClientProvider>
     </AppPreferencesContext.Provider>

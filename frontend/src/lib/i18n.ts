@@ -21,6 +21,7 @@ export type AppCurrency = (typeof SUPPORTED_CURRENCY_OPTIONS)[number]['code'];
 
 export const DEFAULT_APP_LOCALE: AppLocale = 'en';
 export const DEFAULT_APP_CURRENCY: AppCurrency = 'KES';
+export const APP_TIME_ZONE = 'Africa/Nairobi';
 
 export const LOCALE_FORMAT_MAP: Record<AppLocale, string> = {
   en: 'en-KE',
