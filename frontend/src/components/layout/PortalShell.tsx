@@ -38,14 +38,41 @@ export function PortalShell({
   useEffect(() => {
     if (loading) return;
 
+    let fallbackTimer: number | undefined;
+
     if (!user) {
       router.replace('/login');
-      return;
+      fallbackTimer = window.setTimeout(() => {
+        if (window.location.pathname !== '/login') {
+          window.location.replace('/login');
+        }
+      }, 120);
+      return () => {
+        if (fallbackTimer) {
+          window.clearTimeout(fallbackTimer);
+        }
+      };
     }
 
     if (!hasAnyRole(user.role, allowedRoles)) {
       router.replace('/unauthorized');
+      fallbackTimer = window.setTimeout(() => {
+        if (window.location.pathname !== '/unauthorized') {
+          window.location.replace('/unauthorized');
+        }
+      }, 120);
+      return () => {
+        if (fallbackTimer) {
+          window.clearTimeout(fallbackTimer);
+        }
+      };
     }
+
+    return () => {
+      if (fallbackTimer) {
+        window.clearTimeout(fallbackTimer);
+      }
+    };
   }, [allowedRoles, loading, router, user]);
 
   if (loading || !user || !canAccess) {
