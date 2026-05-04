@@ -1,18 +1,21 @@
 import type { ReactNode } from 'react';
-import { PortalShell } from '@/components/layout/PortalShell';
+import { DriverShell } from '@/components/layout/DriverShell';
 
-const navItems = [
-  { href: '/driver/dashboard', label: 'Dashboard' },
-  { href: '/driver/jobs', label: 'Jobs' },
-  { href: '/driver/heatmap', label: 'Heatmap' },
-  { href: '/driver/shift', label: 'Shift' },
+const mobileNavItems = [
+  { href: '/driver/dashboard', label: 'Jobs' },
   { href: '/driver/earnings', label: 'Earnings' },
+  { href: '/driver/jobs', label: 'Trips' },
+  { href: '/driver/shift', label: 'Profile' },
 ];
 
 export default function DriverLayout({ children }: { children: ReactNode }) {
   return (
-    <PortalShell title="Driver Console" allowedRoles={['DRIVER']} navItems={navItems}>
+    <DriverShell
+      title="Driver app"
+      allowedRoles={['DRIVER']}
+      mobileNavItems={mobileNavItems}
+    >
       {children}
-    </PortalShell>
+    </DriverShell>
   );
 }

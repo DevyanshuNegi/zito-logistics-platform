@@ -13,7 +13,7 @@ import {
   Min,
 } from 'class-validator';
 
-export const MARKETPLACE_PARTNER_TYPES = ['TRANSPORTER', 'WAREHOUSE'] as const;
+export const MARKETPLACE_PARTNER_TYPES = ['TRANSPORTER', 'AGENT', 'WAREHOUSE'] as const;
 export const MARKETPLACE_PARTNER_STATUSES = [
   'PENDING_REVIEW',
   'APPROVED',
@@ -129,6 +129,10 @@ export class SelfMarketplaceTransporterDto {
   @IsBoolean()
   premiumListing?: boolean;
 }
+
+export class CreateMarketplaceAgentDto extends CreateMarketplaceTransporterDto {}
+
+export class SelfMarketplaceAgentDto extends SelfMarketplaceTransporterDto {}
 
 export class CreateMarketplaceWarehouseDto {
   @IsUUID()

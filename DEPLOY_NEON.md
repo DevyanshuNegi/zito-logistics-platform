@@ -39,6 +39,7 @@ Mobile:
 3. Build `DATABASE_URL` with the Neon `Pooler host`.
 4. Build `DIRECT_URL` with the Neon direct `Host`.
 5. Keep `sslmode=require` on both URLs.
+6. On local Windows setups, do not add `channel_binding=require` to the Prisma URLs unless you have verified the TLS stack supports it.
 6. Update `backend/.env` with the Neon URLs, then run:
 
 ```bash
@@ -49,13 +50,14 @@ npm run deploy:neon
 The `deploy:neon` script validates that:
 
 - `DATABASE_URL` uses the Neon pooler host
+- `DATABASE_URL` includes `pgbouncer=true`
 - `DIRECT_URL` uses the direct Neon host
 - both URLs include `sslmode=require`
 
 ## Local development example
 
 ```env
-DATABASE_URL=postgresql://USER:PASSWORD@YOUR-NEON-PROJECT-pooler.REGION.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://USER:PASSWORD@YOUR-NEON-PROJECT-pooler.REGION.aws.neon.tech/neondb?sslmode=require&pgbouncer=true
 DIRECT_URL=postgresql://USER:PASSWORD@YOUR-NEON-PROJECT.REGION.aws.neon.tech/neondb?sslmode=require
 REDIS_URL=redis://localhost:6379
 ```
@@ -75,7 +77,7 @@ Do not rely on the single `Connection string` box unless you verify that it alre
 Example pattern:
 
 ```env
-DATABASE_URL=postgresql://ROLE:PASSWORD@POOLER_HOST/DATABASE?sslmode=require
+DATABASE_URL=postgresql://ROLE:PASSWORD@POOLER_HOST/DATABASE?sslmode=require&pgbouncer=true
 DIRECT_URL=postgresql://ROLE:PASSWORD@HOST/DATABASE?sslmode=require
 ```
 

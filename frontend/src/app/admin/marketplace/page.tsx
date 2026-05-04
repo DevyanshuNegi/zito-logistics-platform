@@ -132,6 +132,7 @@ type MarketplaceDashboardResponse = {
 };
 
 const PARTNER_TYPES = [
+  { value: 'AGENT', label: 'Agent' },
   { value: 'TRANSPORTER', label: 'Transporter' },
   { value: 'WAREHOUSE', label: 'Warehouse partner' },
 ] as const;
@@ -173,6 +174,7 @@ function splitCsv(value: string) {
 
 export default function AdminMarketplacePage() {
   const [dashboard, setDashboard] = useState<MarketplaceDashboardResponse | null>(null);
+  const [agentUsers, setAgentUsers] = useState<UserOption[]>([]);
   const [transporterUsers, setTransporterUsers] = useState<UserOption[]>([]);
   const [warehouseUsers, setWarehouseUsers] = useState<UserOption[]>([]);
   const [bookings, setBookings] = useState<BookingOption[]>([]);
@@ -189,8 +191,10 @@ export default function AdminMarketplacePage() {
     () =>
       partnerForm.partnerType === 'WAREHOUSE'
         ? warehouseUsers
-        : transporterUsers,
-    [partnerForm.partnerType, transporterUsers, warehouseUsers],
+        : partnerForm.partnerType === 'AGENT'
+          ? agentUsers
+          : transporterUsers,
+    [agentUsers, partnerForm.partnerType, transporterUsers, warehouseUsers],
   );
 
   const marketplaceBookings = useMemo(
@@ -206,15 +210,17 @@ export default function AdminMarketplacePage() {
     setError(null);
 
     try {
-      const [dashboardResponse, transporterResponse, warehouseResponse, bookingsResponse] =
+      const [dashboardResponse, agentResponse, transporterResponse, warehouseResponse, bookingsResponse] =
         await Promise.all([
           api.get<MarketplaceDashboardResponse>('/marketplace/dashboard'),
+          api.get<UsersResponse>('/users?role=AGENT&limit=100'),
           api.get<UsersResponse>('/users?role=TRANSPORTER&limit=100'),
           api.get<UsersResponse>('/users?role=WAREHOUSE_PARTNER&limit=100'),
           api.get<BookingsResponse>('/admin/bookings?limit=100'),
         ]);
 
       setDashboard(dashboardResponse);
+      setAgentUsers(agentResponse.data);
       setTransporterUsers(transporterResponse.data);
       setWarehouseUsers(warehouseResponse.data);
       setBookings(bookingsResponse.bookings);
@@ -264,6 +270,8 @@ export default function AdminMarketplacePage() {
     try {
       if (partnerForm.partnerType === 'WAREHOUSE') {
         await api.post('/marketplace/partners/warehouse', payload);
+      } else if (partnerForm.partnerType === 'AGENT') {
+        await api.post('/marketplace/partners/agent', payload);
       } else {
         await api.post('/marketplace/partners/transporter', payload);
       }
@@ -379,7 +387,7 @@ export default function AdminMarketplacePage() {
         <StatCard
           label="Open Opportunities"
           value={String(dashboard?.summary.openOpportunities ?? 0)}
-          helper="Bookings currently exposed to transporter or warehouse partners."
+          helper="Bookings currently exposed to agent, transporter, or warehouse partners."
           tone="info"
         />
         <StatCard
@@ -404,7 +412,7 @@ export default function AdminMarketplacePage() {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SurfaceCard
           title="Partner onboarding"
-          description="Phase 5.3 onboarding, approval, and service-area registration for third-party transporters and warehouse partners."
+          description="Phase 5.3 onboarding, approval, and service-area registration for third-party agents, transporters, and warehouse partners."
         >
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handlePartnerSubmit}>
             <label className="block space-y-2">

@@ -34,7 +34,7 @@ export class FleetService {
     }
 
     if (createVehicleDto.driverId) {
-      await this.assertDriverAssignable(createVehicleDto.driverId);
+      await this.assertDriverAssignable(createVehicleDto.driverId, undefined, actor);
     }
 
     return this.prisma.vehicle.create({
@@ -116,7 +116,7 @@ export class FleetService {
     }
 
     if (dto.driverId) {
-      await this.assertDriverAssignable(dto.driverId, id);
+      await this.assertDriverAssignable(dto.driverId, id, actor);
     }
 
     return this.prisma.vehicle.update({
@@ -140,7 +140,7 @@ export class FleetService {
     actor?: { id: string; role?: string; activeRole?: string },
   ) {
     await this.findOne(id, actor);
-    await this.assertDriverAssignable(driverId, id);
+    await this.assertDriverAssignable(driverId, id, actor);
 
     return this.prisma.vehicle.update({
       where: { id },
@@ -347,14 +347,23 @@ export class FleetService {
     });
   }
 
-  private async assertDriverAssignable(driverId: string, currentVehicleId?: string) {
+  private async assertDriverAssignable(
+    driverId: string,
+    currentVehicleId?: string,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
     const driver = await this.prisma.driver.findUnique({
       where: { id: driverId },
-      select: { id: true, isBlacklisted: true },
+      select: { id: true, isBlacklisted: true, ownerUserId: true },
     });
     if (!driver) throw new NotFoundException('Driver not found');
     if (driver.isBlacklisted) {
       throw new BadRequestException('Cannot assign a blacklisted driver');
+    }
+
+    const role = this.normalizeRole(actor);
+    if (actor?.id && this.isOwnedDriverRole(role) && driver.ownerUserId !== actor.id) {
+      throw new ForbiddenException('You can only assign drivers managed by your own partner account.');
     }
 
     const assignedElsewhere = await this.prisma.vehicle.findFirst({
@@ -380,7 +389,11 @@ export class FleetService {
   }
 
   private isOwnedFleetRole(role: string) {
-    return ['CUSTOMER', 'TRANSPORTER', 'CORPORATE', 'COURIER_COMPANY'].includes(role);
+    return ['CUSTOMER', 'AGENT', 'TRANSPORTER', 'CORPORATE', 'COURIER_COMPANY'].includes(role);
+  }
+
+  private isOwnedDriverRole(role: string) {
+    return ['AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY'].includes(role);
   }
 
   private buildOwnershipScope(actor?: { id: string; role?: string; activeRole?: string }) {

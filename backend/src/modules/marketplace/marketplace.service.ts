@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  CreateMarketplaceAgentDto,
   CreateMarketplaceTransporterDto,
   CreateMarketplaceWarehouseDto,
   MarketplaceBidDto,
@@ -20,7 +21,7 @@ import {
   UpdateMarketplacePartnerStatusDto,
 } from './dto/marketplace.dto';
 
-type MarketplacePartnerType = 'TRANSPORTER' | 'WAREHOUSE';
+type MarketplacePartnerType = 'TRANSPORTER' | 'AGENT' | 'WAREHOUSE';
 type MarketplacePartnerStatus =
   | 'PENDING_REVIEW'
   | 'APPROVED'
@@ -331,6 +332,62 @@ export class MarketplaceService {
     await this.raisePartnerAlert(
       dto.userId,
       `${record.companyName} submitted transporter onboarding for review.`,
+      'MEDIUM',
+      {
+        partnerType: record.partnerType,
+        actorId,
+        serviceAreas: record.serviceAreas,
+        vehicleIds: record.vehicleIds,
+        role: user.role,
+      },
+    );
+    await this.writeAudit(actorId, 'MARKETPLACE_PARTNER_ONBOARDED', dto.userId, {
+      partnerType: record.partnerType,
+      companyName: record.companyName,
+      vehicleIds: record.vehicleIds,
+      serviceAreas: record.serviceAreas,
+    });
+
+    return this.getPartnerProfile(dto.userId);
+  }
+
+  async onboardAgent(dto: CreateMarketplaceAgentDto, actorId: string) {
+    const user = await this.ensureUserRole(dto.userId, UserRole.AGENT);
+    await this.assertVehiclesExist(dto.vehicleIds ?? []);
+    const existing = await this.readPartnerRecord(dto.userId);
+
+    const record: MarketplacePartnerRecord = {
+      ...(existing ?? {}),
+      userId: dto.userId,
+      partnerType: 'AGENT',
+      companyName: dto.companyName.trim(),
+      serviceAreas: (dto.serviceAreas ?? []).map((value) => value.trim()).filter(Boolean),
+      vehicleIds: [...new Set(dto.vehicleIds ?? [])],
+      warehouseIds: [],
+      baseLatitude: dto.baseLatitude ?? null,
+      baseLongitude: dto.baseLongitude ?? null,
+      serviceRadiusKm: dto.serviceRadiusKm ?? null,
+      commissionRatePct:
+        dto.commissionRatePct ?? DEFAULT_COMMISSION_RATE_PCT,
+      serviceFeeFlat: dto.serviceFeeFlat ?? DEFAULT_SERVICE_FEE_FLAT,
+      premiumListing: dto.premiumListing ?? false,
+      verificationStatus: 'PENDING_REVIEW',
+      verificationNote: 'Awaiting marketplace approval',
+      submittedBy: actorId,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvedBy: null,
+      approvedAt: null,
+      rejectedBy: null,
+      rejectedAt: null,
+      suspendedBy: null,
+      suspendedAt: null,
+    };
+
+    await this.persistPartnerRecord(record);
+    await this.raisePartnerAlert(
+      dto.userId,
+      `${record.companyName} submitted agent onboarding for review.`,
       'MEDIUM',
       {
         partnerType: record.partnerType,
@@ -1564,7 +1621,11 @@ export class MarketplaceService {
     return {
       userId: record.userId,
       partnerType:
-        record.partnerType === 'WAREHOUSE' ? 'WAREHOUSE' : 'TRANSPORTER',
+        record.partnerType === 'WAREHOUSE'
+          ? 'WAREHOUSE'
+          : record.partnerType === 'AGENT'
+            ? 'AGENT'
+            : 'TRANSPORTER',
       companyName: record.companyName,
       serviceAreas: this.asStringArray(record.serviceAreas),
       vehicleIds: this.asStringArray(record.vehicleIds),
@@ -1639,7 +1700,11 @@ export class MarketplaceService {
           ? (record.serviceType as ServiceType)
           : ServiceType.COURIER,
       partnerType:
-        record.partnerType === 'WAREHOUSE' ? 'WAREHOUSE' : 'TRANSPORTER',
+        record.partnerType === 'WAREHOUSE'
+          ? 'WAREHOUSE'
+          : record.partnerType === 'AGENT'
+            ? 'AGENT'
+            : 'TRANSPORTER',
       pricingModel:
         typeof record.pricingModel === 'string'
           ? (record.pricingModel as MarketplacePricingModel)

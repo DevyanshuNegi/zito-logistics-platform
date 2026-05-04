@@ -11,6 +11,8 @@ export function getRoleHomePath(role?: string | null) {
       return '/customer/bookings';
     case 'DRIVER':
       return '/driver/dashboard';
+    case 'AGENT':
+      return '/agent/dashboard';
     case 'TRANSPORTER':
       return '/transporter/fleet';
     case 'COURIER_COMPANY':

@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { FleetDriverManager } from '@/components/operations/FleetDriverManager';
 import { FuelReportPanel } from '@/components/operations/FuelReportPanel';
 import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
@@ -26,6 +27,7 @@ type Vehicle = {
   type: string;
   status: string;
   driver?: {
+    id?: string | null;
     user?: {
       fullName?: string | null;
     } | null;
@@ -191,6 +193,14 @@ export default function TransporterFleetPage() {
           />
         )}
       </SurfaceCard>
+
+      <FleetDriverManager
+        title="Transporter-managed drivers"
+        description="Onboard transporter-owned drivers, keep their readiness visible, and place them onto the right vehicle from the same fleet."
+        ownerLabel="transporter fleet"
+        vehicles={vehicles}
+        onChange={() => loadFleet()}
+      />
 
       <SurfaceCard title="Breakdown watch" description="Open breakdown records across the transporter fleet.">
         {loading ? (

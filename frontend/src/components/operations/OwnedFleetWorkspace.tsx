@@ -22,6 +22,11 @@ type Vehicle = {
   status: string;
   capacityKg: number;
   capacityM3?: number | null;
+  driver?: {
+    user?: {
+      fullName?: string | null;
+    } | null;
+  } | null;
   _count?: {
     bookings?: number;
     breakdowns?: number;
@@ -33,6 +38,9 @@ type OwnedFleetWorkspaceProps = {
   description: string;
   platformFeeCopy: string;
   emptyMessage: string;
+  tone?: 'dark' | 'light';
+  refreshToken?: number;
+  onChange?: () => void | Promise<void>;
 };
 
 const INITIAL_FORM = {
@@ -45,12 +53,43 @@ const INITIAL_FORM = {
   capacityM3: '',
 };
 
+function buildToneClasses(tone: 'dark' | 'light') {
+  if (tone === 'light') {
+    return {
+      card:
+        'rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]',
+      select:
+        'w-full rounded-[16px] border border-[#d7e0ec] bg-white px-4 py-3 text-sm text-[#1a1a2e] focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100',
+      label: 'text-sm font-medium text-slate-700',
+      head: 'font-semibold text-[#1a1a2e]',
+      sub: 'text-xs text-[#64748b]',
+      body: 'text-sm text-[#1a1a2e]',
+      usage: 'text-xs text-[#64748b]',
+    };
+  }
+
+  return {
+    card: '',
+    select:
+      'w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none',
+    label: 'text-sm font-medium text-slate-200',
+    head: 'font-semibold text-white',
+    sub: 'text-xs text-slate-400',
+    body: 'text-sm text-slate-200',
+    usage: 'text-xs text-slate-300',
+  };
+}
+
 export function OwnedFleetWorkspace({
   title,
   description,
   platformFeeCopy,
   emptyMessage,
+  tone = 'dark',
+  refreshToken = 0,
+  onChange,
 }: OwnedFleetWorkspaceProps) {
+  const classes = buildToneClasses(tone);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [form, setForm] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(true);
@@ -80,7 +119,9 @@ export function OwnedFleetWorkspace({
       const response = await api.get<Vehicle[]>('/fleet');
       setVehicles(response);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Unable to load owned vehicles.');
+      setError(
+        caught instanceof ApiError ? caught.message : 'Unable to load owned vehicles.',
+      );
     } finally {
       setLoading(false);
     }
@@ -88,7 +129,7 @@ export function OwnedFleetWorkspace({
 
   useEffect(() => {
     void loadFleet();
-  }, []);
+  }, [refreshToken]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,6 +149,7 @@ export function OwnedFleetWorkspace({
 
       setForm(INITIAL_FORM);
       await loadFleet();
+      await onChange?.();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to create vehicle.');
     } finally {
@@ -122,6 +164,7 @@ export function OwnedFleetWorkspace({
     try {
       await api.patch(`/fleet/${vehicleId}/retire`, {});
       await loadFleet();
+      await onChange?.();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to retire vehicle.');
     } finally {
@@ -132,9 +175,26 @@ export function OwnedFleetWorkspace({
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Owned vehicles" value={String(vehicles.length)} helper="Vehicles scoped to this account." />
-        <StatCard label="Active fleet" value={String(activeVehicles)} helper="Ready or currently available vehicles." tone="success" />
-        <StatCard label="Booking links" value={String(assignedBookings)} helper="Trips already mapped to this fleet roster." tone="info" />
+        <StatCard
+          label="Owned vehicles"
+          value={String(vehicles.length)}
+          helper="Vehicles scoped to this account."
+          surfaceTone={tone}
+        />
+        <StatCard
+          label="Active fleet"
+          value={String(activeVehicles)}
+          helper="Ready or currently available vehicles."
+          tone="success"
+          surfaceTone={tone}
+        />
+        <StatCard
+          label="Booking links"
+          value={String(assignedBookings)}
+          helper="Trips already mapped to this fleet roster."
+          tone="info"
+          surfaceTone={tone}
+        />
       </div>
 
       <Alert title="Platform fee policy" variant="info">
@@ -147,20 +207,30 @@ export function OwnedFleetWorkspace({
         </Alert>
       ) : null}
 
-      <SurfaceCard title={title} description={description}>
+      <SurfaceCard
+        title={title}
+        description={description}
+        className={classes.card}
+        tone={tone}
+      >
         <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreate}>
           <Input
             label="Plate number"
+            tone={tone === 'light' ? 'light' : 'dark'}
             value={form.plateNumber}
-            onChange={(event) => setForm((current) => ({ ...current, plateNumber: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, plateNumber: event.target.value }))
+            }
             required
           />
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-200">Vehicle type</span>
+            <span className={classes.label}>Vehicle type</span>
             <select
-              className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+              className={classes.select}
               value={form.type}
-              onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, type: event.target.value }))
+              }
             >
               {VEHICLE_TYPES.map((option) => (
                 <option key={option} value={option}>
@@ -172,29 +242,40 @@ export function OwnedFleetWorkspace({
           <Input
             label="Capacity (kg)"
             type="number"
+            tone={tone === 'light' ? 'light' : 'dark'}
             value={form.capacityKg}
-            onChange={(event) => setForm((current) => ({ ...current, capacityKg: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, capacityKg: event.target.value }))
+            }
             required
           />
           <Input
             label="Capacity (m3)"
             type="number"
+            tone={tone === 'light' ? 'light' : 'dark'}
             value={form.capacityM3}
-            onChange={(event) => setForm((current) => ({ ...current, capacityM3: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, capacityM3: event.target.value }))
+            }
           />
           <Input
             label="Make"
+            tone={tone === 'light' ? 'light' : 'dark'}
             value={form.make}
             onChange={(event) => setForm((current) => ({ ...current, make: event.target.value }))}
           />
           <Input
             label="Model"
+            tone={tone === 'light' ? 'light' : 'dark'}
             value={form.model}
-            onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, model: event.target.value }))
+            }
           />
           <Input
             label="Year"
             type="number"
+            tone={tone === 'light' ? 'light' : 'dark'}
             value={form.year}
             onChange={(event) => setForm((current) => ({ ...current, year: event.target.value }))}
           />
@@ -206,12 +287,18 @@ export function OwnedFleetWorkspace({
         </form>
       </SurfaceCard>
 
-      <SurfaceCard title="Owned fleet roster" description="Vehicle records created under this account can be used for self-managed logistics or network-linked assignments.">
+      <SurfaceCard
+        title="Owned fleet roster"
+        description="Vehicle records created under this account can be used for self-managed logistics or network-linked assignments."
+        className={classes.card}
+        tone={tone}
+      >
         {loading ? (
           <Spinner />
         ) : (
           <Table
             emptyMessage={emptyMessage}
+            tone={tone}
             rows={vehicles}
             columns={[
               {
@@ -219,9 +306,11 @@ export function OwnedFleetWorkspace({
                 header: 'Vehicle',
                 render: (vehicle) => (
                   <div>
-                    <p className="font-semibold text-white">{vehicle.plateNumber}</p>
-                    <p className="text-xs text-slate-400">
-                      {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ') || 'Vehicle profile pending'}
+                    <p className={classes.head}>{vehicle.plateNumber}</p>
+                    <p className={classes.sub}>
+                      {[vehicle.make, vehicle.model, vehicle.year]
+                        .filter(Boolean)
+                        .join(' ') || 'Vehicle profile pending'}
                     </p>
                   </div>
                 ),
@@ -230,9 +319,9 @@ export function OwnedFleetWorkspace({
                 key: 'type',
                 header: 'Type',
                 render: (vehicle) => (
-                  <div className="text-sm text-slate-200">
+                  <div className={classes.body}>
                     <p>{vehicle.type}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className={classes.sub}>
                       {vehicle.capacityKg} kg
                       {vehicle.capacityM3 ? ` · ${vehicle.capacityM3} m3` : ''}
                     </p>
@@ -240,10 +329,20 @@ export function OwnedFleetWorkspace({
                 ),
               },
               {
+                key: 'driver',
+                header: 'Driver',
+                render: (vehicle) => (
+                  <div className={classes.body}>
+                    <p>{vehicle.driver?.user?.fullName ?? 'No driver assigned'}</p>
+                    <p className={classes.sub}>Managed from the fleet driver roster.</p>
+                  </div>
+                ),
+              },
+              {
                 key: 'usage',
                 header: 'Usage',
                 render: (vehicle) => (
-                  <div className="text-xs text-slate-300">
+                  <div className={classes.usage}>
                     <p>Bookings: {vehicle._count?.bookings ?? 0}</p>
                     <p>Breakdowns: {vehicle._count?.breakdowns ?? 0}</p>
                   </div>

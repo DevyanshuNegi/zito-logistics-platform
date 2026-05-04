@@ -15,11 +15,13 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import {
+  CreateMarketplaceAgentDto,
   CreateMarketplaceTransporterDto,
   CreateMarketplaceWarehouseDto,
   MarketplaceBidDto,
   PublishMarketplaceOpportunityDto,
   RespondMarketplaceBidDto,
+  SelfMarketplaceAgentDto,
   SelfMarketplaceTransporterDto,
   SelfMarketplaceWarehouseDto,
   UpdateMarketplacePartnerStatusDto,
@@ -67,6 +69,15 @@ export class MarketplaceController {
     return this.marketplaceService.onboardTransporter(dto, req.user.id);
   }
 
+  @Post('partners/agent')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  onboardAgent(
+    @Body() dto: CreateMarketplaceAgentDto,
+    @Req() req: any,
+  ) {
+    return this.marketplaceService.onboardAgent(dto, req.user.id);
+  }
+
   @Post('partners/warehouse')
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   onboardWarehouse(
@@ -97,15 +108,30 @@ export class MarketplaceController {
   }
 
   @Get('partner/profile')
-  @Roles(UserRole.TRANSPORTER, UserRole.WAREHOUSE_PARTNER)
+  @Roles(UserRole.AGENT, UserRole.TRANSPORTER, UserRole.WAREHOUSE_PARTNER)
   getPartnerProfile(@Req() req: any) {
     return this.marketplaceService.getPartnerProfile(req.user.id);
   }
 
   @Get('partner/opportunities')
-  @Roles(UserRole.TRANSPORTER, UserRole.WAREHOUSE_PARTNER)
+  @Roles(UserRole.AGENT, UserRole.TRANSPORTER, UserRole.WAREHOUSE_PARTNER)
   listPartnerOpportunities(@Req() req: any) {
     return this.marketplaceService.listPartnerOpportunities(req.user.id);
+  }
+
+  @Post('partner/agent/onboard')
+  @Roles(UserRole.AGENT)
+  selfOnboardAgent(
+    @Body() dto: SelfMarketplaceAgentDto,
+    @Req() req: any,
+  ) {
+    return this.marketplaceService.onboardAgent(
+      {
+        ...dto,
+        userId: req.user.id,
+      },
+      req.user.id,
+    );
   }
 
   @Post('partner/transporter/onboard')
@@ -139,7 +165,7 @@ export class MarketplaceController {
   }
 
   @Post('partner/opportunities/:bookingId/accept')
-  @Roles(UserRole.TRANSPORTER, UserRole.WAREHOUSE_PARTNER)
+  @Roles(UserRole.AGENT, UserRole.TRANSPORTER, UserRole.WAREHOUSE_PARTNER)
   acceptOpportunity(
     @Param('bookingId', ParseUUIDPipe) bookingId: string,
     @Req() req: any,
@@ -148,7 +174,7 @@ export class MarketplaceController {
   }
 
   @Post('partner/opportunities/:bookingId/bids')
-  @Roles(UserRole.TRANSPORTER, UserRole.WAREHOUSE_PARTNER)
+  @Roles(UserRole.AGENT, UserRole.TRANSPORTER, UserRole.WAREHOUSE_PARTNER)
   submitBid(
     @Param('bookingId', ParseUUIDPipe) bookingId: string,
     @Body() dto: MarketplaceBidDto,

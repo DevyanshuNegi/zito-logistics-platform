@@ -40,6 +40,7 @@ interface FindAllOptions {
 export const KYC_REQUIRED_DOCS: Record<string, string[]> = {
   CUSTOMER:          ['NATIONAL_ID'],
   DRIVER:            ['NATIONAL_ID', 'DRIVERS_LICENSE'],
+  AGENT:             ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
   TRANSPORTER:       ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
   CORPORATE:         ['NATIONAL_ID', 'BUSINESS_REG'],
   WAREHOUSE_PARTNER: ['NATIONAL_ID', 'BUSINESS_REG'],

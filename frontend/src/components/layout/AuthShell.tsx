@@ -7,6 +7,9 @@ type AuthShellProps = {
   subtitle: string;
   children: ReactNode;
   footer?: ReactNode;
+  panelEyebrow?: string;
+  panelTitle?: string;
+  panelSubtitle?: string;
 };
 
 export function AuthShell({
@@ -15,6 +18,9 @@ export function AuthShell({
   subtitle,
   children,
   footer,
+  panelEyebrow = 'Secure Access',
+  panelTitle = 'Sign in to your Zito workspace.',
+  panelSubtitle = 'Use your email address or phone number, verify with a one-time code, and continue directly into operations.',
 }: AuthShellProps) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_26%),linear-gradient(180deg,#06101f_0%,#081223_100%)] px-4 py-8 sm:px-6">
@@ -25,14 +31,13 @@ export function AuthShell({
             <div>
               <BrandLockup showDescriptor={false} />
               <p className="mt-12 text-xs font-semibold uppercase tracking-[0.3em] text-cyan-300/80">
-                Secure Access
+                {panelEyebrow}
               </p>
               <h1 className="mt-4 max-w-xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                Sign in to your Zito workspace.
+                {panelTitle}
               </h1>
               <p className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
-                Use your email address or phone number, verify with a one-time code, and
-                continue directly into operations.
+                {panelSubtitle}
               </p>
             </div>
           </div>

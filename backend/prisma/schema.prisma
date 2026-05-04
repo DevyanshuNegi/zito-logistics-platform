@@ -4,7 +4,8 @@
 // ============================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -16,6 +17,7 @@ datasource db {
 enum UserRole {
   CUSTOMER
   DRIVER
+  AGENT
   TRANSPORTER
   COURIER_COMPANY
   WAREHOUSE_PARTNER
@@ -180,6 +182,7 @@ enum ScanCheckpoint {
 model User {
   id            String        @id @default(uuid())
   fullName      String?
+  companyName   String?
   email         String?       @unique
   phone         String        @unique
   password      String?
@@ -199,6 +202,7 @@ model User {
   auditLogs         AuditLog[]
   wallets           Wallet[]
   notifications     Notification[]
+  ownedDrivers      Driver[]        @relation("DriverOwner")
   ownedVehicles     Vehicle[]       @relation("VehicleOwner")
 
   createdAt     DateTime      @default(now())
@@ -251,6 +255,8 @@ model Driver {
   id               String    @id @default(uuid())
   userId           String    @unique
   user             User      @relation(fields: [userId], references: [id])
+  ownerUserId      String?
+  ownerUser        User?     @relation("DriverOwner", fields: [ownerUserId], references: [id])
 
   isOnline         Boolean   @default(false)
   isAvailable      Boolean   @default(true)
@@ -281,6 +287,7 @@ model Driver {
   updatedAt        DateTime  @updatedAt
 
   @@index([currentLatitude, currentLongitude])
+  @@index([ownerUserId])
 }
 
 model DriverShift {

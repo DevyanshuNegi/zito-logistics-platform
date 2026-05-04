@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   Injectable,
@@ -29,13 +30,16 @@ type AuthLookupUser = {
   role: UserRole;
   status: AccountStatus;
   fullName: string | null;
+  companyName: string | null;
 };
 
 const PUBLIC_SELF_SERVICE_ROLES = new Set<UserRole>([
   UserRole.CUSTOMER,
   UserRole.DRIVER,
+  UserRole.AGENT,
   UserRole.TRANSPORTER,
   UserRole.COURIER_COMPANY,
+  UserRole.WAREHOUSE_PARTNER,
   UserRole.CORPORATE,
 ]);
 
@@ -49,10 +53,11 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const { email, phone, password, fullName, role, agencyId } = dto;
+    const { email, phone, password, fullName, companyName, role, agencyId } = dto;
     const requestedRole = role || UserRole.CUSTOMER;
 
     this.assertAllowedPublicRole(requestedRole);
+    this.assertCompanyIdentity(requestedRole, companyName);
 
     const existingUser = await this.prisma.user.findFirst({
       where: {
@@ -69,6 +74,7 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         fullName,
+        companyName: companyName?.trim() || null,
         email,
         phone,
         password: hashedPassword,
@@ -204,6 +210,7 @@ export class AuthService {
         resendRemaining: otpResult.resendRemaining,
         user: {
           fullName: user.fullName,
+          companyName: user.companyName,
         },
       },
     };
@@ -411,6 +418,7 @@ export class AuthService {
           phone: user.phone,
           role: user.role,
           fullName: user.fullName,
+          companyName: user.companyName,
         },
       },
     };
@@ -429,6 +437,7 @@ export class AuthService {
         role: true,
         status: true,
         fullName: true,
+        companyName: true,
       },
     });
   }
@@ -518,6 +527,26 @@ export class AuthService {
 
     throw new ConflictException(
       'This role is provisioned internally and cannot be created from the public registration flow.',
+    );
+  }
+
+  private assertCompanyIdentity(role: UserRole, companyName?: string | null) {
+    if (!this.requiresCompanyName(role)) {
+      return;
+    }
+
+    if (!companyName?.trim()) {
+      throw new BadRequestException('Company name is required for this account type.');
+    }
+  }
+
+  private requiresCompanyName(role: UserRole) {
+    return (
+      role === UserRole.CORPORATE ||
+      role === UserRole.AGENT ||
+      role === UserRole.COURIER_COMPANY ||
+      role === UserRole.TRANSPORTER ||
+      role === UserRole.WAREHOUSE_PARTNER
     );
   }
 

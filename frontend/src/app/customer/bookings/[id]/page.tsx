@@ -3,11 +3,19 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
+import {
+  ArrowRight,
+  CircleDollarSign,
+  Headset,
+  LocateFixed,
+  ShieldCheck,
+  Star,
+  Truck,
+} from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
-import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { TrackingTimeline } from '@/components/tracking/TrackingTimeline';
 import { ApiError, api } from '@/lib/api';
 import { formatDateTime, formatMoney, formatStatus } from '@/lib/format';
@@ -52,6 +60,16 @@ type BookingDetail = {
     description?: string | null;
   }>;
 };
+
+function statusClassName(status: string) {
+  const normalized = status.toUpperCase();
+  if (normalized === 'COMPLETED') return 'bg-emerald-100 text-emerald-700';
+  if (normalized === 'CANCELLED') return 'bg-rose-100 text-rose-700';
+  if (normalized === 'IN_TRANSIT' || normalized === 'ASSIGNED' || normalized === 'PICKED_UP') {
+    return 'bg-sky-100 text-sky-700';
+  }
+  return 'bg-amber-100 text-amber-700';
+}
 
 export default function CustomerBookingDetailPage() {
   const params = useParams();
@@ -133,95 +151,220 @@ export default function CustomerBookingDetailPage() {
   return (
     <div className="space-y-6">
       {error ? (
-        <Alert title="Booking detail error" variant="danger">
+        <Alert title="Booking detail issue" variant="danger">
           {error}
         </Alert>
       ) : null}
 
-      <SurfaceCard
-        title={booking.reference}
-        description={`Created ${formatDateTime(booking.createdAt)}.`}
-        actions={
+      <section className="overflow-hidden rounded-[34px] border border-white/80 bg-[linear-gradient(135deg,#e9f4ff_0%,#f5f9ff_48%,#ffffff_100%)] p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex rounded-full bg-white/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                {booking.reference}
+              </span>
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusClassName(booking.status)}`}
+              >
+                {formatStatus(booking.status)}
+              </span>
+            </div>
+            <h1 className="mt-3 text-3xl font-semibold text-slate-950">
+              Booking detail built around route, status, and next action.
+            </h1>
+            <p className="mt-3 text-sm leading-7 text-slate-600">
+              Created {formatDateTime(booking.createdAt)}. Track the live route, review payment state, and keep support access close without digging through tables.
+            </p>
+          </div>
+
           <div className="flex flex-wrap gap-3">
             <Link href={`/customer/tracking/${booking.id}`}>
-              <Button>Track live</Button>
+              <Button className="rounded-[16px] bg-[#1b3f72] px-4 py-3 text-white shadow-none hover:bg-[#163561]">
+                <LocateFixed className="mr-2 h-4 w-4" />
+                Track live
+              </Button>
             </Link>
             <Link href="/customer/payments">
-              <Button variant="secondary">Open payments</Button>
+              <Button
+                variant="secondary"
+                className="rounded-[16px] bg-slate-100 px-4 py-3 text-slate-800 shadow-none hover:bg-slate-200"
+              >
+                Payments
+              </Button>
             </Link>
             {canCancel ? (
-              <Button variant="danger" onClick={() => void cancelBooking()}>
+              <Button
+                variant="danger"
+                className="rounded-[16px] bg-rose-500 px-4 py-3 text-white shadow-none hover:bg-rose-600"
+                onClick={() => void cancelBooking()}
+              >
                 Cancel booking
               </Button>
             ) : null}
           </div>
-        }
-      >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Status</p>
-            <p className="mt-3 text-lg font-semibold text-white">{formatStatus(booking.status)}</p>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Amount', value: formatMoney(booking.totalPrice), helper: 'Current commercial total.' },
+          {
+            label: 'Driver',
+            value: booking.driver?.user?.fullName ?? 'Awaiting assignment',
+            helper: booking.driver?.user?.phone ?? 'Driver contact appears after assignment.',
+          },
+          {
+            label: 'Vehicle',
+            value: booking.vehicle?.plateNumber ?? 'Vehicle pending',
+            helper: booking.vehicle?.type ?? 'Vehicle type appears after assignment.',
+          },
+          {
+            label: 'Escrow',
+            value: booking.escrow ? formatStatus(booking.escrow.status ?? 'PENDING') : 'Not created',
+            helper: booking.escrow ? formatMoney(booking.escrow.amount ?? 0) : 'Escrow record unavailable.',
+          },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className="rounded-[28px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]"
+          >
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{item.label}</p>
+            <p className="mt-3 text-2xl font-semibold text-slate-950">{item.value}</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{item.helper}</p>
           </div>
-          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Amount</p>
-            <p className="mt-3 text-lg font-semibold text-white">{formatMoney(booking.totalPrice)}</p>
+        ))}
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.05fr_.95fr]">
+        <div className="space-y-6">
+          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-sky-700">Route summary</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+              Human-readable route instead of raw booking data
+            </h2>
+
+            <div className="mt-5 space-y-3">
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Pickup</p>
+                <p className="mt-2 text-sm font-medium text-slate-900">
+                  {booking.stops?.[0]?.address ?? 'Pickup pending'}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {booking.stops?.[0]?.contactName ?? 'Contact pending'}
+                  {booking.stops?.[0]?.contactPhone ? ` · ${booking.stops[0].contactPhone}` : ''}
+                </p>
+              </div>
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Drop-off</p>
+                <p className="mt-2 text-sm font-medium text-slate-900">
+                  {booking.stops?.[1]?.address ?? 'Drop pending'}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {booking.stops?.[1]?.contactName ?? 'Receiver pending'}
+                  {booking.stops?.[1]?.contactPhone ? ` · ${booking.stops[1].contactPhone}` : ''}
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Driver</p>
-            <p className="mt-3 text-lg font-semibold text-white">{booking.driver?.user?.fullName ?? 'Awaiting assignment'}</p>
+
+          <TrackingTimeline stops={timelineStops} />
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#eef6ff] text-[#1b3f72]">
+                <CircleDollarSign className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Payments</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+                  Booking-linked payment history
+                </h2>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              {booking.payments?.length ? (
+                booking.payments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4"
+                  >
+                    <p className="text-sm font-semibold text-slate-950">{payment.reference}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {payment.method} · {formatStatus(payment.status)}
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-slate-900">
+                      {formatMoney(payment.amount)}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                  No payment records yet.
+                </p>
+              )}
+            </div>
           </div>
-          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Escrow</p>
-            <p className="mt-3 text-lg font-semibold text-white">
-              {booking.escrow ? `${formatStatus(booking.escrow.status)} · ${formatMoney(booking.escrow.amount)}` : 'Not created yet'}
-            </p>
+
+          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#fff8e8] text-[#b7791f]">
+                <Headset className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Support</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+                  Issues and customer care linked to this trip
+                </h2>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              {booking.supportTickets?.length ? (
+                booking.supportTickets.map((ticket) => (
+                  <div
+                    key={ticket.id}
+                    className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4"
+                  >
+                    <p className="text-sm font-semibold text-slate-950">
+                      {formatStatus(ticket.status)}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {ticket.description ?? 'No description'}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                  No support tickets linked to this booking yet.
+                </p>
+              )}
+            </div>
           </div>
         </div>
-      </SurfaceCard>
-
-      <TrackingTimeline stops={timelineStops} />
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <SurfaceCard title="Payments" description="Booking-linked payment attempts and their latest status.">
-          <div className="space-y-3">
-            {booking.payments?.length ? (
-              booking.payments.map((payment) => (
-                <div key={payment.id} className="rounded-2xl border border-slate-700/40 bg-slate-900/55 px-4 py-3">
-                  <p className="font-semibold text-white">{payment.reference}</p>
-                  <p className="text-sm text-slate-300">
-                    {payment.method} · {formatStatus(payment.status)} · {formatMoney(payment.amount)}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-slate-400">No payment records yet.</p>
-            )}
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard title="Support tickets" description="Recent support items linked to this booking.">
-          <div className="space-y-3">
-            {booking.supportTickets?.length ? (
-              booking.supportTickets.map((ticket) => (
-                <div key={ticket.id} className="rounded-2xl border border-slate-700/40 bg-slate-900/55 px-4 py-3">
-                  <p className="font-semibold text-white">{formatStatus(ticket.status)}</p>
-                  <p className="text-sm text-slate-300">{ticket.description ?? 'No description'}</p>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-slate-400">No support tickets linked to this booking yet.</p>
-            )}
-          </div>
-        </SurfaceCard>
-      </div>
+      </section>
 
       {booking.status === 'COMPLETED' ? (
-        <SurfaceCard title="Rate this booking" description="Customer ratings remain open for 48 hours after completion.">
-          <form className="grid gap-4 md:grid-cols-2" onSubmit={submitRating}>
+        <section className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-amber-100 text-amber-700">
+              <Star className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Rate trip</p>
+              <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+                Rate the completed booking while the delivery is still fresh
+              </h2>
+            </div>
+          </div>
+
+          <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={submitRating}>
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-200">Rating</span>
+              <span className="text-sm font-medium text-slate-700">Rating</span>
               <select
-                className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
                 value={rating}
                 onChange={(event) => setRating(event.target.value)}
               >
@@ -232,17 +375,22 @@ export default function CustomerBookingDetailPage() {
                 ))}
               </select>
             </label>
+
             <Input
               label="Comment"
+              tone="light"
               textarea
               value={comment}
               onChange={(event) => setComment(event.target.value)}
             />
+
             <div className="md:col-span-2">
-              <Button type="submit">Submit rating</Button>
+              <Button className="rounded-[16px] bg-[#1b3f72] px-5 py-3 text-white shadow-none hover:bg-[#163561]" type="submit">
+                Submit rating
+              </Button>
             </div>
           </form>
-        </SurfaceCard>
+        </section>
       ) : null}
     </div>
   );

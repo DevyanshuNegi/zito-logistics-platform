@@ -1,29 +1,8 @@
+import { PARTNER_ROLE_OPTIONS, SERVICE_ROLE_OPTIONS } from './auth-portals';
+
 export const ROLE_PICKER_OPTIONS = [
-  {
-    role: 'CUSTOMER',
-    label: 'Individual Customer',
-    description: 'Book trips, pay, track drivers, and raise support tickets.',
-  },
-  {
-    role: 'DRIVER',
-    label: 'Driver',
-    description: 'Start shifts, receive jobs, move trips, and review earnings.',
-  },
-  {
-    role: 'TRANSPORTER',
-    label: 'Transporter',
-    description: 'Manage fleet readiness, driver assignments, and breakdowns.',
-  },
-  {
-    role: 'COURIER_COMPANY',
-    label: 'Courier Company',
-    description: 'Run county-to-county courier operations, manage owned fleet, and work through the Zito CFA network when needed.',
-  },
-  {
-    role: 'CORPORATE',
-    label: 'Corporate',
-    description: 'Book on contract credit, manage invoices, and review commercial terms.',
-  },
+  ...SERVICE_ROLE_OPTIONS,
+  ...PARTNER_ROLE_OPTIONS,
 ] as const;
 
 export const SERVICE_TYPES = ['FTL', 'PTL', 'COURIER', 'WAREHOUSE'] as const;

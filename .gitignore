@@ -44,6 +44,11 @@ build
 .temp
 .tmp
 .next
+.next-dev
+.next-prod
+frontend/.next
+frontend/.next-dev
+frontend/.next-prod
 out
 .nuxt
 .svelte-kit
@@ -52,6 +57,9 @@ out
 .serverless
 .firebase
 web_modules
+tmp-screens/
+.codex-docx-tmp/
+.docx-temp/
 
 # =========================
 # Dependencies

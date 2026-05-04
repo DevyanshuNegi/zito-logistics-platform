@@ -36,6 +36,9 @@ dist/
 build/
 frontend/dist/
 backend/dist/
+.next/
+.next-dev/
+.next-prod/
 
 # ── OS files ─────────────────────────────────────────────────
 .DS_Store

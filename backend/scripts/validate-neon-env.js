@@ -31,6 +31,14 @@ function hasSslModeRequire(parsedUrl) {
   return parsedUrl.searchParams.get('sslmode') === 'require';
 }
 
+function usesPgBouncerMode(parsedUrl) {
+  return parsedUrl.searchParams.get('pgbouncer') === 'true';
+}
+
+function usesRequiredChannelBinding(parsedUrl) {
+  return parsedUrl.searchParams.get('channel_binding') === 'require';
+}
+
 function isNeonHost(hostname) {
   return hostname.toLowerCase().includes('neon.tech');
 }
@@ -58,6 +66,14 @@ function collectErrors() {
     if (!hasSslModeRequire(databaseUrl.parsed)) {
       errors.push('DATABASE_URL must include sslmode=require');
     }
+    if (!usesPgBouncerMode(databaseUrl.parsed)) {
+      errors.push('DATABASE_URL must include pgbouncer=true when using the Neon pooler host');
+    }
+    if (process.platform === 'win32' && usesRequiredChannelBinding(databaseUrl.parsed)) {
+      errors.push(
+        'DATABASE_URL should not include channel_binding=require on Windows local development',
+      );
+    }
   }
 
   if (directUrl && directUrl.parsed) {
@@ -69,6 +85,11 @@ function collectErrors() {
     }
     if (!hasSslModeRequire(directUrl.parsed)) {
       errors.push('DIRECT_URL must include sslmode=require');
+    }
+    if (process.platform === 'win32' && usesRequiredChannelBinding(directUrl.parsed)) {
+      errors.push(
+        'DIRECT_URL should not include channel_binding=require on Windows local development',
+      );
     }
   }
 
@@ -89,8 +110,12 @@ function main() {
     }
     console.error('\nExpected setup:');
     console.error('- DATABASE_URL uses the Neon pooler host');
+    console.error('- DATABASE_URL includes pgbouncer=true');
     console.error('- DIRECT_URL uses the direct Neon host');
     console.error('- Both URLs include sslmode=require');
+    if (process.platform === 'win32') {
+      console.error('- Avoid channel_binding=require in local Windows Neon URLs');
+    }
     process.exit(1);
   }
 

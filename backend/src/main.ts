@@ -3,11 +3,31 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import compression from 'compression';
 import helmet from 'helmet';
+import { createServer } from 'node:net';
 import { AppModule } from './app.module';
 import { BRAND } from './config/brand.config';
 import { corsOriginValidator } from './config/cors.config';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestMetricsInterceptor } from './common/interceptors/request-metrics.interceptor';
+
+async function isPortAvailable(port: number) {
+  return new Promise<boolean>((resolve, reject) => {
+    const tester = createServer()
+      .once('error', (error: NodeJS.ErrnoException) => {
+        tester.close();
+        if (error.code === 'EADDRINUSE') {
+          resolve(false);
+          return;
+        }
+        reject(error);
+      })
+      .once('listening', () => {
+        tester.close(() => resolve(true));
+      });
+
+    tester.listen(port, '::');
+  });
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -62,7 +82,7 @@ async function bootstrap() {
       .setTitle(`${BRAND.appName} API | ${BRAND.companyName}`)
       .setDescription(
         `REST API for ${BRAND.appName} by ${BRAND.companyName} - PRD v10 ULTIMATE\n\n` +
-      '**Roles:** CUSTOMER · DRIVER · TRANSPORTER · COURIER_COMPANY · WAREHOUSE_PARTNER · AGENCY_STAFF · ADMIN · SUPER_ADMIN · CORPORATE\n\n' +
+      '**Roles:** CUSTOMER · DRIVER · AGENT · TRANSPORTER · COURIER_COMPANY · WAREHOUSE_PARTNER · AGENCY_STAFF · ADMIN · SUPER_ADMIN · CORPORATE\n\n' +
           '**Auth:** All endpoints require Bearer JWT except /auth/login and /auth/send-otp.\n\n' +
           '**Idempotency:** Booking, payment, and wallet endpoints require Idempotency-Key header.',
       )
@@ -111,7 +131,20 @@ async function bootstrap() {
   // PRD §30 - Graceful shutdown for RTO 4hr / RPO 1hr targets
   app.enableShutdownHooks();
 
-  const port = process.env.PORT || 3000;
+  const port = Number(process.env.PORT || 5000);
+
+  const portAvailable = await isPortAvailable(port);
+  if (!portAvailable) {
+    console.error('\n===========================================');
+    console.error(`  ${BRAND.appName} API could not start`);
+    console.error(`  Port ${port} is already in use by another process.`);
+    console.error("  Keep the existing backend, or run 'npm run start:dev:clean'.");
+    console.error('===========================================\n');
+    await app.close().catch(() => undefined);
+    process.exitCode = 1;
+    return;
+  }
+
   await app.listen(port);
 
   console.log('\n===========================================');

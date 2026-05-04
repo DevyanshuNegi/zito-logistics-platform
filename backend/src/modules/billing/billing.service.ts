@@ -586,6 +586,7 @@ export class BillingService {
       UserRole.CUSTOMER,
       UserRole.CORPORATE,
       UserRole.COURIER_COMPANY,
+      UserRole.AGENT,
       UserRole.TRANSPORTER,
     ];
     return eligibleRoles.includes(role);
@@ -611,6 +612,11 @@ export class BillingService {
         mode: PlatformFeeBillingMode.PER_FLEET,
         amount: Number(process.env.PLATFORM_FEE_COURIER_COMPANY_PER_FLEET ?? 6500),
         label: 'courier-company supply-chain platform subscription',
+      },
+      [UserRole.AGENT]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: Number(process.env.PLATFORM_FEE_AGENT_PER_FLEET ?? 3000),
+        label: 'agent supply-network platform subscription',
       },
       [UserRole.TRANSPORTER]: {
         mode: PlatformFeeBillingMode.PER_FLEET,

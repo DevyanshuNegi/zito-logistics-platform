@@ -1,8 +1,14 @@
 import type { LoginMode } from './auth-login';
+import {
+  getPortalConfig,
+  getPortalKindForRole,
+  type PortalKind,
+} from './auth-portals';
 
 export type SessionUser = {
   id: string;
   fullName?: string | null;
+  companyName?: string | null;
   email?: string | null;
   phone?: string | null;
   role: string;
@@ -25,6 +31,7 @@ export type StoredSessionSnapshot = {
 export type PendingRegistration = {
   id: string;
   fullName?: string | null;
+  companyName?: string | null;
   email?: string | null;
   phone?: string | null;
   role?: string | null;
@@ -41,6 +48,7 @@ export type OtpSession = {
   countryOptionCode?: string | null;
   phoneNumber?: string | null;
   resendAvailableAt?: string | null;
+  resendRemaining?: number | null;
   otpExpiresAt?: string | null;
 };
 
@@ -61,6 +69,7 @@ const REFRESH_TOKEN_KEY = 'zito.refreshToken';
 const USER_KEY = 'zito.user';
 const OTP_KEY = 'zito.otpSession';
 const PENDING_KEY = 'zito.pendingRegistration';
+const SESSION_NOTICE_KEY = 'zito.sessionNotice';
 
 function canUseStorage() {
   return typeof window !== 'undefined';
@@ -152,6 +161,8 @@ export function getOtpSession(): OtpSession | null {
     countryOptionCode: parsed.countryOptionCode ?? null,
     phoneNumber: parsed.phoneNumber ?? null,
     resendAvailableAt: parsed.resendAvailableAt ?? null,
+    resendRemaining:
+      typeof parsed.resendRemaining === 'number' ? parsed.resendRemaining : null,
     otpExpiresAt: parsed.otpExpiresAt ?? null,
   };
 }
@@ -175,6 +186,62 @@ export function getPendingRegistration() {
 export function clearPendingRegistration() {
   if (!canUseStorage()) return;
   window.localStorage.removeItem(PENDING_KEY);
+}
+
+export function persistSessionNotice(message: string) {
+  if (!canUseStorage()) return;
+  window.sessionStorage.setItem(SESSION_NOTICE_KEY, message);
+}
+
+export function consumeSessionNotice() {
+  if (!canUseStorage()) return null;
+  const message = window.sessionStorage.getItem(SESSION_NOTICE_KEY);
+  if (!message) {
+    return null;
+  }
+  window.sessionStorage.removeItem(SESSION_NOTICE_KEY);
+  return message;
+}
+
+function isAuthSurface(pathname: string) {
+  return (
+    pathname === '/login' ||
+    pathname.startsWith('/partners/login') ||
+    pathname.startsWith('/internal/login') ||
+    pathname.startsWith('/register') ||
+    pathname.startsWith('/partners/register') ||
+    pathname.startsWith('/select-role') ||
+    pathname.startsWith('/partners/select-role')
+  );
+}
+
+function resolvePortalKindForSession(role?: string | null): PortalKind {
+  return getPortalKindForRole(role ?? null);
+}
+
+function handleUnauthorizedSession(message: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const currentPath = window.location.pathname;
+  if (isAuthSurface(currentPath)) {
+    return;
+  }
+
+  const { user } = getStoredSession();
+  const portalKind = resolvePortalKindForSession(user?.role);
+  const loginPath = getPortalConfig(portalKind).loginPath;
+
+  clearSession();
+  clearOtpSession();
+  persistSessionNotice(message || 'Your session expired. Please sign in again.');
+
+  const nextPath = `${currentPath}${window.location.search ?? ''}`;
+  const separator = loginPath.includes('?') ? '&' : '?';
+  window.location.replace(
+    `${loginPath}${separator}reason=session-expired&next=${encodeURIComponent(nextPath)}`,
+  );
 }
 
 type RequestOptions = {
@@ -294,6 +361,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         typeof payload === 'object' && payload && 'message' in payload
           ? String((payload as { message?: string }).message ?? 'Request failed')
           : 'Request failed';
+
+      if (response.status === 401 && token) {
+        handleUnauthorizedSession(message);
+      }
+
       throw new ApiError(message, response.status, payload);
     }
 

@@ -1,5 +1,5 @@
-const DEFAULT_ALLOWED_ORIGINS = 'http://localhost:3001';
-const LOCALHOST_DEV_ORIGIN_PATTERN = /^https?:\/\/localhost:30(?:0\d|10)$/;
+const DEFAULT_ALLOWED_ORIGINS = 'http://127.0.0.1:3001,http://localhost:3001';
+const LOCAL_DEV_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1):(?:(?:30(?:0\d|10))|5173)$/;
 
 const normalizeOrigin = (origin: string) => origin.trim().replace(/\/+$/, '');
 
@@ -16,7 +16,7 @@ export function isAllowedCorsOrigin(origin?: string): boolean {
   const normalizedOrigin = normalizeOrigin(origin);
   return (
     configuredAllowedOrigins.includes(normalizedOrigin) ||
-    LOCALHOST_DEV_ORIGIN_PATTERN.test(normalizedOrigin)
+    LOCAL_DEV_ORIGIN_PATTERN.test(normalizedOrigin)
   );
 }
 

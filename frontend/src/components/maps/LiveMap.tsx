@@ -126,7 +126,7 @@ export function LiveMap({
         ? [
             {
               key: `stop-${stop.sequence ?? index + 1}`,
-              label: stop.sequence ? `Stop ${stop.sequence}` : `Stop ${index + 1}`,
+              label: index === 0 ? 'Pickup' : `Stop ${stop.sequence ?? index + 1}`,
               lat: stop.latitude,
               lng: stop.longitude,
               tone: index === 0 ? ('pickup' as const) : ('dropoff' as const),
@@ -167,72 +167,66 @@ export function LiveMap({
           .join(' ');
 
   const toneClass = {
-    driver: 'bg-sky-400 text-slate-950',
-    pickup: 'bg-emerald-400 text-slate-950',
-    dropoff: 'bg-amber-400 text-slate-950',
+    driver: 'bg-[#1b3f72] text-white',
+    pickup: 'bg-emerald-500 text-white',
+    dropoff: 'bg-[#e8a020] text-white',
   };
 
   return (
-    <section className="rounded-3xl border border-slate-700/40 bg-slate-950/55 p-5 shadow-2xl backdrop-blur">
+    <section className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-white">Live Tracking Board</h3>
-          <p className="text-sm text-slate-400">
-            Phase 4 route layer with ETA, traffic-aware routing, and deviation visibility.
+          <p className="text-[11px] uppercase tracking-[0.28em] text-sky-700">Live route</p>
+          <h3 className="mt-1 text-2xl font-semibold text-slate-950">Tracking map</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Driver and route markers stay visible even if the app falls back to the last cached snapshot.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-          <span className="rounded-full border border-slate-700 px-3 py-1">
+        <div className="flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
             Status: {effectiveStatus ?? 'Unknown'}
           </span>
-          <span className="rounded-full border border-slate-700 px-3 py-1">
+          <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
             ETA: {effectiveEta ?? 'Pending'}
           </span>
-          <span className="rounded-full border border-slate-700 px-3 py-1">
-            Route: {effectiveRoute?.source === 'google-directions' ? 'Google Maps' : 'Fallback'}
-          </span>
-          <span className="rounded-full border border-slate-700 px-3 py-1">
+          <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
             Traffic: {effectiveRoute?.trafficLevel ?? 'Unknown'}
           </span>
-          {usingCache ? (
-            <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-amber-100">
-              {isOnline ? 'Cached snapshot' : 'Offline cache active'}
-            </span>
-          ) : null}
         </div>
       </div>
 
       {effectiveRoute?.deviation?.isOffRoute ? (
-        <div className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          Driver is off route by about {effectiveRoute.deviation.deviationKm ?? 0} km. Alert status:{' '}
-          {effectiveRoute.deviation.alertStatus ?? 'pending review'}.
+        <div className="mb-4 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Driver appears to be off route by about {effectiveRoute.deviation.deviationKm ?? 0} km.
+          Alert status: {effectiveRoute.deviation.alertStatus ?? 'pending review'}.
         </div>
       ) : null}
 
       {usingCache && cachedAt ? (
-        <div className="mb-4 rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+        <div className="mb-4 rounded-[22px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
           Showing the last cached route snapshot from {cachedAt}.
+          {!isOnline ? ' Offline mode is active.' : ''}
         </div>
       ) : null}
 
       <div className="mb-4 flex flex-wrap gap-2 text-xs">
-        <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-sky-100">
+        <span className="rounded-full bg-[#eef6ff] px-3 py-1 font-medium text-[#1b3f72]">
           Distance: {effectiveRoute?.distanceKm != null ? `${effectiveRoute.distanceKm} km` : 'Pending'}
         </span>
-        <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-emerald-100">
+        <span className="rounded-full bg-[#eefbf4] px-3 py-1 font-medium text-emerald-700">
           Duration: {effectiveRoute?.durationMinutes != null ? `${effectiveRoute.durationMinutes} min` : 'Pending'}
         </span>
-        <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-amber-100">
-          Multi-stop optimization: {effectiveRoute?.optimized ? 'On' : 'Off'}
+        <span className="rounded-full bg-[#fff8e8] px-3 py-1 font-medium text-amber-700">
+          Route engine: {effectiveRoute?.source === 'google-directions' ? 'Google Maps' : 'Fallback'}
         </span>
       </div>
 
-      <div className="relative h-80 overflow-hidden rounded-3xl border border-slate-800 bg-[linear-gradient(135deg,rgba(15,23,42,0.9),rgba(8,47,73,0.8))]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.12),transparent_55%)]" />
-        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(148,163,184,0.3)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.3)_1px,transparent_1px)] [background-size:3rem_3rem]" />
+      <div className="relative h-80 overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_58%,#f8fbff_100%)]">
+        <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(148,163,184,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.2)_1px,transparent_1px)] [background-size:2.8rem_2.8rem]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.08),transparent_55%)]" />
         {bounds == null ? (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
-            No coordinates yet. Once the driver shares location, the route board will render here.
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
+            No coordinates yet. Once the driver or route shares a location, the map will render here.
           </div>
         ) : (
           <>
@@ -245,7 +239,7 @@ export function LiveMap({
                 <polyline
                   fill="none"
                   points={routePolyline}
-                  stroke={effectiveRoute?.deviation?.isOffRoute ? '#f59e0b' : '#38bdf8'}
+                  stroke={effectiveRoute?.deviation?.isOffRoute ? '#e8a020' : '#2563eb'}
                   strokeDasharray={
                     effectiveRoute?.source === 'google-directions' ? undefined : '3 2'
                   }
@@ -263,7 +257,7 @@ export function LiveMap({
                 style={{ left: `${point.left}%`, top: `${point.top}%` }}
               >
                 <div
-                  className={`rounded-full px-3 py-1 text-xs font-bold shadow-lg ${toneClass[point.tone]}`}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold shadow-lg ${toneClass[point.tone]}`}
                 >
                   {point.label}
                 </div>

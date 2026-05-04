@@ -4,6 +4,8 @@ PRODUCT REQUIREMENTS DOCUMENT
 Version 10 — ULTIMATE
 Enterprise-Grade | Africa-Scale | Investor-Ready
 Classification: CONFIDENTIAL
+Integrated Addenda: V10.2 Warehouse / Own Fleet / Platform Fees + V10.3 App Design System
+Current Integrated Version Reference: 10.3
 ? 2024 ZITO Logistics Technologies. All Rights Reserved.
 1. Product Vision
 ZITO is a unified logistics super platform built for Africa-scale operations. It consolidates fragmented transport, warehousing, and last-mile delivery services into a single intelligent platform, enabling operators, transporters, drivers, warehouses, and customers to collaborate in real time.
@@ -20,7 +22,15 @@ User Roles
 One user → multiple roles allowed. Permissions enforced at API and UI level.
 3. 🔐 Authentication System
 Unified Login
-All users authenticate through a single entry point with role-based routing post-login.
+All users authenticate through a single identity system, but not through one shared public app surface.
+App split rule:
+Zito Logistics Service App = Individual Customer + Corporate
+Zito Partners App = Driver + Agent + Transporter + Courier Company + Warehouse Partner
+Zito Internal Ops = Super Admin + Admin + Agency / Agency Staff + internal operations teams
+Customers and partners must not see internal-role registration or internal login entry points in their public apps.
+Internal roles must use a separate private login path and separate internal web/app experience.
+Agent is an external supply-side partner role, separate from Agency / Agency Staff. Agents source vehicles and loads for commission, onboard drivers, manage supply capacity, and operate through Zito Partners.
+Agency / Agency Staff remains an internal operating structure and must not be exposed in the public partner login or registration flow.
 identifier = phone OR email
 Login Methods
 Phone OTP (primary method)
@@ -37,6 +47,7 @@ Only one Zito identity should be presented per viewport section; avoid repeated 
 OTP-first flow must remain on a single screen: contact step â†’ OTP step â†’ role-based redirect after successful verification.
 UI must support phone-first sign-in with separate country-code and local-number fields, plus email sign-in as the secondary path.
 The OTP step must show a masked verification target, change-contact action, resend countdown, and attempts-remaining messaging when the account is not yet locked.
+The resend OTP action must remain visibly present on the OTP step even during cooldown, with disabled state plus countdown text rather than disappearing.
 Canonical flow rule:
 contact step -> OTP step for all public users -> password step only for email users -> role-based redirect after successful verification.
 Phone login completes after OTP only.
@@ -60,11 +71,20 @@ OTP must be stored hashed at rest
 Verification target must be masked in the UI
 Failed OTP responses must show attempts remaining whenever the account is not yet locked
 Fallback:
-Public self-service auth is for external roles only: Individual Customer, Driver, Transporter, Courier Company, and Corporate.
-Agency Staff and other internal roles must be provisioned through internal processes, not the public registration or outsider login flow.
+Public self-service auth is split by app surface:
+Zito Logistics Service App self-service roles: Individual Customer, Corporate
+Zito Partners App self-service roles: Driver, Agent, Transporter, Courier Company, Warehouse Partner
+Agency Staff and other internal roles must be provisioned through internal processes, not the public customer or partner registration flow.
+Internal login paths must not be visible in the public customer or partner role-selection experience.
 If OTP fails repeatedly, allow alternative login method (email/password) inside the same login flow when the account has password sign-in enabled
 Phone sign-in must use separate country-code and local-number fields
 If OTP fails repeatedly → allow alternative login method (email/password)
+User guide requirement:
+Each app surface must provide an in-system user guide aligned to the active role set and current routing model.
+Minimum guide split:
+Zito Logistics guide = Customer + Corporate
+Zito Partners guide = Driver + Agent + Transporter + Courier Company + Warehouse Partner
+Zito Internal guide = Super Admin + Admin + Agency Staff / internal operations
 Session Continuity & Recovery:
 If app is closed or network lost, user should resume last step
 Incomplete flows (signup, booking) must be recoverable
@@ -74,7 +94,9 @@ Critical flows must not restart unnecessarily
 Unsaved data should be preserved locally (where applicable)
 4. 📝 Signup & KYC Flow
 phone → OTP → email → OTP → password → document upload → admin approval → active
-Documents required: National ID, Business Registration (Corporate), Driver's License (Driver), Vehicle Registration (Transporter).
+Agent, Transporter, Courier Company, Corporate, and Warehouse Partner are B2B organization accounts. Their self-service registration must capture both company legal name and authorized contact person name.
+Company name belongs to registration, approval, contracts, invoices, and internal records; it must not be asked for on the public login screen.
+Documents required: National ID, Business Registration (Corporate / Agent / Courier Company / Warehouse Partner / Transporter), Driver's License (Driver), Vehicle Registration (Agent / Transporter).
 Compliance & Re-Validation:
 Driving license expiry tracking (drivers)
 Vehicle insurance & permit expiry tracking (transporters)
@@ -1040,9 +1062,655 @@ Africa-Scale Ready  •  Investor-Ready  •  Production-Ready
 58. Courier Company & Owned Fleet Expansion Addendum
 Objective: Extend Zito beyond standard customer and transporter usage by enabling customer-owned fleets, dedicated courier-company operations, and CFA-managed county-to-county supply-chain orchestration through the Zito portal.
 Role Model: Add a dedicated COURIER_COMPANY role with separate login and portal routing. Courier companies operate inside the Zito CFA portal, where they create and manage PTL, courier, and FTL movement plans, manage their own fleet when available, and work through the Zito network when shared execution support is required.
-Owned Fleet Scope: Customer, Corporate, Courier Company, and Transporter accounts may register and manage vehicles they own under their own account scope, with ownership-based access control enforced across fleet workflows.
+Owned Fleet Scope: Customer, Corporate, Courier Company, Agent, and Transporter accounts may register and manage vehicles they own under their own account scope, with ownership-based access control enforced across fleet workflows.
 Commercial Model: The platform must support platform-fee charging per owned vehicle, per managed fleet, or per transaction depending on commercial agreement. Fee policy may be contract-driven, subscription-driven, or usage-driven.
 Courier Supply Chain Mode: Courier companies use the Zito portal as their operations workspace for county-to-county supply-chain execution. Each movement plan must store whether execution is owned-fleet, CFA-network, or blended, while preserving one booking, tracking, scan, and handoff chain across the journey.
 Multi-Load / Multi-Unload Rules: Courier-company requests must support multiple loading points and multiple unloading points. Booking validation must require at least one load or pickup stop and at least one unload or delivery stop, while preserving ordered stop sequencing for routing, scanning, and handoff visibility.
 Operations & Traceability: Every parcel or shipment movement under courier-company mode must remain linked to vehicle, driver, booking, scan, waybill or LR, and destination chain-of-custody records exactly like the base logistics flow.
 Implementation Guidance: The app should expose separate courier-company web and mobile workspaces, dispatch visibility, scan operations, waybill access, customer-owned fleet management, and future finance automation for platform-fee billing. Where billing automation is not yet live, the PRD must mark it as a pending finance-control follow-up rather than implying completion.
+59. Integrated Addendum Numbering Note
+This master PRD now incorporates the approved V10.2 and V10.3 addendum scope directly into the repository version.
+To preserve cross-reference alignment with the standalone addendum drafts and exported documents, sections 63-66 retain their original addendum numbering below.
+Sections 60-62 are reserved in the master sequence for future controlled inserts or final publishing renumbering.
+60. Reserved for controlled future insert
+61. Reserved for controlled future insert
+62. Gap Closure Summary
+The following launch-critical specification gaps are now formally closed in this master PRD:
+- Full warehouse operations were previously limited to structure and basic billing notes; this PRD now defines booking, dock scheduling, GRN, inventory, pick-pack-dispatch, cold chain, VAS, customer portal, and SLA behavior.
+- Owned fleet previously existed only as a partial concept; this PRD now defines who can own fleet, how vehicles are onboarded, how compliance is enforced, how drivers are managed, and how own-fleet and Zito-network execution coexist.
+- Platform fee logic previously existed only as a generic statement; this PRD now defines transaction fees, subscription tiers, per-vehicle fees, agent commissions, driver fees, waiver logic, and invoice rules.
+- UX and interface behavior previously had no formal standard; this PRD now defines a map-first, card-native design system and screen-by-screen experience specification for customer, driver, admin, and transporter-facing products.
+- The PRD now treats the visible product experience, operational back office, and commercial model as one connected system rather than separate unaligned notes.
+63. Full Warehouse Management & Booking System
+Objective
+The warehouse module is not just storage. It is a full operational system covering customer warehouse booking, inbound appointment scheduling, receiving, inventory control, picking, packing, dispatch, cold chain, value-added services, reporting, and billing.
+63.1 Warehouse Types & Storage Modes
+Supported warehouse modes:
+- Ambient / Dry Store: standard temperature storage for FMCG, general cargo, and electronics.
+- Cold Store (2-8 C): refrigerated storage for pharmaceuticals, perishables, and dairy.
+- Frozen Store (-18 C): deep-freeze storage for frozen food and sensitive temperature-controlled goods.
+- Bulk / Floor Storage: open floor allocation for pallets, heavy goods, and oversized items.
+- Bonded Warehouse: customs-controlled inventory for import/export handling.
+- Open Yard: secured outdoor area for containers, vehicles, and oversized cargo.
+Every warehouse location must declare:
+- storage modes supported
+- zone-level capacity
+- operating hours
+- service radius
+- dock count and dock type
+- special handling capability (hazmat, cold chain, bulky, high-value)
+63.2 Customer Warehouse Booking Portal
+Customers, Corporates, and Courier Companies must be able to self-book warehouse space from the app or portal without a manual phone workflow.
+Booking flow:
+- user selects Warehouse and Storage from service menu
+- system shows eligible warehouses on map with live availability
+- user selects storage type, expected quantity or volume, weight, inbound date and time, expected storage duration, and handling needs
+- system checks real-time capacity and available inbound slot availability
+- booking is confirmed with a Warehouse Booking Reference (WBR)
+- system issues inbound appointment slot, access instructions, and QR or digital reference for gate check-in
+Minimum warehouse booking fields:
+- storage type
+- goods description
+- quantity and/or volume
+- weight
+- inbound date and time
+- expected storage duration
+- special handling requirements
+- insurance required flag
+- associated transport booking, LR, or waybill where applicable
+63.3 Dock & Inbound Appointment Scheduling
+Each warehouse must support structured dock-slot scheduling.
+Rules:
+- each warehouse defines number of docks, dock type, operating hours, and slot capacity
+- inbound and outbound slots are exclusive and cannot be overbooked
+- slot availability is visible in real time to customer and warehouse operations
+- arriving vehicles trigger check-in, driver verification, dock assignment, and GRN initiation
+- outbound dispatch must support separate appointment scheduling
+- no-show slot grace period is configurable; default policy is 30 minutes before release
+63.4 Goods Receiving Note (GRN) System
+Every inbound warehouse movement must generate a GRN.
+GRN lifecycle:
+initiated -> in_progress -> completed -> discrepancy_raised -> closed
+GRN process:
+- vehicle checks in at gate or dock
+- warehouse operator starts receiving workflow
+- all cartons, pallets, parcels, or units are scanned during offload
+- received quantity is compared to expected manifest or booking
+- damage, shortage, overage, and mismatch are flagged immediately
+- receiving operator captures evidence and signs off digitally
+- accepted goods are allocated to storage location or cross-dock flow
+Minimum GRN fields:
+- GRN ID
+- WBR / LR / Waybill reference
+- goods owner / customer
+- expected quantity
+- received quantity
+- condition on receipt
+- receiving operator ID
+- receiving timestamp
+- discrepancy notes
+- photo proof where required
+- assigned storage bin or dispatch destination
+Discrepancies must automatically raise:
+- loss detection event
+- warehouse issue / support event
+- claim workflow input where damage or shortage is present
+63.5 SKU & Product Catalog Management
+Repeated warehouse clients must be able to maintain a SKU catalog.
+Capabilities:
+- customer creates SKU code, product name, category, UOM, dimensions, weight, storage rule, and expiry behavior
+- inbound GRN may reference SKU by barcode or manual match
+- stock levels are tracked per SKU by warehouse, zone, rack, and bin
+- reserved, available, on-hand, damaged, and in-transit quantities are separated
+- minimum stock thresholds generate alerts
+- ownership visibility is limited to the owning client and authorized warehouse staff
+63.6 Bin Location & Storage Assignment
+Storage hierarchy:
+Warehouse -> Zone -> Rack -> Shelf -> Bin
+Rules:
+- every bin stores capacity by unit, weight, or volume
+- temperature and storage constraints are declared at zone/bin level
+- bin suggestion may be automatic based on capacity, FIFO, FEFO, and storage rules
+- manual override requires reason logging
+- multi-client inventory is allowed only with ownership separation enforced
+- no untracked storage movement is allowed; every movement must be scanned and auditable
+63.7 Pick, Pack & Dispatch Operations
+Outbound warehouse operations must support:
+- dispatch order creation from customer portal or internal operations
+- pick-list generation by SKU, quantity, and optimal route through the warehouse
+- assignment of pick task to operator or work queue
+- mandatory scan at pick, pack, and vehicle load stages
+- packaging and relabelling workflow where needed
+- outbound manifest generation
+- Goods Dispatch Note (GDN) creation
+- customer notification with dispatch confirmation and tracking link
+Rules:
+- wrong-SKU scans must be blocked or forced into exception handling
+- stock must reduce immediately after dispatch confirmation
+- every outbound movement must remain traceable to booking, owner, operator, vehicle, and timestamp
+63.8 Cross-Docking Workflow
+Cross-docking must be a first-class warehouse operation.
+Rules:
+- booking or ops team may flag cargo for cross-dock
+- goods are received, scanned, sorted, and moved to outbound dispatch without entering long-term storage
+- inbound reference and outbound reference remain linked
+- scan chain must preserve full audit trail
+- same-day cross-dock avoids storage billing and applies handling charges only
+63.9 Cycle Count & Stock Take System
+Inventory control must support:
+- rolling cycle count by bin, zone, SKU, or owner
+- full stock take by warehouse or customer account
+- expected-vs-physical variance reporting
+- supervisor approval for material adjustments above threshold
+- immutable audit log for all stock adjustments
+- customer-visible reconciliation reporting where contractually required
+63.10 Cold Chain & Temperature Monitoring
+Cold and frozen operations must support continuous monitoring.
+Rules:
+- temperature readings are logged on defined intervals
+- out-of-range duration threshold is configurable
+- deviation triggers warehouse alert, supervisor escalation, customer notification, and incident record
+- temperature logs are exportable per batch, booking, or storage stay
+- cold-chain dispatch may produce a temperature-chain certificate when required
+63.11 Value-Added Services (VAS)
+Supported VAS catalog must include:
+- labelling / relabelling
+- repackaging
+- palletising
+- kitting / assembly
+- quality inspection
+- document preparation
+- photography
+- destruction / disposal
+Rules:
+- every VAS task must be recorded against owner, SKU/batch, operator, timestamp, and billing rule
+- VAS may be priced per unit, per pallet, per batch, per hour, or per document set depending on service type
+63.12 Warehouse Billing - Full Specification
+Warehouse billing components must support:
+- storage fee = occupied space units x days stored x rate per unit
+- handling in fee on inbound completion
+- handling out fee on outbound completion
+- cold-chain premium
+- VAS charges
+- excess storage charge
+- minimum storage period rules
+- optional insurance premium
+Rules:
+- warehouse fees may consolidate into a single invoice with transport and courier where commercial rules require it
+- billing must support B2B monthly consolidation and per-owner charge breakdown
+- storage accrual must be visible in customer-facing reporting
+63.13 Customer Self-Service Warehouse Portal
+Warehouse clients must see:
+- live stock dashboard
+- inbound tracker
+- outbound tracker
+- movement history
+- low stock alerts
+- storage cost tracker
+- downloadable GRN, GDN, invoice, and temperature log files
+- support / discrepancy ticketing
+63.14 Warehouse SLA Definitions
+Minimum SLA framework:
+- GRN completion after arrival
+- bin assignment after GRN
+- pick-list generation after order
+- pick and pack completion
+- outbound vehicle loading after pick completion
+- inbound receipt notification to customer
+- discrepancy resolution turnaround
+- cycle count reporting turnaround
+All warehouse SLAs must be configurable by account tier, site type, and contract.
+64. Own Fleet Management System
+Objective
+Any eligible account using Zito as an operating system for its own vehicles must be able to onboard, manage, assign, monitor, and commercially account for fleet assets within the platform.
+64.1 Fleet Ownership by Account Type
+Fleet-capable roles:
+- Corporate: may add vehicles and employed drivers for internal use; no external marketplace listing by default.
+- Courier Company: may add vehicles, drivers, and operate in owned-fleet or blended CFA mode.
+- Transporter: may add vehicles and drivers, assign those drivers onto owned vehicles, and expose capacity to marketplace.
+- Agent: may add managed vehicles and sourced drivers and participate in marketplace supply.
+- Individual Customer: may add a small owned fleet for internal use where enabled by product policy, including customer-managed drivers linked to that fleet.
+Rules:
+- fleet visibility is ownership-scoped
+- a role may only access vehicles, drivers, and assignments under its permitted scope
+- marketplace availability is role- and contract-dependent
+64.2 Vehicle Self-Registration Flow
+Vehicle onboarding flow:
+- owner opens My Fleet
+- selects Add Vehicle
+- enters vehicle metadata
+- uploads compliance documents
+- vehicle status becomes pending_verification
+- admin or authorized ops reviews documents
+- approved vehicle becomes active and billable
+- rejected vehicle shows rejection reason and resubmission path
+64.3 Vehicle Data Fields
+Vehicle master record must support:
+- registration number
+- make / model / year
+- vehicle class and body type
+- payload capacity
+- volume capacity
+- fuel type
+- temperature capability
+- GPS tracker device ID where available
+- color
+- year of manufacture
+- optional seat count or special certifications
+64.4 Vehicle Compliance Documents
+Tracked documents include:
+- vehicle registration certificate
+- insurance certificate
+- road worthiness / inspection certificate
+- commercial carrier permit where required
+- goods-in-transit insurance
+- refrigeration certificate for cold chain vehicles
+- hazardous goods permit for hazmat vehicles
+- vehicle images
+Rules:
+- each tracked document must support expiry date
+- document reminders must trigger before expiry
+- expired required compliance suspends the vehicle automatically
+- reactivation requires updated document and approval
+64.5 Fleet Dashboard for Fleet Owners
+Fleet owner dashboard must show:
+- total vehicles
+- active, idle, on-trip, suspended, and maintenance counts
+- compliance tracker
+- assigned drivers
+- live location where available
+- trip history and revenue per vehicle
+- utilisation rate
+- maintenance due items
+64.6 Driver Management Under Own Fleet
+Fleet owner capabilities:
+- invite and onboard driver to fleet roster
+- assign / unassign vehicle
+- mark primary or backup driver
+- review license and compliance status
+- review trip history, performance, and role-relevant earnings data
+- customer, transporter, courier-company, and corporate fleet owners may onboard drivers under their own fleet scope when the role has owned-fleet capability enabled
+- transporter operations must be able to manage both the vehicle roster and the driver roster from the transporter workspace
+- customer-owned fleet management must expose both vehicle and driver controls from the service app account/fleet area rather than hiding driver ownership in back-office tools
+- every fleet-managed driver still signs in through the dedicated Driver app; fleet ownership changes the driver's roster and assignment scope, not the app they use
+- fleet owner must be able to place an owned driver onto an owned vehicle from the same managed fleet context
+Rules:
+- a driver can only be linked to one active fleet owner at a time unless future multi-tenancy explicitly allows otherwise
+- driver personal financial controls remain protected from fleet owner view except approved operational earnings summaries
+64.7 Booking Mode - Own Fleet vs Zito Network
+Execution modes:
+- Own Fleet Mode: customer or partner vehicle plus its driver fulfills the job while Zito provides control layer, tracking, scans, and records
+- Zito Network Mode: Zito assigns from open supply network
+- Blended Mode: some legs or portions use owned fleet while others use Zito-managed supply
+Rules:
+- mode must be stored per booking or per leg where applicable
+- one booking chain must preserve unified tracking, scan, financial, and audit history across modes
+- platform fee application depends on the selected execution mode and contract
+64.8 Maintenance & Service Tracking
+Fleet maintenance must support:
+- last service date
+- next service due date
+- odometer-based maintenance reminders
+- maintenance status flag
+- service log with vendor, cost, and notes
+- linkage from breakdown events into maintenance history
+64.9 GPS Integration for Own Fleet
+Tracking options:
+- hardware vehicle GPS
+- driver mobile GPS fallback
+- dual validation where both exist
+Rules:
+- deviation threshold between driver GPS and vehicle GPS must trigger alerts
+- live map and historical replay must support owner operations views
+- reduced confidence state must be visible when only fallback tracking is available
+64.10 Marketplace Participation for Fleet Owners
+Marketplace-enabled fleet owners must be able to:
+- publish available vehicle capacity
+- define coverage area
+- participate in fixed-price or bid-based opportunities
+- manage listing visibility and availability
+- see performance score and ranking impacts
+Rules:
+- poor performance, repeated cancellations, or compliance failure may demote or suspend marketplace visibility
+- marketplace bookings must apply defined commission rules
+65. Platform Fee & Commercial Structure
+Objective
+Zito revenue and charging must be explicit, configurable, auditable, and role-aware across customer, partner, fleet, driver, warehouse, and marketplace activity.
+65.1 Transaction Fees - Per Booking
+Default fee model must support configurable ranges by service type:
+- FTL: percentage commission of booking value
+- PTL / LCL: percentage commission of booking value
+- Courier / Last Mile: percentage commission of booking value
+- Vehicle Hire: percentage of hire value
+- Own Fleet Mode: fixed fee per trip by vehicle class
+- Warehouse inbound / outbound: transaction fee against warehouse service line
+- Marketplace transporter booking: percentage of net job value
+- B2B contract booking: negotiated rate
+Own-fleet per-trip fee schedule must exist by vehicle class, for example:
+- motorcycle / bicycle
+- pickup / tuk-tuk
+- van / minivan
+- light truck
+- medium truck
+- heavy truck
+- refrigerated vehicle surcharge layered on base class
+Rates must be configurable and versioned. Values may be overridden per contract.
+65.2 Monthly Platform Subscription Fees
+Customer-side subscription tiers must support:
+- Basic / Free
+- Business
+- Enterprise / Contract
+Partner-side subscription tiers must support:
+- Starter / Free
+- Professional
+- Fleet Pro
+- Warehouse Partner per-location plan
+Every plan must define:
+- monthly fee
+- included modules / limits
+- service or fleet caps where relevant
+- support priority
+- marketplace ranking or analytics entitlements where relevant
+65.3 Per-Vehicle Monthly Platform Fee
+Fleet-managed accounts must support a monthly per-vehicle platform fee by class.
+Rules:
+- fee activates from vehicle approval date
+- fee pauses on suspension and resumes on reactivation
+- fee prorates on deletion or partial month use
+- volume discount tiers are configurable
+- enterprise fleet contracts may override standard schedule
+65.4 Driver Platform Fee
+Independent drivers not covered by a fleet-owner or contract plan may use:
+- weekly subscription
+- per-trip commission
+- zero-fee promotional onboarding window
+Driver fee model must be configurable by geography, role type, and campaign.
+65.5 Agent Commission & Fee Structure
+Agent commercial model must support:
+- commission percentage on loads sourced
+- onboarding bonus for activated drivers
+- onboarding bonus for activated vehicles
+- conditional monthly platform access fee when minimum commission threshold is not met
+Rules:
+- commission logic must be transparent and auditable
+- agent wallet and commission report must show source booking / source vehicle linkage
+65.6 Fee Waiver, Override & Discount Conditions
+Supported waiver / discount scenarios include:
+- new driver promo period
+- new transporter promo period
+- high-volume month rebate
+- annual prepayment discount
+- enterprise or strategic contract override
+- fleet outage or platform downtime credit
+- dispute resolution fee adjustment
+All waivers and overrides require audit trail with approver, reason, and effective date.
+65.7 Platform Fee Billing & Invoicing
+Platform fees must be billed separately from operational service invoices unless a contract explicitly consolidates them.
+Billing rules:
+- platform fee invoice generated automatically on billing cycle date
+- invoice delivered through email, in-app, and downloadable PDF
+- payment due date configurable
+- overdue reminder, flagging, and suspension policy configurable
+- wallet auto-debit permitted where enabled
+- manual payment methods supported where wallet is insufficient
+- all platform fee movements must be visible to Super Admin and Accounts
+65.8 Fee Configuration & Administration
+Super Admin must be able to configure:
+- fee rates
+- effective dates
+- tier thresholds
+- per-account overrides
+- promotional waivers
+- billing cycle parameters
+Rules:
+- changes must be versioned
+- no silent retroactive billing changes
+- prior value, new value, approver, timestamp, and reason must be stored
+65.9 Revenue Model Summary
+Revenue streams supported by the platform include:
+- trip commission
+- own-fleet per-trip fee
+- marketplace commission
+- monthly subscription fee
+- per-vehicle platform fee
+- warehouse handling fees
+- warehouse storage fees
+- VAS charges
+- driver platform fee
+- agent platform fee where applicable
+- premium marketplace listing
+- insurance revenue share where integrated
+66. App Design System & UX Specification
+Objective
+The product experience must be defined as rigorously as the operations engine. Zito must feel like a modern logistics product, not a data-entry portal. The UI model is map-first, card-native, action-forward, and mobile-credible, with standards strong enough to outperform industrial benchmarks such as Porter-style booking flows while remaining Africa-ready and offline-aware.
+66.1 The Core Design Problem - Forms vs Cards vs Map
+The booking experience must not default to long forms. The map is the interface; cards and bottom sheets are the primary interaction surfaces.
+Required design shifts:
+- pickup and drop are map pin or search-overlay actions, not plain text form blocks on the first screen
+- vehicle selection is visual card-based with live pricing, not a dropdown
+- cargo details are progressive and mostly optional unless operationally mandatory
+- booking confirmation is a concise summary card or bottom sheet, not a separate paperwork-style page
+- booking history is card feed first; table views are secondary and report-oriented
+66.2 Design Language - The Zito System
+Core design principles:
+- Map-first: every location-heavy workflow begins from the map
+- Card-native: content appears in cards, tiles, chips, sheets, and status trails rather than grids of raw data
+- Action-forward: the primary action is always visually obvious
+- Progressive disclosure: ask only for what is needed now
+- One-thumb design: primary mobile controls remain in the lower interaction zone
+- Offline-tolerant: every critical screen has a meaningful degraded state
+66.3 Color System
+Required semantic palette:
+- Zito Navy: primary brand, navigation, trust layer, primary headings
+- Zito Amber: urgency, highlights, recommendations, caution states
+- Surface White / light surfaces: cards, sheets, modal backgrounds
+- Background Blue / muted surface blue: app background and inactive layers
+- Text Primary: headings and body
+- Text Secondary: labels, timestamps, hints
+- Success Green: confirmed, paid, online, delivered
+- Alert Red: failed, cancelled, SOS, overdue
+- Info Blue: route lines, info markers, informational states
+- Pickup Pin color and Delivery Pin color must remain visually distinct everywhere
+Rules:
+- color is never the only status signal; label and/or icon must accompany it
+- dark brand colors should not dominate full-screen content backgrounds where readability suffers
+66.3A Brand and Logo Harmonization
+The operational product experience must use restrained brand application. The HTML mobile reference clarifies the expected rule set:
+- the working app should feel navy / white / cool-grey first, with amber used as accent rather than as a dominant fill
+- operational screens should prefer a compact wordmark, small icon, or top-bar brand token instead of a large marketing lockup
+- the full colorful Zito logo lockup belongs mainly on splash, onboarding, authentication, marketing, pitch, or help surfaces, not repeated inside every working mobile screen
+- mobile top chrome should harmonize with Zito Navy backgrounds and white text, rather than stacking oversized logo art above operational content
+- logo presentation must never visually fight with card content, map content, or CTA hierarchy
+- no unrelated purple-glow, neon-brand, or poster-style framing should be introduced into operational service screens unless specifically approved as part of the active brand system
+66.3B Operational Surface Composition
+The reference HTML establishes the preferred production balance:
+- light map canvas or muted cool-grey background as the base layer
+- white or near-white cards and bottom sheets above the map
+- compact status/header chrome in navy
+- dark navy is used for trust, CTA, and header emphasis; not for full-screen content blocks by default
+- the visual feeling should be transport utility, not enterprise back-office portal
+Customer mobile palette clarification:
+- structural layout may be inspired by approved HTML mockups, but the production color palette for customer-facing app surfaces must inherit from the approved login experience
+- customer mobile product surfaces should use the login-page family of deep midnight navy, cool slate, cyan-blue-violet CTA gradients, and restrained white-card layering
+- the HTML mockup is a layout and interaction reference, not a directive to replace Zito's approved login-page palette
+- the real Zito logo asset must be preserved; operational screens may scale it down, simplify its placement, or use a restrained top-bar lockup, but must not invent alternate logo styling
+66.4 Typography System
+Typography must define:
+- Display / Hero
+- Screen Title
+- Card Title
+- Body / Description
+- Label / Caption
+- Micro / Legal
+- Price / Fare
+Rules:
+- price typography must be visually prioritized
+- legal or micro text must never carry critical operational information alone
+- all typography sizes must remain legible on mobile and under accessibility scaling
+66.5 Spacing & Layout Rules
+Layout standards:
+- 4px spacing grid
+- 16px horizontal screen margin minimum
+- card padding and inter-card spacing standardized
+- bottom sheet handle and safe-area spacing required
+- 44x44px minimum touch target
+- bottom navigation height standardized
+- status and system bars must be reserved and never overlapped by critical content
+Additional mobile framing rules from the approved HTML reference:
+- production mobile layouts must be designed primarily for 360px, 375px, 390px, and 412px viewport widths
+- mockup phone frames used in presentations are illustrative only; content density must scale cleanly to real device widths
+- top system/status bar and bottom navigation bar are part of the composition and must be accounted for from the first design pass
+- bottom sheets should feel like mobile-native service surfaces, not desktop cards moved onto a phone
+66.6 Core Component Library
+The product component library must include at minimum:
+- Bottom Sheet: primary interaction surface for customer and driver flows
+- Map Component: full-screen or dominant map with overlays kept out of the center action zone
+- Vehicle Selection Cards: visual card list with live price and capacity summary
+- Status Pills / Badges: consistent semantic color + icon + text treatment
+- Driver / Booking Activity Cards: compact, tappable, status-aware card units
+- Progress / Status Trail: human-readable lifecycle visualization
+- Search / Address Bar: pressable search card that opens map/search overlay, not a raw keyboard-first field on home
+Rules:
+- no ad-hoc form components may replace these primitives without product approval
+- mobile views must not use raw admin-style tables as primary interaction surfaces
+- saved-place chips, service chips, recent-booking mini cards, and compact status overlays are first-class mobile components and should be reusable across customer and driver surfaces
+66.7 Screen-by-Screen Specification - Customer App
+Customer app mandatory screens:
+- Home (/): full-screen or dominant map, quick address action, service chips, recent bookings, no heavy portal header
+- Address Search: overlay-first search experience with recent and saved locations
+- Pickup Pin: drag-pin or map selection workflow with minimal bottom-sheet confirmation
+- Delivery Pin: same model with route preview and multi-stop extension path
+- Route Preview: distance, duration, and clear CTA into vehicle selection
+- Vehicle Selection: vertical or highly legible card list with instant fare update
+- Booking Detail: progressive optional cargo details, not mandatory long form
+- Payment: method cards, promo handling, full breakdown, strong confirm CTA
+- Booking Confirmed: success state with reference, assignment wait state, and redirect to live tracking
+- Live Tracking: map-first tracking, ETA overlay, driver card, progress trail, call / SOS actions
+- Booking History: filter chips + card feed, not tables
+- Booking Detail: route preview, status trail, documents, support, re-book
+- Account: profile card plus grid of settings, saved items, wallet, support, own-fleet entry, and logout
+Rules:
+- keyboard should not appear on home by default
+- raw latitude/longitude fields must never be exposed to ordinary customer flows
+- the customer product must feel like a service app, not an internal portal
+- customer home must not begin with a marketing hero block above the operational content; the first visible job is route intent, service choice, or recent activity
+- the preferred home composition is: map first, saved location chips, single address action, service chips, recent bookings, persistent bottom navigation
+- primary customer actions should be visible within one thumb zone and one screen without needing portal-style scrolling through explanatory content
+- booking creation should begin with route intent and map context; large dark summary blocks must not push the route setup below the fold on mobile
+- interim free-map implementation is allowed using OpenStreetMap tiles / embed plus free geocoding, provided the UI still behaves like a premium mobile service flow
+- if owned-fleet capability is enabled for the customer role, customer home or account must expose a clear Own Fleet entry so vehicle and driver management is discoverable without admin assistance
+66.8 Screen Specification - Driver App
+  Driver app mandatory experience:
+  - the driver product must use a dedicated mobile driver shell; it must not inherit the internal PortalShell / workspace shell used by admin, staff, warehouse, or back-office surfaces
+  - the driver shell must follow the same approved login-page palette family as the service app: deep navy header chrome, white cards, cool slate surfaces, restrained gradient emphasis, and the real Zito logo asset in compact form
+  - the driver shell must feel like a field-operations mobile app, not a browser-based console wrapped onto a small screen
+  - Driver Home: demand heatmap, online toggle, earnings strip, incoming-job card, no forms
+  - Driver Home composition must mirror the approved mobile reference: top earnings strip, online / availability control, map or heatmap canvas, high-demand indicator, incoming job alert card, and persistent bottom navigation
+  - Driver Home must not begin with KPI tables, admin cards, or portal headings before the operational map layer
+  - Driver Home must not begin with a marketing hero, long descriptive paragraphs, or portal-style explainer copy; earnings strip and operational state must appear before any supporting copy
+  - on the first meaningful driver-app launch, the product must request foreground location access with clear operational copy explaining why dispatch, heatmap placement, and live tracking need it
+  - if location permission is denied, the driver app must show a non-blocking but prominent retry / settings path; silent failure is forbidden
+  - when location permission is granted, the driver app must sync current coordinates to the driver profile endpoint and surface last-sync status in the UI
+  - demand / zone setup warnings must be absorbed into the map or demand card as compact inline guidance; they must not dominate the entire driver home with a blocking alert unless the product is unusable
+  - Driver Trips / Jobs page must use a card feed with route summary, status badge, and action controls; raw tables are forbidden as the primary mobile presentation
+  - Driver Trips / Jobs page must use a compact queue header and status chips; oversized hero banners and generic UX slogans are forbidden on this route
+  - Active Job / Navigate: map-led navigation, destination card, checklist, call and SOS actions
+  - Delivery Confirmation: camera-first POD flow, OTP capture, optional signature, no text-heavy completion screen
+  - Earnings Dashboard: chart-first earnings view with payout action
+  - Profile & Documents: compliance cards with clear status and upload actions
+  - the fourth driver bottom tab must behave as Profile, even when the first implementation groups profile and shift controls on the same route
+  - Driver Profile must include a Fleet entry point that opens the assigned-vehicle view; fleet must not be hidden or implied only through a status chip
+  - the driver fleet view is a secondary route under Profile and must surface assigned vehicle identity, readiness, status, and payload context in mobile cards
+  - shift controls and recent shift history belong inside the driver profile surface as mobile cards; raw tables are forbidden for shift history on the driver app
+  - any secondary driver route outside the main bottom-tab destinations must render a clear back control in the top chrome; primary bottom-tab pages should not rely on browser back as their only navigation affordance
+  - the driver experience should favor job-alert cards, trip cards, payout cards, and checklist cards over generic form blocks or dense operational tables
+66.9 Screen Specification - Admin Portal (Web)
+Admin portal principles:
+- dashboard is card-first and operations-first
+- tables are secondary, mostly for report mode, export mode, or detailed audit drill-down
+- live map, KPI cards, activity feeds, filters, and action panels are preferred primary surfaces
+- even internal dashboards should harmonize with the same navy / white / muted-surface system rather than drifting into unrelated visual themes
+Required admin modules must feel like:
+- Operations Dashboard with KPI cards, live map, and activity feed
+- Booking Management with booking cards and assignment actions
+- Driver Assignment Panel with proximity-aware driver cards
+- User Management with expandable user cards and side-panel creation
+- Fleet Overview with card grid and compliance RAG status
+- Analytics / Reports with chart-first presentation
+- Assignment Engine with rule cards and mode toggles rather than form pages
+66.10 Navigation Patterns
+  Customer and Driver app navigation rules:
+  - bottom tab navigation with 4 tabs maximum
+  - icon above label
+  - persistent visibility
+  - active tab clearly highlighted
+  - badges used for active bookings and unread notifications where relevant
+  - driver primary tabs must behave like a mobile app tab bar, not like portal sidebar links reproduced at the top of the page
+  - driver primary tabs should resolve to Jobs, Earnings, Trips, and Profile in the default mobile experience
+  - secondary driver pages such as heatmap detail, document detail, or deep trip workflow screens must use a compact back action in the top bar
+  Anti-patterns forbidden by PRD:
+  - hamburger-menu-first mobile navigation
+  - full-page booking forms for core user flows
+  - dropdown-led vehicle selection
+  - admin-style tables as primary mobile view
+  - internal workspace chrome reused directly inside customer or driver mobile apps
+  - raw status code strings shown to end users
+  - blank error pages where inline contextual empty/error states are possible
+66.11 Performance Targets - User Visible
+User-visible performance goals:
+- cold start to home under defined mobile threshold
+- map tile render under defined threshold
+- address search results near-instant after user pause
+- quote generation fast enough to preserve flow confidence
+- booking confirmation never blank or ambiguous
+- driver updates visible at predictable cadence
+- bottom sheet and navigation animations remain smooth
+- adjacent-tab data prefetch where practical
+Fallback behavior must always be defined for slow or degraded states.
+66.12 Empty States - Not Blank Screens
+Every empty state must be intentionally designed.
+Examples:
+- no bookings yet
+- no drivers available
+- offline mode
+- no search results
+- no earnings yet
+Rules:
+- no blank white screens
+- every empty state must provide context and next action
+66.13 Accessibility & Localization
+Accessibility requirements:
+- 44x44px minimum touch target
+- readable text sizing with scalable layouts
+- WCAG AA contrast minimum for important content
+- motion respects reduce-motion setting
+- all strings must use localization system
+- future RTL readiness must be considered at component level
+66.14 Transporter Portal - Not a Form Dashboard
+Transporter portal must behave like a fleet operations center.
+Required UX direction:
+- live fleet map
+- vehicle status cards
+- driver roster cards
+- booking queue in kanban or operational card view
+- chart-first earnings and utilization
+- drag-and-drop or action-panel-based assignment
+- transporter fleet surfaces must support both vehicle onboarding and driver onboarding in the same owned-fleet operating domain, even if the controls sit on separate cards or tabs
+- transporter must be able to assign a transporter-managed driver onto a transporter-owned vehicle without leaving the fleet management flow
+66.15 Competitor Analysis - Zito Must Exceed
+Target product positioning:
+- equal or better than Porter/Uber style map-first booking
+- stronger offline behavior
+- deeper B2B and warehouse integration
+- Africa-ready payment and settlement flows
+- stronger supply-side operations and fleet visibility
+66.16 Experience Goals - Pass/Fail Design Sign-Off
+Design sign-off must be validated through usability testing with measurable outcomes such as:
+- first-time user completes booking in under target time
+- user can identify primary action on every screen
+- user understands price before confirmation
+- user always knows current booking state
+- driver can accept and start trip quickly
+- past bookings can be found quickly
+- booking flow does not feel like filling a business form
+All future customer, partner, and internal UI implementation must be reviewed against Section 66 before development sign-off and before UAT closure.

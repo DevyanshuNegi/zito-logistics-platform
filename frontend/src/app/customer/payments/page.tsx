@@ -1,13 +1,21 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowDownCircle,
+  ArrowUpCircle,
+  CheckCircle2,
+  CreditCard,
+  Landmark,
+  Receipt,
+  ShieldCheck,
+  Wallet,
+} from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
-import { Table } from '@/components/ui/Table';
-import { SurfaceCard } from '@/components/layout/SurfaceCard';
-import { StatCard } from '@/components/layout/StatCard';
 import { ApiError, api } from '@/lib/api';
 import { formatDateTime, formatMoney, formatStatus } from '@/lib/format';
 import { PAYMENT_METHODS } from '@/lib/phase-one';
@@ -51,11 +59,64 @@ type BookingListResponse = {
   bookings: Booking[];
 };
 
+const paymentMethodMeta: Record<
+  string,
+  { label: string; note: string; icon: typeof Wallet; accent: string }
+> = {
+  MPESA: {
+    label: 'M-Pesa',
+    note: 'Primary mobile-money path for fast checkout.',
+    icon: Wallet,
+    accent: 'bg-[#eefbf4] text-[#157347]',
+  },
+  CARD: {
+    label: 'Card',
+    note: 'Use a debit or credit card for direct settlement.',
+    icon: CreditCard,
+    accent: 'bg-[#eef6ff] text-[#1b3f72]',
+  },
+  CASH: {
+    label: 'Cash',
+    note: 'Use only when your delivery workflow allows cash handoff.',
+    icon: Receipt,
+    accent: 'bg-[#fff8e8] text-[#b7791f]',
+  },
+  WALLET: {
+    label: 'Wallet',
+    note: 'Apply your wallet balance before other payment methods.',
+    icon: Wallet,
+    accent: 'bg-[#f1edff] text-[#6d28d9]',
+  },
+  BANK_TRANSFER: {
+    label: 'Bank transfer',
+    note: 'Best for scheduled B2B settlement and larger totals.',
+    icon: Landmark,
+    accent: 'bg-[#eef7f8] text-[#0f766e]',
+  },
+};
+
 function generateKey() {
   if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
     return window.crypto.randomUUID();
   }
   return `payment-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function statusTone(status: string) {
+  const normalized = status.toUpperCase();
+  if (normalized === 'SUCCESS') {
+    return 'bg-emerald-100 text-emerald-700';
+  }
+  if (normalized === 'FAILED' || normalized === 'REVERSED' || normalized === 'REFUNDED') {
+    return 'bg-rose-100 text-rose-700';
+  }
+  return 'bg-amber-100 text-amber-700';
+}
+
+function transactionTone(type: string) {
+  return type.toUpperCase().includes('CREDIT')
+    ? 'bg-emerald-100 text-emerald-700'
+    : 'bg-slate-100 text-slate-700';
 }
 
 export default function CustomerPaymentsPage() {
@@ -84,6 +145,11 @@ export default function CustomerPaymentsPage() {
       setWallet(walletResponse.wallet);
       setTransactions(walletResponse.transactions);
       setBookings(bookingsResponse.bookings);
+
+      if (!selectedBookingId && bookingsResponse.bookings[0]) {
+        setSelectedBookingId(bookingsResponse.bookings[0].id);
+        setAmount(String(bookingsResponse.bookings[0].totalPrice));
+      }
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to load payment data.');
     } finally {
@@ -102,7 +168,7 @@ export default function CustomerPaymentsPage() {
     }
 
     const booking = bookings.find((item) => item.id === selectedBookingId);
-    if (booking && !amount) {
+    if (booking) {
       setAmount(String(booking.totalPrice));
     }
 
@@ -114,12 +180,12 @@ export default function CustomerPaymentsPage() {
         setError(caught instanceof ApiError ? caught.message : 'Unable to load booking payments.');
       }
     })();
-  }, [amount, bookings, selectedBookingId]);
+  }, [bookings, selectedBookingId]);
 
   async function handleInitiate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedBookingId) {
-      setError('Select a booking first.');
+      setError('Select a booking before initiating payment.');
       return;
     }
 
@@ -142,7 +208,7 @@ export default function CustomerPaymentsPage() {
 
       setSuccess(
         response.providerResponse?.customerMessage ??
-          `Payment ${response.reference} created successfully.`,
+          `Payment ${response.reference} was created successfully.`,
       );
       await loadBaseData();
       const payments = await api.get<BookingPaymentsResponse>(`/payments/booking/${selectedBookingId}`);
@@ -154,16 +220,19 @@ export default function CustomerPaymentsPage() {
     }
   }
 
+  const selectedBooking = useMemo(
+    () => bookings.find((booking) => booking.id === selectedBookingId) ?? null,
+    [bookings, selectedBookingId],
+  );
+  const successfulPayments = useMemo(
+    () => bookingPayments.filter((payment) => payment.status === 'SUCCESS').length,
+    [bookingPayments],
+  );
+
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Wallet balance" value={formatMoney(wallet?.balance, wallet?.currency ?? 'KES')} helper="Live wallet view from the payments module." />
-        <StatCard label="Ledger items" value={String(transactions.length)} helper="Recent wallet transactions." tone="info" />
-        <StatCard label="Selected booking payments" value={String(bookingPayments.length)} helper="Payments linked to the active booking." tone="success" />
-      </div>
-
       {error ? (
-        <Alert title="Payments workflow error" variant="danger">
+        <Alert title="Payments issue" variant="danger">
           {error}
         </Alert>
       ) : null}
@@ -173,119 +242,337 @@ export default function CustomerPaymentsPage() {
         </Alert>
       ) : null}
 
-      <SurfaceCard title="Pay for a booking" description="Use the Phase 1 payment entry point with escrow-aware initiation.">
-        <form className="grid gap-4 md:grid-cols-2" onSubmit={handleInitiate}>
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-200">Booking</span>
-            <select
-              className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
-              value={selectedBookingId}
-              onChange={(event) => {
-                setSelectedBookingId(event.target.value);
-                setAmount('');
-              }}
-            >
-              <option value="">Choose booking</option>
-              {bookings.map((booking) => (
-                <option key={booking.id} value={booking.id}>
-                  {booking.reference} · {formatStatus(booking.status)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-200">Method</span>
-            <select
-              className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
-              value={method}
-              onChange={(event) => setMethod(event.target.value)}
-            >
-              {PAYMENT_METHODS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Input label="Amount" value={amount} onChange={(event) => setAmount(event.target.value)} required />
-          <div className="flex items-end">
-            <Button disabled={submitting || loading} type="submit">
-              {submitting ? 'Initiating...' : 'Initiate payment'}
-            </Button>
+      <section className="overflow-hidden rounded-[34px] border border-white/80 bg-[linear-gradient(135deg,#eef7ff_0%,#f6fbff_50%,#ffffff_100%)] p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.32em] text-sky-700">Payments</p>
+            <h1 className="mt-3 max-w-2xl text-3xl font-semibold leading-tight text-slate-950">
+              Pay, settle, and review wallet activity without leaving the customer service app.
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
+              This screen follows the PRD payment pattern: clear totals, direct method choice, and live booking-linked payment visibility without table-heavy portal views.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/customer/bookings"
+                className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-sky-200 hover:bg-sky-50"
+              >
+                Back to bookings
+              </Link>
+              <Link
+                href="/guides/service"
+                className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-sky-200 hover:bg-sky-50"
+              >
+                Open service guide
+              </Link>
+            </div>
           </div>
-        </form>
-      </SurfaceCard>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <SurfaceCard title="Booking payment history" description="Payment attempts for the booking you selected above.">
-          {loading ? (
-            <Spinner />
-          ) : (
-            <Table
-              rows={bookingPayments}
-              columns={[
-                {
-                  key: 'reference',
-                  header: 'Reference',
-                  render: (payment) => payment.reference,
-                },
-                {
-                  key: 'status',
-                  header: 'Status',
-                  render: (payment) => formatStatus(payment.status),
-                },
-                {
-                  key: 'method',
-                  header: 'Method',
-                  render: (payment) => payment.method,
-                },
-                {
-                  key: 'amount',
-                  header: 'Amount',
-                  render: (payment) => formatMoney(payment.amount),
-                },
-              ]}
-            />
-          )}
-        </SurfaceCard>
+          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            {[
+              {
+                label: 'Wallet balance',
+                value: formatMoney(wallet?.balance, wallet?.currency ?? 'KES'),
+                helper: 'Live balance available for wallet-first settlement.',
+                tone: 'bg-white',
+              },
+              {
+                label: 'Booking payments',
+                value: loading ? '...' : String(bookingPayments.length),
+                helper: 'Attempts linked to the booking you are working on.',
+                tone: 'bg-[#eef6ff]',
+              },
+              {
+                label: 'Ledger items',
+                value: loading ? '...' : String(transactions.length),
+                helper: 'Recent credits and debits recorded in your wallet feed.',
+                tone: 'bg-[#eefbf4]',
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className={`rounded-[28px] border border-slate-200/90 ${item.tone} p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]`}
+              >
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{item.label}</p>
+                <p className="mt-3 text-3xl font-semibold text-slate-950">{item.value}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.helper}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-        <SurfaceCard title="Wallet ledger" description="Credits and debits recorded for your wallet.">
-          {loading ? (
-            <Spinner />
-          ) : (
-            <Table
-              rows={transactions}
-              columns={[
+      <section className="grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
+        <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-sky-100 text-sky-700">
+              <Wallet className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Checkout</p>
+              <h2 className="mt-1 text-2xl font-semibold text-slate-950">Pay for a booking</h2>
+            </div>
+          </div>
+
+          <p className="mt-3 text-sm leading-6 text-slate-500">
+            Choose the booking first, then use one of the supported payment cards. This keeps the flow closer to a service app and away from the old admin portal feel.
+          </p>
+
+          <form className="mt-5 space-y-5" onSubmit={handleInitiate}>
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900">Select booking</p>
+                {selectedBooking ? (
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                    {selectedBooking.reference}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {bookings.slice(0, 6).map((booking) => {
+                  const active = booking.id === selectedBookingId;
+                  return (
+                    <button
+                      key={booking.id}
+                      type="button"
+                      onClick={() => setSelectedBookingId(booking.id)}
+                      className={[
+                        'rounded-[24px] border px-4 py-4 text-left transition',
+                        active
+                          ? 'border-[#1b3f72] bg-[#eef4ff] shadow-[0_16px_32px_rgba(27,63,114,0.10)]'
+                          : 'border-slate-200 bg-slate-50 hover:border-sky-200 hover:bg-white',
+                      ].join(' ')}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">{booking.reference}</p>
+                          <p className="mt-1 text-xs text-slate-500">{formatStatus(booking.status)}</p>
+                        </div>
+                        <p className="text-sm font-semibold text-[#1b3f72]">
+                          {formatMoney(booking.totalPrice)}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!bookings.length && !loading ? (
+                <div className="mt-3 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                  No bookings are available yet. Create a delivery first, then come back here to settle it.
+                </div>
+              ) : null}
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Choose payment method</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {PAYMENT_METHODS.map((option) => {
+                  const meta = paymentMethodMeta[option];
+                  const Icon = meta.icon;
+                  const active = method === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setMethod(option)}
+                      className={[
+                        'rounded-[24px] border px-4 py-4 text-left transition',
+                        active
+                          ? 'border-[#1b3f72] bg-[#eef4ff] shadow-[0_16px_32px_rgba(27,63,114,0.10)]'
+                          : 'border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40',
+                      ].join(' ')}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${meta.accent}`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">{meta.label}</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">{meta.note}</p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+              <Input
+                label="Amount"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                tone="light"
+                required
+                help="The amount pre-fills from the selected booking total and can be adjusted when partial settlement is allowed."
+              />
+              <Button
+                className="rounded-[16px] bg-[#1b3f72] px-5 py-3 text-white shadow-none hover:bg-[#163561]"
+                disabled={submitting || loading || !selectedBookingId}
+                type="submit"
+              >
+                {submitting ? 'Initiating...' : 'Initiate payment'}
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-emerald-100 text-emerald-700">
+                <ShieldCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+                  Selected booking
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+                  {selectedBooking?.reference ?? 'Choose a booking'}
+                </h2>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              {[
                 {
-                  key: 'type',
-                  header: 'Type',
-                  render: (transaction) => transaction.type,
+                  label: 'Status',
+                  value: selectedBooking ? formatStatus(selectedBooking.status) : 'Not selected',
                 },
                 {
-                  key: 'amount',
-                  header: 'Amount',
-                  render: (transaction) => formatMoney(transaction.amount),
+                  label: 'Booking total',
+                  value: selectedBooking ? formatMoney(selectedBooking.totalPrice) : '--',
                 },
                 {
-                  key: 'balance',
-                  header: 'Balance',
-                  render: (transaction) => formatMoney(transaction.balance),
+                  label: 'Successful payments',
+                  value: String(successfulPayments),
                 },
-                {
-                  key: 'description',
-                  header: 'Description',
-                  render: (transaction) => transaction.description ?? 'No description',
-                },
-                {
-                  key: 'created',
-                  header: 'Created',
-                  render: (transaction) => formatDateTime(transaction.createdAt),
-                },
-              ]}
-            />
-          )}
-        </SurfaceCard>
-      </div>
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4"
+                >
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{item.label}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-950">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Booking payments</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">Payment timeline</h2>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                {bookingPayments.length} records
+              </span>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              {loading ? <Spinner /> : null}
+
+              {!loading && !bookingPayments.length ? (
+                <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                  No payment records exist for this booking yet.
+                </div>
+              ) : null}
+
+              {bookingPayments.map((payment) => (
+                <div
+                  key={payment.id}
+                  className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">{payment.reference}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {payment.method} - {formatDateTime(payment.createdAt)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-[#1b3f72]">
+                        {formatMoney(payment.amount)}
+                      </p>
+                      <span
+                        className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusTone(payment.status)}`}
+                      >
+                        {formatStatus(payment.status)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Wallet ledger</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950">Credits and debits</h2>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            {transactions.length} items
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {loading ? <Spinner /> : null}
+
+          {!loading && !transactions.length ? (
+            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500 md:col-span-2">
+              No wallet activity has been recorded yet.
+            </div>
+          ) : null}
+
+          {transactions.map((transaction) => {
+            const credit = transaction.type.toUpperCase().includes('CREDIT');
+            const DirectionIcon = credit ? ArrowDownCircle : ArrowUpCircle;
+            return (
+              <div
+                key={transaction.id}
+                className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4"
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${transactionTone(transaction.type)}`}
+                  >
+                    <DirectionIcon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">
+                          {formatStatus(transaction.type)}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {transaction.description ?? 'Wallet movement'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-[#1b3f72]">
+                          {formatMoney(transaction.amount)}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Balance {formatMoney(transaction.balance)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">{formatDateTime(transaction.createdAt)}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

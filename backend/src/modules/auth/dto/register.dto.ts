@@ -12,6 +12,15 @@ export class RegisterDto {
   @IsNotEmpty()
   fullName: string;
 
+  @ApiProperty({
+    example: 'Acme Logistics Ltd',
+    description: 'Company legal name for corporate, agent, transporter, courier-company, and warehouse-partner accounts',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  companyName?: string;
+
   @ApiProperty({ example: 'john@example.com', description: 'Valid email address', required: false })
   @IsEmail()
   @IsOptional()

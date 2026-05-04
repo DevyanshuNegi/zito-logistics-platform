@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { Alert } from '@/components/ui/Alert';
@@ -9,8 +9,13 @@ import { Button } from '@/components/ui/Button';
 import { CountryCodeSelect } from '@/components/ui/CountryCodeSelect';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
-import { ApiError, api } from '@/lib/api';
-import { BRAND } from '@/lib/brand';
+import { ApiError, api, consumeSessionNotice } from '@/lib/api';
+import {
+  getPortalConfig,
+  getPortalKindFromPathname,
+  getPortalKindForRole,
+  type PortalKind,
+} from '@/lib/auth-portals';
 import {
   buildPhoneContact,
   DEFAULT_COUNTRY_CODE,
@@ -32,6 +37,7 @@ type SessionUser = {
   email?: string | null;
   phone?: string | null;
   fullName?: string | null;
+  companyName?: string | null;
   role: string;
 };
 
@@ -84,8 +90,43 @@ function isPasswordGateResponse(
   return response.data != null && 'requiresPassword' in response.data;
 }
 
-export default function LoginPage() {
+function loginFooter(portalKind: PortalKind) {
+  const portal = getPortalConfig(portalKind);
+
+  if (portalKind === 'internal') {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p>
+        New here?{' '}
+        <Link href={portal.selectRolePath} className="text-cyan-200 hover:text-cyan-100">
+          {portal.registerCta}
+        </Link>
+        .
+      </p>
+      {portal.switchCta ? (
+        <p>
+          <Link href={portal.switchHref} className="text-cyan-200 hover:text-cyan-100">
+            {portal.switchCta}
+          </Link>
+        </p>
+      ) : null}
+      <p>
+        <Link href={portal.guideHref} className="text-cyan-200 hover:text-cyan-100">
+          Need help? Open the user guide.
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+export function LoginPageScreen() {
+  const pathname = usePathname();
   const router = useRouter();
+  const portalKind = getPortalKindFromPathname(pathname);
+  const portal = getPortalConfig(portalKind);
   const {
     user,
     loading,
@@ -110,6 +151,7 @@ export default function LoginPage() {
   const [submittingPassword, setSubmittingPassword] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+  const [resendRemaining, setResendRemaining] = useState<number | null>(null);
 
   const selectedCountryOption =
     findCountryCodeOptionByIsoCode(countryOptionCode) ??
@@ -136,6 +178,30 @@ export default function LoginPage() {
   }, [loading, router, user]);
 
   useEffect(() => {
+    const sessionNotice = consumeSessionNotice();
+    if (!sessionNotice) {
+      return;
+    }
+
+    setInfoMessage(sessionNotice);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reason') !== 'session-expired') {
+      return;
+    }
+
+    setInfoMessage('Your session expired. Please sign in again.');
+    setError(null);
+  }, []);
+
+  useEffect(() => {
     if (cooldownRemaining <= 0) {
       return undefined;
     }
@@ -156,6 +222,7 @@ export default function LoginPage() {
       setStep('contact');
       setOtp('');
       setPassword('');
+      setResendRemaining(null);
       return;
     }
 
@@ -173,6 +240,9 @@ export default function LoginPage() {
         (!otpSession.contact.includes('@') ? otpSession.contact.replace(/\D/g, '') : ''),
     );
     setCooldownRemaining(secondsUntil(otpSession.resendAvailableAt));
+    setResendRemaining(
+      typeof otpSession.resendRemaining === 'number' ? otpSession.resendRemaining : null,
+    );
     setInfoMessage(
       otpSession.stage === 'password'
         ? 'OTP verified. Enter your email password to complete sign-in.'
@@ -208,6 +278,9 @@ export default function LoginPage() {
     setAttemptsRemaining(
       typeof data.attemptsRemaining === 'number' ? data.attemptsRemaining : null,
     );
+    setResendRemaining(
+      typeof data.resendRemaining === 'number' ? data.resendRemaining : null,
+    );
 
     if (typeof data.cooldownRemaining === 'number') {
       setCooldownRemaining(data.cooldownRemaining);
@@ -218,8 +291,7 @@ export default function LoginPage() {
     saveApprovalDraft(identifier, status);
   }
 
-  async function handleContactSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function requestOtp() {
     clearTransientState();
     setRequestingOtp(true);
 
@@ -239,6 +311,7 @@ export default function LoginPage() {
         countryOptionCode: mode === 'phone_otp' ? selectedCountryOption?.isoCode ?? null : null,
         phoneNumber: mode === 'phone_otp' ? normalizedLocalPhone : null,
         resendAvailableAt: response.data.resendAvailableAt ?? null,
+        resendRemaining: response.data.resendRemaining ?? null,
         otpExpiresAt: response.data.otpExpiresAt ?? null,
       });
 
@@ -246,6 +319,11 @@ export default function LoginPage() {
       setOtp('');
       setPassword('');
       setCooldownRemaining(secondsUntil(response.data.resendAvailableAt));
+      setResendRemaining(
+        typeof response.data.resendRemaining === 'number'
+          ? response.data.resendRemaining
+          : null,
+      );
       setInfoMessage(`A 6-digit code has been sent to ${maskContact(response.data.contact)}.`);
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -256,6 +334,15 @@ export default function LoginPage() {
     } finally {
       setRequestingOtp(false);
     }
+  }
+
+  async function handleContactSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await requestOtp();
+  }
+
+  async function handleResendCode() {
+    await requestOtp();
   }
 
   async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
@@ -297,6 +384,7 @@ export default function LoginPage() {
         setOtp('');
         setPassword('');
         setCooldownRemaining(0);
+        setResendRemaining(null);
         setInfoMessage('OTP verified. Enter your email password to complete sign-in.');
         return;
       }
@@ -307,12 +395,18 @@ export default function LoginPage() {
           email: response.data.user.email,
           phone: response.data.user.phone,
           fullName: response.data.user.fullName,
+          companyName: response.data.user.companyName,
           role: response.data.user.role,
         },
         accessToken: response.data.token,
         refreshToken: response.data.refreshToken ?? null,
       });
 
+      setInfoMessage(
+        portalKind !== getPortalKindForRole(response.data.user.role)
+          ? `This account belongs in ${getPortalConfig(getPortalKindForRole(response.data.user.role)).productName}. Redirecting now.`
+          : null,
+      );
       router.replace(getRoleHomePath(response.data.user.role));
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -353,12 +447,18 @@ export default function LoginPage() {
           email: response.data.user.email,
           phone: response.data.user.phone,
           fullName: response.data.user.fullName,
+          companyName: response.data.user.companyName,
           role: response.data.user.role,
         },
         accessToken: response.data.token,
         refreshToken: response.data.refreshToken ?? null,
       });
 
+      setInfoMessage(
+        portalKind !== getPortalKindForRole(response.data.user.role)
+          ? `This account belongs in ${getPortalConfig(getPortalKindForRole(response.data.user.role)).productName}. Redirecting now.`
+          : null,
+      );
       router.replace(getRoleHomePath(response.data.user.role));
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -378,6 +478,7 @@ export default function LoginPage() {
     setOtp('');
     setPassword('');
     setCooldownRemaining(0);
+    setResendRemaining(null);
     clearTransientState();
   }
 
@@ -392,18 +493,13 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      eyebrow="Sign In"
-      title={`Sign in to ${BRAND.appName}`}
-      subtitle="Public sign-in is for external users. Use phone OTP or email OTP, then finish email sign-in with your password."
-      footer={
-        <p>
-          New here?{' '}
-          <Link href="/select-role" className="text-cyan-200 hover:text-cyan-100">
-            Start registration
-          </Link>
-          .
-        </p>
-      }
+      eyebrow={portal.eyebrow}
+      title={portal.title}
+      subtitle={portal.subtitle}
+      panelEyebrow={portal.panelEyebrow}
+      panelTitle={portal.panelTitle}
+      panelSubtitle={portal.panelSubtitle}
+      footer={loginFooter(portalKind)}
     >
       {step === 'contact' ? (
         <form className="space-y-5" onSubmit={handleContactSubmit}>
@@ -440,6 +536,12 @@ export default function LoginPage() {
               Email
             </button>
           </div>
+
+          {infoMessage ? (
+            <Alert variant="success" title="Session update">
+              {infoMessage}
+            </Alert>
+          ) : null}
 
           {error ? (
             <Alert variant={approvalStatus ? 'warning' : 'danger'} title="Sign-in blocked">
@@ -555,26 +657,42 @@ export default function LoginPage() {
             required
           />
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-white">Didn&apos;t receive the code?</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {cooldownRemaining > 0
+                    ? `You can request a new OTP in ${cooldownRemaining}s.`
+                    : 'You can request a fresh OTP now.'}
+                </p>
+                {resendRemaining !== null ? (
+                  <p className="mt-2 text-xs text-slate-400">
+                    OTP requests left in this cycle: {resendRemaining}
+                  </p>
+                ) : null}
+              </div>
+              <Button
+                className="sm:min-w-[160px]"
+                disabled={requestingOtp || cooldownRemaining > 0}
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  void handleResendCode();
+                }}
+              >
+                {cooldownRemaining > 0
+                  ? `Resend in ${cooldownRemaining}s`
+                  : requestingOtp
+                    ? 'Sending...'
+                    : 'Resend OTP'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3">
             <Button className="w-full" disabled={verifyingOtp || !canVerifyOtp} type="submit">
               {verifyingOtp ? 'Verifying...' : 'Verify code'}
-            </Button>
-            <Button
-              className="w-full"
-              disabled={requestingOtp || cooldownRemaining > 0}
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                void handleContactSubmit({
-                  preventDefault() {},
-                } as FormEvent<HTMLFormElement>);
-              }}
-            >
-              {cooldownRemaining > 0
-                ? `Resend in ${cooldownRemaining}s`
-                : requestingOtp
-                  ? 'Sending...'
-                  : 'Resend code'}
             </Button>
           </div>
         </form>
@@ -633,4 +751,8 @@ export default function LoginPage() {
       ) : null}
     </AuthShell>
   );
+}
+
+export default function LoginPage() {
+  return <LoginPageScreen />;
 }
