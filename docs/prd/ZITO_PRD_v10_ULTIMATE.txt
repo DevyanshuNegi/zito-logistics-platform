@@ -50,6 +50,12 @@ Agency / Agency Staff remains an internal operating structure and must not be ex
 Internal teams must use separate private internal routes and must not be mixed into customer or partner login entry points.
 Internal staff who handle support, operations, finance, and accounting must authenticate into an internal workspace, even when they are not platform admins.
 Agency staff must authenticate through a dedicated agency login entry point, separate from the head-office/internal login entry point.
+The mobile route tree must mirror this product partition:
+- Zito Customer mobile = Customer
+- Zito Driver mobile = Driver
+- Zito Partners mobile = Agent + Transporter + Courier Company + Warehouse Partner
+- Zito Internal Ops mobile = Super Admin + Admin + Head Office Staff
+- Zito Agency Desk mobile = Agency Staff
 identifier = phone OR email
 Login Methods
 Phone OTP (primary method)
@@ -395,14 +401,22 @@ Rules:
 - high-value transfers should default to bank mode, especially KEPSS / RTGS or approved corporate transfer rails
 - payment status must reflect: initiated → pending → verified → completed, with failed, reversed, expired, disputed, and refunded states where applicable
 - M-Pesa callbacks and bank reconciliation updates must be idempotent and must not duplicate settlement
+- M-Pesa collection must support provider lifecycle states for STK push request, callback receipt, status-query request, status-query result, reversal request, reversal result, and provider timeout handling even where the finance UI still maps those into a smaller business-state set
 - configurable transaction limits, approval thresholds, and rail eligibility must remain aligned with active provider and banking rules
 Integration:
 - support integration with Safaricom Daraja for M-Pesa collection, status, reversal, and disbursement flows
+- M-Pesa integration must persist merchant request ID, checkout request ID, receipt number, conversation IDs, callback payload, async result payload, and timeout payload on the payment record for later reconciliation
+- M-Pesa disbursement and settlement must persist beneficiary identity, selected rail, provider mode, provider status, provider receipt number, conversation IDs, result payloads, timeout payloads, initiated timestamp, processed timestamp, and reversed timestamp on a dedicated disbursement ledger record
+- M-Pesa status sync must prefer STK query while a checkout request is active and must fall back to transaction-status workflow when a receipt exists but final reconciliation is still pending
+- reversal requests must be available to admin / super-admin finance control and must not silently flip payment state without either provider result confirmation or an explicitly simulated non-production mode
+- B2C and B2B payout initiation must support explicit finance selection of payout rail, beneficiary reference, and purpose and must not be collapsed into the customer collection workflow
 - support integration with Kenyan banking APIs, file-based settlement, or reconciliation import for EFT, RTGS, and instant-bank-transfer rails
 - support multi-currency settlement via bank channels where country rollout requires it, while Kenya launch remains KES-first
 Audit:
 - all bank transactions must be logged with reference number and proof
 - all M-Pesa transactions must be logged with request payload, callback payload, provider receipt, and reconciliation outcome
+- admin payments control must expose provider references, provider status, sync action, and reversal-request action for M-Pesa payments
+- admin payments control must also expose an outbound disbursement ledger with create, sync, reverse, and status-review actions for driver payout, customer refund, transporter settlement, courier-company settlement, warehouse-partner settlement, and approved compensation flows
 Partial & Split Payment Support:
 Allow advance payment (e.g., percentage-based booking confirmation)
 Remaining balance payable at delivery or billing cycle
@@ -509,6 +523,8 @@ All changes must be versioned and auditable
 - rate cards must support scope fields: country, county / region, and locality class
 - inside Kenya, the pricing engine must be able to choose a county-specific rate card before applying surge
 - inside Kenya, the pricing engine must allow separate town / urban and rural pricing for the same service and vehicle combination
+- where pickup geocoding succeeds, the booking flow must auto-derive the default pricing country, Kenya county, and town/rural class from the resolved map result instead of forcing the user to select all three manually
+- users and internal operators may still override the auto-derived pricing scope before quote confirmation, but the UI must clearly show when a manual override has replaced the pickup-detected scope
 - when a county-specific pricing rule is absent, the engine must fall back to the broader country-level card according to a defined precedence order
 - rate cards must also support service + asset combinations such as FTL + 20ft container truck, FTL + 40ft container truck, Rail / SGR + 20ft container slot, and Rail / SGR + 40ft container slot
 19.1 Kenya Rail Booking Model
@@ -522,11 +538,13 @@ Rules:
 - the booking request must capture at minimum:
   - corridor / lane
   - container size or cargo class
-  - direction of movement
+  - trade mode / direction of movement (local, import, export, transit)
   - origin node and destination node
   - first-mile / last-mile truck requirement
   - consignor and consignee details
   - clearing agent or documentation owner where applicable
+- the first booking pass must at minimum persist trade mode, rail corridor code, origin node, destination node, container reference where applicable, bill of lading number, IDF reference, PAC readiness, customs status, and iCMS status
+- domestic/local rail or container jobs may skip customs references, but import, export, and transit jobs must not
 - rail scheduling must support regular train departures rather than only on-demand dispatch logic
 - rail service availability must support corridor calendars, cutoff times, and booking-acceptance windows
 - rail pricing must support corridor tariffs, container-size bands, inland node differentials, and optional first-mile / last-mile trucking add-ons
@@ -552,6 +570,8 @@ Required booking fields:
 - KenTrade / NESWS reference where applicable
 - KRA release / iCMS / customs clearance state where applicable
 - port, terminal, depot, ICD, warehouse, or customer delivery location
+- the booking UI must treat port / ICD / depot nodes as first-class fields, not bury them inside a generic free-text note
+- the customer and operator booking review surfaces must preserve corridor, trade mode, and customs-readiness context after save so the move is not reduced back to a generic truck trip
 - first-mile and last-mile transport requirements
 Required trade document pack where applicable:
 - pro forma invoice
@@ -2036,6 +2056,7 @@ Required design shifts:
 - pickup and drop are map pin or search-overlay actions, not plain text form blocks on the first screen
 - vehicle selection is visual card-based with live pricing, not a dropdown
 - live pricing must show the location scope being applied when county, town, or rural pricing rules materially affect the quote
+- when map/geocode data is available, pricing scope should default from the pickup pin automatically and surface a clear restore action if the user manually overrides it
 - cargo details are progressive and mostly optional unless operationally mandatory
 - booking confirmation is a concise summary card or bottom sheet, not a separate paperwork-style page
 - booking history is card feed first; table views are secondary and report-oriented
@@ -2182,7 +2203,7 @@ Admin portal principles:
 - even internal dashboards should harmonize with the same navy / white / muted-surface system rather than drifting into unrelated visual themes
 Required admin modules must feel like:
 - Operations Dashboard with KPI cards, live map, and activity feed
-- Booking Management with booking cards and assignment actions
+- Booking Management with booking cards, route preview map, live assignment actions, and inline status / cancellation controls
 - Driver Assignment Panel with proximity-aware driver cards
 - User Management with expandable user cards and side-panel creation
 - Fleet Overview with card grid and compliance RAG status
@@ -2197,6 +2218,15 @@ Required internal-workforce capabilities:
 - Admin and Super Admin must both have a dedicated Workforce Control desk that separates Head Office staff from Agency Staff and allows direct creation, activation, suspension, and department assignment for Operations, Customer Care, and Accounts teams
 - Admin and Super Admin must both have a dedicated Verification Control desk covering customer KYC, driver approval, partner approval, document review, fleet verification, expiry monitoring, rejection handling, and resubmission tracking
 - the Verification Control desk must support fleet-photo review and must clearly show whether a truck is missing dashboard, front, right-side, left-side, or rear photo evidence
+- Admin and Super Admin must both have a dedicated Billing Control desk that combines platform-fee invoices, warehouse invoices, corporate invoice consolidation, and inter-agency settlement generation in one finance workspace
+- Admin and Super Admin must both have a dedicated Capacity Planning desk covering warehouse occupancy, fleet readiness, booking-capacity validation, and short-horizon forecast signals in one operations workspace
+- Admin and Super Admin must both have a dedicated Notifications desk that exposes the operator inbox, unread acknowledgements, and notification-to-entity context without forcing staff back through unrelated modules
+- Admin and Super Admin must both have a dedicated SLA Control desk showing live timers, active breaches, escalation states, and no-show automation controls
+- Admin and Super Admin must both have a dedicated Surge Pricing desk showing zone-level demand pressure, peak-hour rules, multiplier recommendations, and direct activate/deactivate controls
+- Admin and Super Admin must both have a dedicated Heatmap Control desk showing zone intensity, demand-vs-supply ratio, and threshold-management controls for low / medium / high classification
+- Admin and Super Admin must both have a dedicated Retention desk showing customer repeat-rate signals, loyalty / promo readiness, and driver-referral pipeline visibility
+- Admin and Super Admin must both have a dedicated Route Optimization desk covering manual route simulation, booking-route inspection, ETA review, and route-deviation checks from the same internal control layer
+- Admin and Super Admin must both have a dedicated Rail & Container Control desk covering freight corridor queue, customs-state review, PAC readiness, iCMS state, bill-of-lading and IDF capture, container reference control, and node-to-node handoff visibility for port / ICD / warehouse workflows
 - KYC review must happen at document level first, and the account status must then be recalculated from the reviewed document set:
   - approved required set => verified
   - missing or pending required documents => pending
@@ -2218,6 +2248,8 @@ Required internal-workforce capabilities:
 - Accounts desk must be able to view and handle invoices, payments, refunds, and finance-control actions without requiring full admin status
 - Admin remains a supervisory control role, not the sole operator for daily dispatch, support, or finance work
 - Admin dashboard must surface customer and partner-network visibility including transporter, courier company, warehouse partner, and staff footprints
+- Admin bookings workspace must be card-first and map-first in live operations mode; wide audit tables may exist only as secondary report views, not as the primary dispatch surface
+- rail and container bookings must show freight-specific operational context inside the admin booking workspace and must deep-link into the Rail & Container Control desk when customs or corridor control is required
 66.10 Navigation Patterns
   Customer and Driver app navigation rules:
   - bottom tab navigation with 4 tabs maximum
@@ -2242,6 +2274,12 @@ Mobile platform coverage and release rules:
 - Android pre-release testing may use internal APK/AAB distribution, but iPhone pre-release testing must use a managed Apple distribution path such as TestFlight or equivalent approved enterprise/internal distribution
 - iPhone configuration must include explicit permission copy for location, camera, and photo-library access where those capabilities are used for booking, tracking, POD, scans, or support evidence
 - the mobile release process must maintain parity across Android and iPhone for customer, driver, transporter, and courier-company role workflows
+- the mobile release process must maintain parity across Android and iPhone for customer, driver, agent, transporter, courier-company, warehouse-partner, internal-ops, and agency-desk role workflows
+- the shared mobile route tree must expose dedicated role workspaces for Agent, Warehouse Partner, Internal Ops, and Agency Desk rather than collapsing those users into a generic customer or transporter shell
+- Agent mobile must expose at minimum dashboard, marketplace opportunities, and partner-support surfaces
+- Warehouse Partner mobile must expose at minimum dashboard, inventory, and warehouse-support surfaces
+- Internal Ops mobile must expose at minimum dashboard, alerts, and internal support-control surfaces for Admin, Super Admin, and Head Office Staff
+- Agency Desk mobile must expose at minimum operations, accounts, and support surfaces for Agency Staff
 - the repository must include explicit mobile release scripts and build profiles for Android internal QA, Android production Play submission, iPhone internal QA, and iPhone TestFlight/App Store submission; release preparation must not depend on undocumented manual terminal sequences
 - the shared mobile environment template must document the runtime API host, maps key, and build-environment label required for Expo/EAS delivery, and the release guide must distinguish Windows-safe Android workflows from macOS-required local iPhone native workflows
 - Android production release readiness requires app-bundle output and Google Play track submission support; iPhone release readiness requires TestFlight-capable EAS production build configuration even when the actual Apple credentials are managed outside the repository

@@ -67,6 +67,30 @@ enum BookingCapacitySource {
   BLENDED
 }
 
+enum FreightTradeMode {
+  LOCAL
+  IMPORT
+  EXPORT
+  TRANSIT
+}
+
+enum RailCorridorCode {
+  MOMBASA_TO_ICD_NAIROBI
+  MOMBASA_TO_ICD_NAIVASHA
+  ICD_NAIROBI_TO_MOMBASA
+  ICD_NAIVASHA_TO_MOMBASA
+  OTHER
+}
+
+enum TradeDocumentStatus {
+  NOT_REQUIRED
+  PENDING
+  READY
+  SUBMITTED
+  CLEARED
+  HOLD
+}
+
 enum InventoryStatus {
   RECEIVED
   STORED
@@ -107,6 +131,21 @@ enum PaymentMethod {
   CASH
   WALLET
   BANK_TRANSFER
+}
+
+enum DisbursementRail {
+  MPESA_B2C
+  MPESA_B2B
+  BANK_TRANSFER
+}
+
+enum DisbursementStatus {
+  CREATED
+  INITIATED
+  PROCESSING
+  SUCCESS
+  FAILED
+  REVERSED
 }
 
 enum InvoiceType {
@@ -208,6 +247,9 @@ model User {
   notifications     Notification[]
   ownedDrivers      Driver[]        @relation("DriverOwner")
   ownedVehicles     Vehicle[]       @relation("VehicleOwner")
+  disbursementsReceived Disbursement[] @relation("DisbursementBeneficiary")
+  disbursementsCreated  Disbursement[] @relation("DisbursementCreator")
+  disbursementsApproved Disbursement[] @relation("DisbursementApprover")
 
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -518,6 +560,16 @@ model Booking {
   cargoDescription    String?
   specialInstructions String?
   isScheduled         Boolean       @default(false)
+  tradeMode           FreightTradeMode?
+  railCorridorCode    RailCorridorCode?
+  originNode          String?
+  destinationNode     String?
+  containerReference  String?
+  billOfLadingNumber  String?
+  idfNumber           String?
+  pacReady            Boolean       @default(false)
+  customsStatus       TradeDocumentStatus?
+  icmsStatus          TradeDocumentStatus?
 
   stops          BookingStop[]
   parcels        InventoryItem[]
@@ -795,6 +847,17 @@ model Payment {
   status         PaymentStatus @default(INITIATED)
   reference      String?
   proofUrl       String?
+  provider       String?
+  providerMode   String?
+  providerStatus String?
+  merchantRequestId String?
+  checkoutRequestId String?
+  providerReceiptNumber String?
+  providerConversationId String?
+  providerOriginatorConversationId String?
+  providerPayload Json?
+  callbackReceivedAt DateTime?
+  confirmedAt    DateTime?
   idempotencyKey String?       @unique
   retryCount     Int           @default(0)
   failureReason  String?
@@ -803,8 +866,52 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  disbursements Disbursement[]
+
   @@index([bookingId])
   @@index([invoiceId])
+}
+
+model Disbursement {
+  id                        String             @id @default(uuid())
+  beneficiaryUserId         String?
+  beneficiaryUser           User?              @relation("DisbursementBeneficiary", fields: [beneficiaryUserId], references: [id])
+  createdByUserId           String
+  createdByUser             User               @relation("DisbursementCreator", fields: [createdByUserId], references: [id])
+  approvedByUserId          String?
+  approvedByUser            User?              @relation("DisbursementApprover", fields: [approvedByUserId], references: [id])
+  sourcePaymentId           String?
+  sourcePayment             Payment?           @relation(fields: [sourcePaymentId], references: [id])
+  sourceInvoiceId           String?
+  sourceInvoice             Invoice?           @relation(fields: [sourceInvoiceId], references: [id])
+  rail                      DisbursementRail
+  status                    DisbursementStatus @default(CREATED)
+  amount                    Float
+  currency                  String             @default("KES")
+  reference                 String             @unique
+  purpose                   String
+  beneficiaryName           String
+  beneficiaryPhone          String?
+  beneficiaryPartyNumber    String?
+  accountReference          String?
+  provider                  String?
+  providerMode              String?
+  providerStatus            String?
+  providerReceiptNumber     String?
+  providerConversationId    String?
+  providerOriginatorConversationId String?
+  providerPayload           Json?
+  failureReason             String?
+  initiatedAt               DateTime?
+  processedAt               DateTime?
+  reversedAt                DateTime?
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+
+  @@index([rail, status])
+  @@index([beneficiaryUserId])
+  @@index([sourcePaymentId])
+  @@index([sourceInvoiceId])
 }
 
 model Wallet {
@@ -873,6 +980,7 @@ model Invoice {
   approvedAt         DateTime?
 
   payments Payment[]
+  disbursements Disbursement[]
   lineItems InvoiceLineItem[]
 
   createdAt DateTime @default(now())

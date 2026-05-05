@@ -11,6 +11,7 @@ function RootGuard() {
   const router = useRouter();
   const segments = useSegments();
   const role = String(user?.role || '').trim().toUpperCase();
+  const staffScope = String(user?.staffScope || '').trim().toUpperCase();
 
   useEffect(() => {
     if (loading) return;
@@ -26,13 +27,22 @@ function RootGuard() {
       // Redirect to correct portal based on role
       switch (role) {
         case 'DRIVER':            router.replace('/(driver)/trips'); break;
+        case 'AGENT':             router.replace('/(agent)/dashboard'); break;
         case 'TRANSPORTER':       router.replace('/(transporter)/dashboard'); break;
         case 'COURIER_COMPANY':   router.replace('/(courier-company)/dashboard'); break;
+        case 'WAREHOUSE_PARTNER': router.replace('/(warehouse)/dashboard'); break;
+        case 'ADMIN':
+        case 'SUPER_ADMIN':       router.replace('/(internal)/dashboard'); break;
+        case 'AGENCY_STAFF':
+          router.replace(
+            staffScope === 'AGENCY' ? '/(agency)/operations' : '/(internal)/dashboard',
+          );
+          break;
         case 'CUSTOMER':
         default:                  router.replace('/(customer)/home'); break;
       }
     }
-  }, [user, loading, role, segments, router]);
+  }, [user, loading, role, segments, router, staffScope]);
 
   if (loading) {
     return (
@@ -45,10 +55,14 @@ function RootGuard() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Screen name="(auth)"        options={{ headerShown: false }} />
+      <Stack.Screen name="(agent)"       options={{ headerShown: false }} />
       <Stack.Screen name="(driver)"      options={{ headerShown: false }} />
       <Stack.Screen name="(customer)"    options={{ headerShown: false }} />
       <Stack.Screen name="(courier-company)" options={{ headerShown: false }} />
       <Stack.Screen name="(transporter)" options={{ headerShown: false }} />
+      <Stack.Screen name="(warehouse)"   options={{ headerShown: false }} />
+      <Stack.Screen name="(internal)"    options={{ headerShown: false }} />
+      <Stack.Screen name="(agency)"      options={{ headerShown: false }} />
     </Stack>
   );
 }

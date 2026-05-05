@@ -27,6 +27,16 @@ type BookingDetail = {
   totalPrice: number;
   createdAt?: string;
   deliveryOtp?: string | null;
+  tradeMode?: string | null;
+  railCorridorCode?: string | null;
+  originNode?: string | null;
+  destinationNode?: string | null;
+  containerReference?: string | null;
+  billOfLadingNumber?: string | null;
+  idfNumber?: string | null;
+  pacReady?: boolean | null;
+  customsStatus?: string | null;
+  icmsStatus?: string | null;
   stops?: Array<{
     sequence?: number;
     address?: string | null;
@@ -69,6 +79,10 @@ function statusClassName(status: string) {
     return 'bg-sky-100 text-sky-700';
   }
   return 'bg-amber-100 text-amber-700';
+}
+
+function formatLogisticsValue(value?: string | null) {
+  return value ? value.replaceAll('_', ' ') : 'Pending';
 }
 
 export default function CustomerBookingDetailPage() {
@@ -268,6 +282,77 @@ export default function CustomerBookingDetailPage() {
           </div>
 
           <TrackingTimeline stops={timelineStops} />
+
+          {(booking.tradeMode ||
+            booking.railCorridorCode ||
+            booking.originNode ||
+            booking.destinationNode ||
+            booking.containerReference ||
+            booking.billOfLadingNumber ||
+            booking.idfNumber) ? (
+            <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+              <p className="text-[11px] uppercase tracking-[0.28em] text-sky-700">
+                Rail and container control
+              </p>
+              <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+                Corridor and customs readiness
+              </h2>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Trade mode</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    {formatLogisticsValue(booking.tradeMode)}
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Rail corridor</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    {formatLogisticsValue(booking.railCorridorCode)}
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Origin node</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    {booking.originNode ?? 'Pending'}
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Destination node</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    {booking.destinationNode ?? 'Pending'}
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Container reference</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    {booking.containerReference ?? 'Pending'}
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Bill of lading</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    {booking.billOfLadingNumber ?? 'Pending'}
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">IDF number</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    {booking.idfNumber ?? 'Pending'}
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Compliance state</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    Customs {formatLogisticsValue(booking.customsStatus)} / iCMS {formatLogisticsValue(booking.icmsStatus)}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {booking.pacReady ? 'PAC ready' : 'PAC pending'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-6">

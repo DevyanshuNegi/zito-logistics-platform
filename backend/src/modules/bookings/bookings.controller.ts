@@ -18,6 +18,7 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { RateBookingDto } from './dto/rate-booking.dto';
+import { UpdateTradeControlDto } from './dto/update-trade-control.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -287,6 +288,16 @@ export class AdminBookingsController {
     @Body() dto: UpdateStatusDto,
   ) {
     return this.bookingsService.updateStatusByAdmin(id, req.user.id, dto);
+  }
+
+  @Patch(':id/trade-control')
+  @HttpCode(HttpStatus.OK)
+  updateTradeControl(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req,
+    @Body() dto: UpdateTradeControlDto,
+  ) {
+    return this.bookingsService.updateTradeControlByAdmin(id, req.user.id, dto);
   }
 
   // POST /admin/bookings/:id/cancel

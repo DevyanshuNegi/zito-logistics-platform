@@ -9,7 +9,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   BookingCapacitySource,
   BookingStatus,
+  FreightTradeMode,
+  RailCorridorCode,
   ServiceType,
+  TradeDocumentStatus,
   VehicleStatus,
 } from '@prisma/client';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -17,6 +20,7 @@ import { UpdateStatusDto, DRIVER_ALLOWED_TRANSITIONS } from './dto/update-status
 import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { RateBookingDto } from './dto/rate-booking.dto';
+import { UpdateTradeControlDto } from './dto/update-trade-control.dto';
 import * as crypto from 'crypto';
 import { PaymentsService } from '../payments/payments.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -78,6 +82,7 @@ export class BookingsService {
     }
 
     this.validateStopStructure(dto.stops);
+    this.validateRailContainerWorkflow(dto);
 
     await this.capacityPlanningService.enforceLimit({
       agencyId: dto.agencyId,
@@ -111,6 +116,16 @@ export class BookingsService {
         cargoDescription: dto.cargoDescription ?? null,
         specialInstructions: dto.specialInstructions ?? null,
         isScheduled: dto.isScheduled ?? false,
+        tradeMode: dto.tradeMode ?? null,
+        railCorridorCode: dto.railCorridorCode ?? null,
+        originNode: dto.originNode ?? null,
+        destinationNode: dto.destinationNode ?? null,
+        containerReference: dto.containerReference ?? null,
+        billOfLadingNumber: dto.billOfLadingNumber ?? null,
+        idfNumber: dto.idfNumber ?? null,
+        pacReady: dto.pacReady ?? false,
+        customsStatus: dto.customsStatus ?? null,
+        icmsStatus: dto.icmsStatus ?? null,
         baseFare: pricing.baseFare,
         distanceFare: pricing.distanceFare,
         stopFare: pricing.stopFare,
@@ -148,6 +163,10 @@ export class BookingsService {
       reference: booking.reference,
       serviceType: booking.serviceType,
       capacitySource: booking.capacitySource,
+      tradeMode: booking.tradeMode,
+      railCorridorCode: booking.railCorridorCode,
+      customsStatus: booking.customsStatus,
+      icmsStatus: booking.icmsStatus,
       totalPrice: booking.totalPrice,
     });
 
@@ -423,6 +442,122 @@ export class BookingsService {
   }
 
   // ─── ASSIGN DRIVER (Admin) ─────────────────────────────────────────────────
+
+  async updateTradeControlByAdmin(
+    bookingId: string,
+    adminId: string,
+    dto: UpdateTradeControlDto,
+  ) {
+    const booking = await this.findOrThrow(bookingId);
+    const isRailOrContainer = this.isRailContainerBooking(
+      booking.serviceType,
+      booking.requiredVehicleType,
+      booking.tradeMode,
+      booking.railCorridorCode,
+      booking.containerReference,
+    );
+
+    if (!isRailOrContainer) {
+      throw new BadRequestException(
+        'Trade control can only be managed for rail or container workflows',
+      );
+    }
+
+    const nextState = {
+      tradeMode: dto.tradeMode ?? booking.tradeMode ?? null,
+      railCorridorCode: dto.railCorridorCode ?? booking.railCorridorCode ?? null,
+      originNode: (dto.originNode ?? booking.originNode ?? '').trim(),
+      destinationNode: (dto.destinationNode ?? booking.destinationNode ?? '').trim(),
+      containerReference: (dto.containerReference ?? booking.containerReference ?? '').trim(),
+      billOfLadingNumber: (dto.billOfLadingNumber ?? booking.billOfLadingNumber ?? '').trim(),
+      idfNumber: (dto.idfNumber ?? booking.idfNumber ?? '').trim(),
+      pacReady: dto.pacReady ?? booking.pacReady ?? false,
+      customsStatus: dto.customsStatus ?? booking.customsStatus ?? null,
+      icmsStatus: dto.icmsStatus ?? booking.icmsStatus ?? null,
+      specialInstructions:
+        dto.specialInstructions?.trim() ?? booking.specialInstructions ?? null,
+    };
+
+    if (!nextState.tradeMode) {
+      throw new BadRequestException(
+        'Rail and container workflows must declare the trade mode before control updates',
+      );
+    }
+
+    if (!nextState.originNode || !nextState.destinationNode) {
+      throw new BadRequestException(
+        'Rail and container workflows must define both an origin node and destination node',
+      );
+    }
+
+    if (booking.serviceType === ServiceType.RAIL && !nextState.railCorridorCode) {
+      throw new BadRequestException(
+        'Rail / SGR workflows must keep an enabled corridor code on the booking',
+      );
+    }
+
+    if (nextState.tradeMode !== FreightTradeMode.LOCAL) {
+      if (!nextState.containerReference) {
+        throw new BadRequestException(
+          'Import, export, and transit flows require a container reference',
+        );
+      }
+      if (!nextState.billOfLadingNumber) {
+        throw new BadRequestException(
+          'Import, export, and transit flows require a bill of lading number',
+        );
+      }
+      if (!nextState.idfNumber) {
+        throw new BadRequestException(
+          'Import, export, and transit flows require an IDF number',
+        );
+      }
+      if (
+        !nextState.customsStatus ||
+        nextState.customsStatus === TradeDocumentStatus.NOT_REQUIRED
+      ) {
+        throw new BadRequestException(
+          'Import, export, and transit flows require a customs document status',
+        );
+      }
+      if (
+        !nextState.icmsStatus ||
+        nextState.icmsStatus === TradeDocumentStatus.NOT_REQUIRED
+      ) {
+        throw new BadRequestException(
+          'Import, export, and transit flows require an iCMS status',
+        );
+      }
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        tradeMode: nextState.tradeMode,
+        railCorridorCode: nextState.railCorridorCode,
+        originNode: nextState.originNode,
+        destinationNode: nextState.destinationNode,
+        containerReference: nextState.containerReference || null,
+        billOfLadingNumber: nextState.billOfLadingNumber || null,
+        idfNumber: nextState.idfNumber || null,
+        pacReady: nextState.pacReady,
+        customsStatus: nextState.customsStatus,
+        icmsStatus: nextState.icmsStatus,
+        specialInstructions: nextState.specialInstructions,
+      },
+    });
+
+    await this.writeAudit(adminId, 'ADMIN_OVERRIDE', 'BOOKING', bookingId, {
+      action: 'TRADE_CONTROL_UPDATED',
+      tradeMode: updated.tradeMode,
+      railCorridorCode: updated.railCorridorCode,
+      customsStatus: updated.customsStatus,
+      icmsStatus: updated.icmsStatus,
+      pacReady: updated.pacReady,
+    });
+
+    return this.getById(bookingId, adminId, 'ADMIN');
+  }
 
   async assignDriver(bookingId: string, adminId: string, dto: AssignDriverDto) {
     const booking = await this.findOrThrow(bookingId);
@@ -802,6 +937,89 @@ export class BookingsService {
     const ref = 'ZT-' + crypto.randomBytes(4).toString('hex').toUpperCase();
     const exists = await this.prisma.booking.findUnique({ where: { reference: ref } });
     return exists ? this.generateReference() : ref;
+  }
+
+  private validateRailContainerWorkflow(dto: CreateBookingDto) {
+    const isContainerWorkflow = this.isRailContainerBooking(
+      dto.serviceType,
+      dto.vehicleType,
+      dto.tradeMode,
+      dto.railCorridorCode,
+      dto.containerReference,
+    );
+
+    if (!isContainerWorkflow) {
+      return;
+    }
+
+    if (!dto.tradeMode) {
+      throw new BadRequestException(
+        'Container and rail bookings must declare whether the move is local, import, export, or transit.',
+      );
+    }
+
+    if (!dto.originNode?.trim() || !dto.destinationNode?.trim()) {
+      throw new BadRequestException(
+        'Container and rail bookings must define the origin node and destination node.',
+      );
+    }
+
+    if (dto.serviceType === ServiceType.RAIL && !dto.railCorridorCode) {
+      throw new BadRequestException(
+        'Rail / SGR bookings must select an enabled corridor before creation.',
+      );
+    }
+
+    if (dto.tradeMode === FreightTradeMode.LOCAL) {
+      return;
+    }
+
+    if (!dto.containerReference?.trim()) {
+      throw new BadRequestException(
+        'Import, export, and transit rail/container bookings require a container reference.',
+      );
+    }
+
+    if (!dto.billOfLadingNumber?.trim()) {
+      throw new BadRequestException(
+        'Import, export, and transit bookings require a bill of lading number.',
+      );
+    }
+
+    if (!dto.idfNumber?.trim()) {
+      throw new BadRequestException(
+        'Import, export, and transit bookings require an IDF number.',
+      );
+    }
+
+    if (!dto.customsStatus || dto.customsStatus === TradeDocumentStatus.NOT_REQUIRED) {
+      throw new BadRequestException(
+        'Import, export, and transit bookings must declare the customs document status.',
+      );
+    }
+
+    if (!dto.icmsStatus || dto.icmsStatus === TradeDocumentStatus.NOT_REQUIRED) {
+      throw new BadRequestException(
+        'Import, export, and transit bookings must declare the iCMS release status.',
+      );
+    }
+  }
+
+  private isRailContainerBooking(
+    serviceType: ServiceType,
+    vehicleType?: string | null,
+    tradeMode?: FreightTradeMode | null,
+    railCorridorCode?: RailCorridorCode | null,
+    containerReference?: string | null,
+  ) {
+    return (
+      serviceType === ServiceType.RAIL ||
+      vehicleType === 'CONTAINER_20FT' ||
+      vehicleType === 'CONTAINER_40FT' ||
+      tradeMode != null ||
+      railCorridorCode != null ||
+      Boolean(containerReference)
+    );
   }
 
   private validateStopStructure(

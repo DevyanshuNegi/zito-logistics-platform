@@ -17,15 +17,23 @@ The active mobile workspaces currently cover:
 
 - Customer booking, tracking, history, profile, and owned-fleet management
 - Driver trip, earnings, SOS, and profile workflows
+- Agent dashboard, marketplace opportunities, and partner support
 - Transporter dashboard, drivers, fleet, bookings, and finance
 - Courier-company dashboard, bookings, and fleet operations
+- Warehouse-partner dashboard, inventory, and partner support
+- Internal Ops mobile desk for admin, super admin, and head-office support/control workflows
+- Agency Desk mobile workspace for agency operations, accounts, and support teams
 
 ## Roles
 
 - Customer: create bookings, estimate pricing, track trips, review history, and manage profile
 - Driver: accept trips, move statuses, capture proof of delivery, submit SOS/help, and manage availability
+- Agent: review marketplace profile, pick up partner opportunities, and raise support issues
 - Transporter: manage dashboard KPIs, drivers, fleet, bookings, and finance views
 - Courier company: manage courier dispatch, booking flow, owned fleet, scans, and waybills
+- Warehouse partner: manage warehouse footprint, inventory, and warehouse-support requests
+- Internal Ops: admin, super admin, and head-office teams monitor alerts, support, and approval pressure
+- Agency Desk: agency staff work mobile operations, accounts, and support queues
 
 ## Prerequisites
 
@@ -242,4 +250,4 @@ npm run doctor
 - The customer booking flow depends on Google Places, device location, and maps support.
 - The active mobile implementation lives in the JavaScript route tree under `app/`.
 - Mobile web is useful for preview, but operational QA must happen on Android and iPhone devices before release.
-- Android and iPhone must stay functionally aligned for customer, driver, transporter, and courier-company workflows.
+- Android and iPhone must stay functionally aligned for customer, driver, agent, transporter, courier-company, warehouse-partner, internal-ops, and agency-desk workflows.

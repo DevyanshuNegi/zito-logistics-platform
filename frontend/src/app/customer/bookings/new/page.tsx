@@ -56,6 +56,40 @@ type RateQuoteResponse = {
   };
 };
 
+type LocalityRateType = 'ANY' | 'TOWN' | 'RURAL';
+
+type AutoPricingScope = {
+  countryCode: string;
+  county: string;
+  localityType: LocalityRateType;
+  summary: string;
+};
+
+function formatLocalityRateType(value: LocalityRateType) {
+  if (value === 'TOWN') {
+    return 'Town / urban';
+  }
+
+  if (value === 'RURAL') {
+    return 'Rural';
+  }
+
+  return 'Any area';
+}
+
+function buildPricingScopeSummary(scope: {
+  countryCode: string;
+  county: string;
+  localityType: LocalityRateType;
+}) {
+  const countryLabel =
+    SUPPORTED_PRICING_COUNTRIES.find((option) => option.code === scope.countryCode)?.label ??
+    scope.countryCode;
+
+  const scopeLabel = scope.countryCode === 'KE' ? scope.county || 'Kenya' : countryLabel;
+  return `${scopeLabel} / ${formatLocalityRateType(scope.localityType)}`;
+}
+
 const serviceCards = [
   {
     value: 'FTL',
@@ -166,6 +200,30 @@ const vehicleMeta: Record<string, { label: string; capacity: string; note: strin
 
 const cargoChips = ['Documents', 'Electronics', 'Retail cartons', 'Furniture', 'Perishables', 'Machinery'] as const;
 
+const freightTradeModes = [
+  { value: 'LOCAL', label: 'Local move' },
+  { value: 'IMPORT', label: 'Import' },
+  { value: 'EXPORT', label: 'Export' },
+  { value: 'TRANSIT', label: 'Transit' },
+] as const;
+
+const railCorridorOptions = [
+  { value: 'MOMBASA_TO_ICD_NAIROBI', label: 'Mombasa Port -> ICD Nairobi' },
+  { value: 'MOMBASA_TO_ICD_NAIVASHA', label: 'Mombasa Port -> ICD Naivasha' },
+  { value: 'ICD_NAIROBI_TO_MOMBASA', label: 'ICD Nairobi -> Mombasa Port' },
+  { value: 'ICD_NAIVASHA_TO_MOMBASA', label: 'ICD Naivasha -> Mombasa Port' },
+  { value: 'OTHER', label: 'Other rail corridor' },
+] as const;
+
+const tradeDocumentStatuses = [
+  { value: 'NOT_REQUIRED', label: 'Not required' },
+  { value: 'PENDING', label: 'Pending' },
+  { value: 'READY', label: 'Ready' },
+  { value: 'SUBMITTED', label: 'Submitted' },
+  { value: 'CLEARED', label: 'Cleared' },
+  { value: 'HOLD', label: 'Hold' },
+] as const;
+
 function generateIdempotencyKey() {
   if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
     return window.crypto.randomUUID();
@@ -234,7 +292,19 @@ export default function NewBookingPage() {
   const [dropContactPhone, setDropContactPhone] = useState('');
   const [pricingCountryCode, setPricingCountryCode] = useState('KE');
   const [pricingCounty, setPricingCounty] = useState('');
-  const [pricingAreaType, setPricingAreaType] = useState('ANY');
+  const [pricingAreaType, setPricingAreaType] = useState<LocalityRateType>('ANY');
+  const [detectedPricingScope, setDetectedPricingScope] = useState<AutoPricingScope | null>(null);
+  const [pricingScopeMode, setPricingScopeMode] = useState<'auto' | 'manual'>('auto');
+  const [tradeMode, setTradeMode] = useState('LOCAL');
+  const [railCorridorCode, setRailCorridorCode] = useState('');
+  const [originNode, setOriginNode] = useState('');
+  const [destinationNode, setDestinationNode] = useState('');
+  const [containerReference, setContainerReference] = useState('');
+  const [billOfLadingNumber, setBillOfLadingNumber] = useState('');
+  const [idfNumber, setIdfNumber] = useState('');
+  const [pacReady, setPacReady] = useState(false);
+  const [customsStatus, setCustomsStatus] = useState('NOT_REQUIRED');
+  const [icmsStatus, setIcmsStatus] = useState('NOT_REQUIRED');
   const [isScheduled, setIsScheduled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -243,6 +313,7 @@ export default function NewBookingPage() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [resolvingPickup, setResolvingPickup] = useState(false);
   const [resolvingDrop, setResolvingDrop] = useState(false);
+  const usingPickupDetectedScope = pricingScopeMode === 'auto' && detectedPricingScope != null;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -291,6 +362,9 @@ export default function NewBookingPage() {
   );
   const availableVehicleTypes = selectedService.allowedVehicleTypes;
   const selectedVehicle = vehicleMeta[vehicleType] ?? vehicleMeta.VAN;
+  const isContainerWorkflow =
+    serviceType === 'RAIL' || vehicleType === 'CONTAINER_20FT' || vehicleType === 'CONTAINER_40FT';
+  const requiresTradeDocuments = isContainerWorkflow && tradeMode !== 'LOCAL';
 
   useEffect(() => {
     if (!(availableVehicleTypes as readonly string[]).includes(vehicleType)) {
@@ -347,11 +421,54 @@ export default function NewBookingPage() {
     vehicleType,
   ]);
 
+  function applyPickupPricingScope(result: GeocodeLookup) {
+    const supportedCountry = SUPPORTED_PRICING_COUNTRIES.find(
+      (option) => option.code === result.countryCode,
+    )?.code;
+
+    if (!supportedCountry) {
+      setDetectedPricingScope(null);
+      return;
+    }
+
+    const localityType: LocalityRateType =
+      supportedCountry === 'KE' ? result.localityType : 'ANY';
+    const county = supportedCountry === 'KE' ? result.county ?? '' : '';
+    const nextScope: AutoPricingScope = {
+      countryCode: supportedCountry,
+      county,
+      localityType,
+      summary: buildPricingScopeSummary({
+        countryCode: supportedCountry,
+        county,
+        localityType,
+      }),
+    };
+
+    setDetectedPricingScope(nextScope);
+    setPricingScopeMode('auto');
+    setPricingCountryCode(nextScope.countryCode);
+    setPricingCounty(nextScope.county);
+    setPricingAreaType(nextScope.localityType);
+  }
+
+  function restorePickupDetectedPricingScope() {
+    if (!detectedPricingScope) {
+      return;
+    }
+
+    setPricingScopeMode('auto');
+    setPricingCountryCode(detectedPricingScope.countryCode);
+    setPricingCounty(detectedPricingScope.county);
+    setPricingAreaType(detectedPricingScope.localityType);
+  }
+
   function applyGeocode(kind: StopKind, result: GeocodeLookup) {
     if (kind === 'pickup') {
       setPickupAddress(result.address);
       setPickupLat(result.latitude);
       setPickupLng(result.longitude);
+      applyPickupPricingScope(result);
       return;
     }
 
@@ -405,6 +522,42 @@ export default function NewBookingPage() {
     return true;
   }
 
+  function validateFreightWorkflow() {
+    if (!isContainerWorkflow) {
+      return null;
+    }
+
+    if (!originNode.trim() || !destinationNode.trim()) {
+      return 'Container and rail bookings need both an origin node and a destination node.';
+    }
+
+    if (serviceType === 'RAIL' && !railCorridorCode) {
+      return 'Rail / SGR bookings must select a corridor before review.';
+    }
+
+    if (!requiresTradeDocuments) {
+      return null;
+    }
+
+    if (!containerReference.trim()) {
+      return 'Import, export, and transit jobs must include a container reference.';
+    }
+
+    if (!billOfLadingNumber.trim()) {
+      return 'Import, export, and transit jobs must include a bill of lading number.';
+    }
+
+    if (!idfNumber.trim()) {
+      return 'Import, export, and transit jobs must include an IDF number.';
+    }
+
+    if (customsStatus === 'NOT_REQUIRED' || icmsStatus === 'NOT_REQUIRED') {
+      return 'Import, export, and transit jobs must declare customs and iCMS readiness.';
+    }
+
+    return null;
+  }
+
   async function advanceStep() {
     setError(null);
 
@@ -427,6 +580,14 @@ export default function NewBookingPage() {
       }
     }
 
+    if (step === 2) {
+      const workflowError = validateFreightWorkflow();
+      if (workflowError) {
+        setError(workflowError);
+        return;
+      }
+    }
+
     setStep((current) => Math.min(current + 1, 3));
   }
 
@@ -438,6 +599,13 @@ export default function NewBookingPage() {
     const routeReady = await ensureRouteCoordinates();
     if (!routeReady) {
       setSaving(false);
+      return;
+    }
+
+    const workflowError = validateFreightWorkflow();
+    if (workflowError) {
+      setSaving(false);
+      setError(workflowError);
       return;
     }
 
@@ -455,6 +623,22 @@ export default function NewBookingPage() {
         cargoDescription: cargoDescription || undefined,
         specialInstructions: specialInstructions || undefined,
         isScheduled,
+        tradeMode: isContainerWorkflow ? tradeMode : undefined,
+        railCorridorCode: serviceType === 'RAIL' ? railCorridorCode || undefined : undefined,
+        originNode: isContainerWorkflow ? originNode || undefined : undefined,
+        destinationNode: isContainerWorkflow ? destinationNode || undefined : undefined,
+        containerReference:
+          requiresTradeDocuments && containerReference ? containerReference : undefined,
+        billOfLadingNumber:
+          requiresTradeDocuments && billOfLadingNumber ? billOfLadingNumber : undefined,
+        idfNumber: requiresTradeDocuments && idfNumber ? idfNumber : undefined,
+        pacReady: requiresTradeDocuments ? pacReady : undefined,
+        customsStatus:
+          requiresTradeDocuments && customsStatus !== 'NOT_REQUIRED'
+            ? customsStatus
+            : undefined,
+        icmsStatus:
+          requiresTradeDocuments && icmsStatus !== 'NOT_REQUIRED' ? icmsStatus : undefined,
         idempotencyKey: generateIdempotencyKey(),
         stops: [
           {
@@ -607,6 +791,7 @@ export default function NewBookingPage() {
                   value={pricingCountryCode}
                   onChange={(event) => {
                     const nextCountry = event.target.value;
+                    setPricingScopeMode('manual');
                     setPricingCountryCode(nextCountry);
                     if (nextCountry !== 'KE') {
                       setPricingCounty('');
@@ -628,7 +813,10 @@ export default function NewBookingPage() {
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100 disabled:text-slate-400"
                   disabled={pricingCountryCode !== 'KE'}
                   value={pricingCounty}
-                  onChange={(event) => setPricingCounty(event.target.value)}
+                  onChange={(event) => {
+                    setPricingScopeMode('manual');
+                    setPricingCounty(event.target.value);
+                  }}
                 >
                   <option value="">All Kenya counties</option>
                   {KENYA_COUNTIES.map((county) => (
@@ -644,7 +832,10 @@ export default function NewBookingPage() {
                 <select
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
                   value={pricingAreaType}
-                  onChange={(event) => setPricingAreaType(event.target.value)}
+                  onChange={(event) => {
+                    setPricingScopeMode('manual');
+                    setPricingAreaType(event.target.value as LocalityRateType);
+                  }}
                 >
                   {LOCATION_RATE_TYPES.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -654,9 +845,38 @@ export default function NewBookingPage() {
                 </select>
               </label>
             </div>
-            <p className="mt-3 text-xs text-[#64748b]">
-              Kenya quotes can use county pricing and separate town versus rural rates before surge and tax are applied.
-            </p>
+            {detectedPricingScope ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span
+                  className={[
+                    'inline-flex rounded-full px-2.5 py-1 font-semibold',
+                    usingPickupDetectedScope
+                      ? 'bg-[#dcfce7] text-[#166534]'
+                      : 'bg-[#fef3c7] text-[#92400e]',
+                  ].join(' ')}
+                >
+                  {usingPickupDetectedScope ? 'Pickup scope auto-detected' : 'Manual pricing override'}
+                </span>
+                <span className="text-[#64748b]">
+                  {usingPickupDetectedScope
+                    ? `Using ${detectedPricingScope.summary} from the pickup map pin.`
+                    : `Pickup pin suggested ${detectedPricingScope.summary}.`}
+                </span>
+                {!usingPickupDetectedScope ? (
+                  <button
+                    type="button"
+                    className="font-semibold text-[#1d4ed8] transition hover:text-[#1e3a8a]"
+                    onClick={restorePickupDetectedPricingScope}
+                  >
+                    Use pickup scope
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-[#64748b]">
+                Kenya quotes can use county pricing and separate town versus rural rates before surge and tax are applied. The pickup map pin will auto-fill this scope when the lookup can identify it.
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -960,6 +1180,156 @@ export default function NewBookingPage() {
               Schedule this move instead of treating it as immediate.
             </label>
           </section>
+
+          {isContainerWorkflow ? (
+            <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+              <div className="mb-3 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ecfeff] text-[#0f766e]">
+                  <Truck className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                    Rail and container controls
+                  </p>
+                  <h2 className="text-lg font-semibold text-[#1a1a2e]">
+                    Corridor and customs readiness
+                  </h2>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-[#475569]">Trade mode</span>
+                  <select
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    value={tradeMode}
+                    onChange={(event) => setTradeMode(event.target.value)}
+                  >
+                    {freightTradeModes.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {serviceType === 'RAIL' ? (
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-[#475569]">Rail corridor</span>
+                    <select
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                      value={railCorridorCode}
+                      onChange={(event) => setRailCorridorCode(event.target.value)}
+                    >
+                      <option value="">Select corridor</option>
+                      {railCorridorOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+
+                <Input
+                  label="Origin node"
+                  tone="light"
+                  value={originNode}
+                  onChange={(event) => setOriginNode(event.target.value)}
+                  placeholder="Mombasa Port, ICD Nairobi, depot, warehouse"
+                  required={isContainerWorkflow}
+                />
+                <Input
+                  label="Destination node"
+                  tone="light"
+                  value={destinationNode}
+                  onChange={(event) => setDestinationNode(event.target.value)}
+                  placeholder="ICD Naivasha, consignee yard, warehouse"
+                  required={isContainerWorkflow}
+                />
+              </div>
+
+              {requiresTradeDocuments ? (
+                <div className="mt-4 space-y-3 rounded-[18px] bg-[#f8faff] p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                    Trade document pack
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input
+                      label="Container reference"
+                      tone="light"
+                      value={containerReference}
+                      onChange={(event) => setContainerReference(event.target.value)}
+                      placeholder="MSKU1234567"
+                      required={requiresTradeDocuments}
+                    />
+                    <Input
+                      label="Bill of lading"
+                      tone="light"
+                      value={billOfLadingNumber}
+                      onChange={(event) => setBillOfLadingNumber(event.target.value)}
+                      placeholder="B/L reference"
+                      required={requiresTradeDocuments}
+                    />
+                    <Input
+                      label="IDF number"
+                      tone="light"
+                      value={idfNumber}
+                      onChange={(event) => setIdfNumber(event.target.value)}
+                      placeholder="KRA / IDF reference"
+                      required={requiresTradeDocuments}
+                    />
+                    <label className="block space-y-2">
+                      <span className="text-sm font-medium text-[#475569]">Customs status</span>
+                      <select
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                        value={customsStatus}
+                        onChange={(event) => setCustomsStatus(event.target.value)}
+                      >
+                        {tradeDocumentStatuses
+                          .filter((option) => option.value !== 'NOT_REQUIRED')
+                          .map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <label className="block space-y-2">
+                      <span className="text-sm font-medium text-[#475569]">iCMS status</span>
+                      <select
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                        value={icmsStatus}
+                        onChange={(event) => setIcmsStatus(event.target.value)}
+                      >
+                        {tradeDocumentStatuses
+                          .filter((option) => option.value !== 'NOT_REQUIRED')
+                          .map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <label className="flex items-center gap-3 rounded-[14px] border border-[#d7e0ec] bg-white px-3 py-3 text-sm text-[#475569]">
+                    <input
+                      checked={pacReady}
+                      className="h-4 w-4 rounded border-[#cbd5e1]"
+                      onChange={(event) => setPacReady(event.target.checked)}
+                      type="checkbox"
+                    />
+                    Pre-arrival clearance (PAC) is ready for this movement.
+                  </label>
+                </div>
+              ) : (
+                <p className="mt-4 text-xs text-[#64748b]">
+                  Local container and local rail jobs can skip customs document references, but they still need origin and destination nodes for corridor control.
+                </p>
+              )}
+            </section>
+          ) : null}
         </div>
       ) : null}
 
@@ -1042,6 +1412,93 @@ export default function NewBookingPage() {
               </div>
             </div>
           </section>
+
+          {isContainerWorkflow ? (
+            <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                Rail and container control
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Operational handoff summary</h2>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-[14px] bg-[#f8faff] px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                    Trade mode
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                    {tradeMode.replaceAll('_', ' ')}
+                  </p>
+                </div>
+                {serviceType === 'RAIL' ? (
+                  <div className="rounded-[14px] bg-[#f8faff] px-3 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Rail corridor
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                      {railCorridorOptions.find((option) => option.value === railCorridorCode)?.label ||
+                        'Corridor pending'}
+                    </p>
+                  </div>
+                ) : null}
+                <div className="rounded-[14px] bg-[#f8faff] px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                    Origin node
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                    {originNode || 'Origin pending'}
+                  </p>
+                </div>
+                <div className="rounded-[14px] bg-[#f8faff] px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                    Destination node
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                    {destinationNode || 'Destination pending'}
+                  </p>
+                </div>
+              </div>
+
+              {requiresTradeDocuments ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-[14px] bg-[#f8faff] px-3 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Container reference
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                      {containerReference || 'Container reference pending'}
+                    </p>
+                  </div>
+                  <div className="rounded-[14px] bg-[#f8faff] px-3 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Bill of lading
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                      {billOfLadingNumber || 'B/L pending'}
+                    </p>
+                  </div>
+                  <div className="rounded-[14px] bg-[#f8faff] px-3 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      IDF number
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                      {idfNumber || 'IDF pending'}
+                    </p>
+                  </div>
+                  <div className="rounded-[14px] bg-[#f8faff] px-3 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Compliance state
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                      Customs {customsStatus.replaceAll('_', ' ')} / iCMS {icmsStatus.replaceAll('_', ' ')}
+                    </p>
+                    <p className="mt-1 text-xs text-[#64748b]">
+                      {pacReady ? 'PAC ready' : 'PAC still pending'}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
             <div className="mb-3 flex items-center gap-3">

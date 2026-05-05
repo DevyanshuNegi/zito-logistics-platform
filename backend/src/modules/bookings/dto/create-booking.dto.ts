@@ -14,7 +14,10 @@ import {
 import { Type } from 'class-transformer';
 import {
   BookingCapacitySource,
+  FreightTradeMode,
+  RailCorridorCode,
   ServiceType,
+  TradeDocumentStatus,
   VehicleType,
 } from '@prisma/client';
 
@@ -89,6 +92,51 @@ export class CreateBookingDto {
   @IsBoolean()
   @IsOptional()
   isScheduled?: boolean;
+
+  @IsEnum(FreightTradeMode)
+  @IsOptional()
+  tradeMode?: FreightTradeMode;
+
+  @IsEnum(RailCorridorCode)
+  @IsOptional()
+  railCorridorCode?: RailCorridorCode;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  originNode?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  destinationNode?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  containerReference?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  billOfLadingNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  idfNumber?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  pacReady?: boolean;
+
+  @IsEnum(TradeDocumentStatus)
+  @IsOptional()
+  customsStatus?: TradeDocumentStatus;
+
+  @IsEnum(TradeDocumentStatus)
+  @IsOptional()
+  icmsStatus?: TradeDocumentStatus;
 
   // Client-generated UUID — idempotency enforcement
   @IsUUID()
