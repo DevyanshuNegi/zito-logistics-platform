@@ -39,6 +39,9 @@ type SessionUser = {
   fullName?: string | null;
   companyName?: string | null;
   role: string;
+  staffScope?: string | null;
+  staffDepartment?: string | null;
+  staffAgencyName?: string | null;
 };
 
 type OtpRequestResponse = {
@@ -94,7 +97,41 @@ function loginFooter(portalKind: PortalKind) {
   const portal = getPortalConfig(portalKind);
 
   if (portalKind === 'internal') {
-    return null;
+    return (
+      <div className="space-y-2">
+        <p>
+          Agency, branch, or station staff?{' '}
+          <Link href="/agency/login" className="text-cyan-200 hover:text-cyan-100">
+            Use Zito Agency
+          </Link>
+          .
+        </p>
+        <p>
+          <Link href={portal.guideHref} className="text-cyan-200 hover:text-cyan-100">
+            Need help? Open the internal guide.
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
+  if (portalKind === 'agency') {
+    return (
+      <div className="space-y-2">
+        <p>
+          Head office or admin team?{' '}
+          <Link href="/internal/login" className="text-cyan-200 hover:text-cyan-100">
+            Use Zito Internal
+          </Link>
+          .
+        </p>
+        <p>
+          <Link href={portal.guideHref} className="text-cyan-200 hover:text-cyan-100">
+            Need help? Open the agency guide.
+          </Link>
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -122,7 +159,7 @@ function loginFooter(portalKind: PortalKind) {
   );
 }
 
-export function LoginPageScreen() {
+function LoginPageScreen() {
   const pathname = usePathname();
   const router = useRouter();
   const portalKind = getPortalKindFromPathname(pathname);
@@ -173,7 +210,7 @@ export function LoginPageScreen() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace(getRoleHomePath(user.role));
+      router.replace(getRoleHomePath(user.role, user.staffScope));
     }
   }, [loading, router, user]);
 
@@ -397,17 +434,20 @@ export function LoginPageScreen() {
           fullName: response.data.user.fullName,
           companyName: response.data.user.companyName,
           role: response.data.user.role,
+          staffScope: response.data.user.staffScope,
+          staffDepartment: response.data.user.staffDepartment,
+          staffAgencyName: response.data.user.staffAgencyName,
         },
         accessToken: response.data.token,
         refreshToken: response.data.refreshToken ?? null,
       });
 
       setInfoMessage(
-        portalKind !== getPortalKindForRole(response.data.user.role)
-          ? `This account belongs in ${getPortalConfig(getPortalKindForRole(response.data.user.role)).productName}. Redirecting now.`
+        portalKind !== getPortalKindForRole(response.data.user.role, response.data.user.staffScope)
+          ? `This account belongs in ${getPortalConfig(getPortalKindForRole(response.data.user.role, response.data.user.staffScope)).productName}. Redirecting now.`
           : null,
       );
-      router.replace(getRoleHomePath(response.data.user.role));
+      router.replace(getRoleHomePath(response.data.user.role, response.data.user.staffScope));
     } catch (caught) {
       if (caught instanceof ApiError) {
         applyApiError(caught, otpSession.contact);
@@ -449,17 +489,20 @@ export function LoginPageScreen() {
           fullName: response.data.user.fullName,
           companyName: response.data.user.companyName,
           role: response.data.user.role,
+          staffScope: response.data.user.staffScope,
+          staffDepartment: response.data.user.staffDepartment,
+          staffAgencyName: response.data.user.staffAgencyName,
         },
         accessToken: response.data.token,
         refreshToken: response.data.refreshToken ?? null,
       });
 
       setInfoMessage(
-        portalKind !== getPortalKindForRole(response.data.user.role)
-          ? `This account belongs in ${getPortalConfig(getPortalKindForRole(response.data.user.role)).productName}. Redirecting now.`
+        portalKind !== getPortalKindForRole(response.data.user.role, response.data.user.staffScope)
+          ? `This account belongs in ${getPortalConfig(getPortalKindForRole(response.data.user.role, response.data.user.staffScope)).productName}. Redirecting now.`
           : null,
       );
-      router.replace(getRoleHomePath(response.data.user.role));
+      router.replace(getRoleHomePath(response.data.user.role, response.data.user.staffScope));
     } catch (caught) {
       if (caught instanceof ApiError) {
         applyApiError(caught, otpSession.contact);

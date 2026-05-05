@@ -60,6 +60,10 @@ web_modules
 tmp-screens/
 .codex-docx-tmp/
 .docx-temp/
+docs/prd/qa-temp/
+outputs/qa-logins/previews/
+outputs/qa-logins/*.ndjson
+outputs/qa-logins/~$*.xlsx
 
 # =========================
 # Dependencies

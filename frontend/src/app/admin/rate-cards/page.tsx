@@ -17,6 +17,11 @@ import {
   formatPercent,
   formatStatus,
 } from '@/lib/format';
+import {
+  KENYA_COUNTIES,
+  LOCATION_RATE_TYPES,
+  SUPPORTED_PRICING_COUNTRIES,
+} from '@/lib/location-pricing';
 
 type TabKey = 'rates' | 'surge';
 
@@ -24,6 +29,9 @@ type RateCard = {
   id: string;
   vehicleType: string;
   serviceType: string;
+  countryCode: string;
+  county: string | null;
+  localityType: string;
   baseFare: number;
   ratePerKm: number;
   perStopRate: number;
@@ -42,6 +50,11 @@ type RateCardsResponse = {
 
 type CalculatorResult = {
   rateCard: RateCard;
+  pricingScope?: {
+    countryCode: string;
+    county: string | null;
+    localityType: string;
+  };
   effectiveDistance: number;
   baseFare: number;
   distanceFare: number;
@@ -109,6 +122,9 @@ type SurgeDashboard = {
 type RateCardFormState = {
   vehicleType: string;
   serviceType: string;
+  countryCode: string;
+  county: string;
+  localityType: string;
   baseFare: string;
   ratePerKm: string;
   perStopRate: string;
@@ -120,6 +136,9 @@ type RateCardFormState = {
 type CalculatorState = {
   vehicleType: string;
   serviceType: string;
+  countryCode: string;
+  county: string;
+  localityType: string;
   distanceKm: string;
   stopCount: string;
 };
@@ -140,14 +159,47 @@ const VEHICLE_TYPES = [
   'TRUCK_7T',
   'TRUCK_14T',
   'TRUCK_22T',
+  'CONTAINER_20FT',
+  'CONTAINER_40FT',
   'REFRIGERATED',
 ] as const;
 
-const SERVICE_TYPES = ['FTL', 'PTL', 'COURIER', 'WAREHOUSE'] as const;
+const SERVICE_TYPES = ['FTL', 'PTL', 'COURIER', 'WAREHOUSE', 'RAIL'] as const;
+
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  MOTORBIKE: 'Motorbike',
+  VAN: 'Van',
+  TRUCK_3T: '3 Ton Truck',
+  TRUCK_7T: '7 Ton Truck',
+  TRUCK_14T: '14 Ton Truck',
+  TRUCK_22T: '22 Ton Truck',
+  CONTAINER_20FT: '20ft Container Truck',
+  CONTAINER_40FT: '40ft Container Truck',
+  REFRIGERATED: 'Refrigerated Truck',
+};
+
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  FTL: 'FTL',
+  PTL: 'PTL / Part Load',
+  COURIER: 'Courier',
+  WAREHOUSE: 'Warehouse',
+  RAIL: 'Rail / SGR',
+};
+
+function formatVehicleTypeLabel(value: string) {
+  return VEHICLE_TYPE_LABELS[value] ?? formatStatus(value);
+}
+
+function formatServiceTypeLabel(value: string) {
+  return SERVICE_TYPE_LABELS[value] ?? formatStatus(value);
+}
 
 const INITIAL_RATE_FORM: RateCardFormState = {
   vehicleType: 'MOTORBIKE',
   serviceType: 'COURIER',
+  countryCode: 'KE',
+  county: '',
+  localityType: 'ANY',
   baseFare: '',
   ratePerKm: '',
   perStopRate: '0',
@@ -159,6 +211,9 @@ const INITIAL_RATE_FORM: RateCardFormState = {
 const INITIAL_CALCULATOR: CalculatorState = {
   vehicleType: 'MOTORBIKE',
   serviceType: 'COURIER',
+  countryCode: 'KE',
+  county: '',
+  localityType: 'ANY',
   distanceKm: '',
   stopCount: '0',
 };
@@ -293,6 +348,9 @@ export default function AdminRateCardsPage() {
     setForm({
       vehicleType: rateCard.vehicleType,
       serviceType: rateCard.serviceType,
+      countryCode: rateCard.countryCode,
+      county: rateCard.county ?? '',
+      localityType: rateCard.localityType,
       baseFare: String(rateCard.baseFare),
       ratePerKm: String(rateCard.ratePerKm),
       perStopRate: String(rateCard.perStopRate),
@@ -326,6 +384,9 @@ export default function AdminRateCardsPage() {
             vehicleType: form.vehicleType,
             serviceType: form.serviceType,
           }),
+      countryCode: form.countryCode,
+      county: form.countryCode === 'KE' && form.county ? form.county : undefined,
+      localityType: form.localityType,
       baseFare: Number(form.baseFare),
       ratePerKm: Number(form.ratePerKm),
       perStopRate: Number(form.perStopRate || '0'),
@@ -359,6 +420,9 @@ export default function AdminRateCardsPage() {
       const response = await api.post<CalculatorResult>('/rate-cards/calculate', {
         vehicleType: calculator.vehicleType,
         serviceType: calculator.serviceType,
+        countryCode: calculator.countryCode,
+        county: calculator.countryCode === 'KE' && calculator.county ? calculator.county : undefined,
+        localityType: calculator.localityType,
         distanceKm: Number(calculator.distanceKm),
         stopCount: Number(calculator.stopCount || '0'),
       });
@@ -494,7 +558,7 @@ export default function AdminRateCardsPage() {
               >
                 {VEHICLE_TYPES.map((option) => (
                   <option key={option} value={option}>
-                    {formatStatus(option)}
+                    {formatVehicleTypeLabel(option)}
                   </option>
                 ))}
               </select>
@@ -512,7 +576,65 @@ export default function AdminRateCardsPage() {
               >
                 {SERVICE_TYPES.map((option) => (
                   <option key={option} value={option}>
-                    {formatStatus(option)}
+                    {formatServiceTypeLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-200">Country</span>
+              <select
+                className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+                value={form.countryCode}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    countryCode: event.target.value,
+                    county: event.target.value === 'KE' ? current.county : '',
+                    localityType: event.target.value === 'KE' ? current.localityType : 'ANY',
+                  }))
+                }
+              >
+                {SUPPORTED_PRICING_COUNTRIES.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-200">Kenya county</span>
+              <select
+                className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none disabled:opacity-60"
+                disabled={form.countryCode !== 'KE'}
+                value={form.county}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, county: event.target.value }))
+                }
+              >
+                <option value="">All Kenya counties</option>
+                {KENYA_COUNTIES.map((county) => (
+                  <option key={county} value={county}>
+                    {county}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-200">Area type</span>
+              <select
+                className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+                value={form.localityType}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, localityType: event.target.value }))
+                }
+              >
+                {LOCATION_RATE_TYPES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -619,7 +741,7 @@ export default function AdminRateCardsPage() {
               >
                 {VEHICLE_TYPES.map((option) => (
                   <option key={option} value={option}>
-                    {formatStatus(option)}
+                    {formatVehicleTypeLabel(option)}
                   </option>
                 ))}
               </select>
@@ -636,7 +758,65 @@ export default function AdminRateCardsPage() {
               >
                 {SERVICE_TYPES.map((option) => (
                   <option key={option} value={option}>
-                    {formatStatus(option)}
+                    {formatServiceTypeLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-200">Country</span>
+              <select
+                className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+                value={calculator.countryCode}
+                onChange={(event) =>
+                  setCalculator((current) => ({
+                    ...current,
+                    countryCode: event.target.value,
+                    county: event.target.value === 'KE' ? current.county : '',
+                    localityType: event.target.value === 'KE' ? current.localityType : 'ANY',
+                  }))
+                }
+              >
+                {SUPPORTED_PRICING_COUNTRIES.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-200">Kenya county</span>
+              <select
+                className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none disabled:opacity-60"
+                disabled={calculator.countryCode !== 'KE'}
+                value={calculator.county}
+                onChange={(event) =>
+                  setCalculator((current) => ({ ...current, county: event.target.value }))
+                }
+              >
+                <option value="">All Kenya counties</option>
+                {KENYA_COUNTIES.map((county) => (
+                  <option key={county} value={county}>
+                    {county}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-200">Area type</span>
+              <select
+                className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+                value={calculator.localityType}
+                onChange={(event) =>
+                  setCalculator((current) => ({ ...current, localityType: event.target.value }))
+                }
+              >
+                {LOCATION_RATE_TYPES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -677,7 +857,7 @@ export default function AdminRateCardsPage() {
               <StatCard
                 label="Applied card"
                 value={`v${calculatorResult.rateCard.version}`}
-                helper={`${formatStatus(calculatorResult.rateCard.vehicleType)} / ${formatStatus(calculatorResult.rateCard.serviceType)}`}
+                helper={`${formatVehicleTypeLabel(calculatorResult.rateCard.vehicleType)} / ${formatServiceTypeLabel(calculatorResult.rateCard.serviceType)} / ${calculatorResult.pricingScope?.county ?? calculatorResult.rateCard.countryCode} / ${formatStatus(calculatorResult.pricingScope?.localityType ?? calculatorResult.rateCard.localityType)}`}
               />
               <StatCard
                 label="Distance fare"
@@ -728,7 +908,12 @@ export default function AdminRateCardsPage() {
                   render: (rateCard) => (
                     <div>
                       <p className="font-semibold text-white">
-                        {formatStatus(rateCard.vehicleType)} / {formatStatus(rateCard.serviceType)}
+                        {formatVehicleTypeLabel(rateCard.vehicleType)} / {formatServiceTypeLabel(rateCard.serviceType)}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {rateCard.countryCode}
+                        {rateCard.county ? ` / ${rateCard.county}` : ' / Country-wide'}
+                        {` / ${formatStatus(rateCard.localityType)}`}
                       </p>
                       <p className="text-xs text-slate-400">{compactId(rateCard.id)}</p>
                     </div>

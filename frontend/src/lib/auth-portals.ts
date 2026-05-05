@@ -1,4 +1,4 @@
-export type PortalKind = 'service' | 'partners' | 'internal';
+export type PortalKind = 'service' | 'partners' | 'internal' | 'agency';
 
 export type RoleOption = {
   role: string;
@@ -61,8 +61,16 @@ export const INTERNAL_ROLE_OPTIONS: RoleOption[] = [
   },
   {
     role: 'AGENCY_STAFF',
+    label: 'Head Office Staff',
+    description: 'Head-office operations, customer care, and accounts teams.',
+  },
+];
+
+export const AGENCY_ROLE_OPTIONS: RoleOption[] = [
+  {
+    role: 'AGENCY_STAFF',
     label: 'Agency Staff',
-    description: 'Internal support and managed operations workflows.',
+    description: 'Branch and agency operations, support, and finance workflows.',
   },
 ];
 
@@ -91,7 +99,8 @@ export const PORTAL_CONFIG = {
     panelSubtitle:
       'Customers and corporate shippers use this app to create bookings, manage payments, and track fulfillment.',
     registerCta: 'Start service registration',
-    switchCta: 'Driver, agent, or supply partner? Use Zito Partners.',
+    switchCta:
+      'Driver, agent, transporter, courier company, or warehouse partner? Use Zito Partners.',
     switchHref: '/partners/login',
     guideHref: '/guides/service',
   },
@@ -125,14 +134,34 @@ export const PORTAL_CONFIG = {
     eyebrow: 'Internal Access',
     title: 'Sign in to Zito Internal',
     subtitle:
-      'For admin, agency staff, and internal operations teams only. Internal accounts are provisioned separately and are not shown in public customer or partner flows.',
-    panelEyebrow: 'Internal Operations',
-    panelTitle: 'Operate approvals, agencies, staff, and control systems privately.',
+      'For super admin, admin, and head-office staff only. Internal accounts are provisioned separately and are not shown in public customer or partner flows.',
+    panelEyebrow: 'Head Office Operations',
+    panelTitle: 'Operate approvals, controls, teams, and governance privately.',
     panelSubtitle:
-      'This private path is reserved for internal operations, governance, and agency management. Public users do not register here.',
+      'This private path is reserved for head-office control, supervision, and internal desks. Public users do not register here.',
     registerCta: '',
-    switchCta: '',
-    switchHref: '',
+    switchCta: 'Agency, branch, or station staff? Use Zito Agency.',
+    switchHref: '/agency/login',
+    guideHref: '/guides/internal',
+  },
+  agency: {
+    productName: 'Zito Agency',
+    appStoreName: 'Zito Agency Desk',
+    loginPath: '/agency/login',
+    selectRolePath: '/agency/login',
+    registerPath: '/agency/login',
+    roleOptions: AGENCY_ROLE_OPTIONS,
+    eyebrow: 'Agency Access',
+    title: 'Sign in to Zito Agency',
+    subtitle:
+      'For agency, branch, and station staff who handle local operations, support, and accounts workflows.',
+    panelEyebrow: 'Agency Operations',
+    panelTitle: 'Run branch operations, support desks, and local finance workflows.',
+    panelSubtitle:
+      'This path is reserved for agency teams provisioned by head office. Public users do not register here.',
+    registerCta: '',
+    switchCta: 'Head office or admin team? Use Zito Internal.',
+    switchHref: '/internal/login',
     guideHref: '/guides/internal',
   },
 } as const satisfies Record<
@@ -163,6 +192,9 @@ export function getPortalConfig(kind: PortalKind) {
 
 export function getPortalKindFromPathname(pathname?: string | null): PortalKind {
   const value = pathname ?? '';
+  if (value.startsWith('/agency')) {
+    return 'agency';
+  }
   if (value.startsWith('/partners')) {
     return 'partners';
   }
@@ -172,13 +204,20 @@ export function getPortalKindFromPathname(pathname?: string | null): PortalKind 
   return 'service';
 }
 
-export function getPortalKindForRole(role?: string | null): PortalKind {
+export function getPortalKindForRole(
+  role?: string | null,
+  staffScope?: string | null,
+): PortalKind {
   const normalized = (role ?? '').trim().toUpperCase();
+  const normalizedStaffScope = (staffScope ?? '').trim().toUpperCase();
   if (SERVICE_ROLE_OPTIONS.some((option) => option.role === normalized)) {
     return 'service';
   }
   if (PARTNER_ROLE_OPTIONS.some((option) => option.role === normalized)) {
     return 'partners';
+  }
+  if (normalized === 'AGENCY_STAFF' && normalizedStaffScope === 'AGENCY') {
+    return 'agency';
   }
   return 'internal';
 }
@@ -195,6 +234,6 @@ export function resolvePortalRole(
   return options[0]?.role ?? 'CUSTOMER';
 }
 
-export function getGuidePathForRole(role?: string | null) {
-  return getPortalConfig(getPortalKindForRole(role)).guideHref;
+export function getGuidePathForRole(role?: string | null, staffScope?: string | null) {
+  return getPortalConfig(getPortalKindForRole(role, staffScope)).guideHref;
 }

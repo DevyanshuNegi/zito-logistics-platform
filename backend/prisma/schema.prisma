@@ -58,6 +58,7 @@ enum ServiceType {
   PTL
   COURIER
   WAREHOUSE
+  RAIL
 }
 
 enum BookingCapacitySource {
@@ -144,6 +145,8 @@ enum VehicleType {
   TRUCK_7T
   TRUCK_14T
   TRUCK_22T
+  CONTAINER_20FT
+  CONTAINER_40FT
   REFRIGERATED
 }
 
@@ -210,16 +213,24 @@ model User {
 }
 
 model KycDocument {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id])
-  type        String
-  fileUrl     String
-  status      String    @default("PENDING")
-  expiryDate  DateTime?
-  verifiedAt  DateTime?
-  verifiedBy  String?
-  createdAt   DateTime  @default(now())
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id])
+  type             String
+  fileUrl          String
+  status           String    @default("PENDING")
+  documentNumber   String?
+  issuingAuthority String?
+  countryOfIssue   String?
+  documentSide     String?
+  issueDate        DateTime?
+  expiryDate       DateTime?
+  reviewNote       String?
+  rejectionReason  String?
+  verifiedAt       DateTime?
+  verifiedBy       String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 model Agency {
@@ -373,6 +384,12 @@ model Vehicle {
   insuranceVerified Boolean       @default(false)
   permitExpiry      DateTime?
   permitVerified    Boolean       @default(false)
+  inspectionCertificateExpiry DateTime?
+  verificationStatus String       @default("PENDING_REVIEW")
+  verificationReviewedAt DateTime?
+  verificationReviewedBy String?
+  verificationNote  String?
+  rejectionReason   String?
 
   ownerUserId       String?
   ownerUser         User?         @relation("VehicleOwner", fields: [ownerUserId], references: [id])
@@ -383,12 +400,32 @@ model Vehicle {
   fuelLogs          FuelLog[]
   breakdowns        VehicleBreakdown[]
   maintenanceLogs   MaintenanceLog[]
+  verificationPhotos VehicleVerificationPhoto[]
 
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
   @@index([ownerUserId])
   @@index([deviceGpsLat, deviceGpsLng])
+}
+
+model VehicleVerificationPhoto {
+  id              String   @id @default(uuid())
+  vehicleId       String
+  vehicle         Vehicle  @relation(fields: [vehicleId], references: [id])
+  category        String
+  fileUrl         String
+  mimeType        String?
+  status          String   @default("PENDING_REVIEW")
+  capturedAt      DateTime?
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  reviewNote      String?
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([vehicleId, category])
 }
 
 model FuelLog {
@@ -535,6 +572,9 @@ model RateCard {
   id              String      @id @default(uuid())
   vehicleType     VehicleType
   serviceType     ServiceType
+  countryCode     String      @default("KE")
+  county          String?
+  localityType    String      @default("ANY")
   baseFare        Float
   ratePerKm       Float
   perStopRate     Float       @default(0)
@@ -544,6 +584,8 @@ model RateCard {
   version         Int         @default(1)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+
+  @@index([countryCode, county, localityType, vehicleType, serviceType, isActive])
 }
 
 model Contract {

@@ -10,6 +10,8 @@ import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
 import { FleetDriverManager } from '@/components/operations/FleetDriverManager';
 import { FuelReportPanel } from '@/components/operations/FuelReportPanel';
+import { VehicleLocationPanel } from '@/components/operations/VehicleLocationPanel';
+import { VehicleVerificationPanel } from '@/components/operations/VehicleVerificationPanel';
 import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
 import { VEHICLE_TYPES } from '@/lib/phase-one';
@@ -26,12 +28,28 @@ type Vehicle = {
   plateNumber: string;
   type: string;
   status: string;
+  verificationStatus?: string | null;
+  deviceGpsLat?: number | null;
+  deviceGpsLng?: number | null;
+  lastGpsAt?: string | null;
   driver?: {
     id?: string | null;
+    isOnline?: boolean | null;
+    currentLatitude?: number | null;
+    currentLongitude?: number | null;
+    lastLocationAt?: string | null;
     user?: {
       fullName?: string | null;
     } | null;
   } | null;
+  verificationPhotos?: Array<{
+    id: string;
+    category: string;
+    status?: string | null;
+    reviewNote?: string | null;
+    rejectionReason?: string | null;
+    fileUrl?: string | null;
+  }> | null;
 };
 
 type BreakdownResponse = {
@@ -133,6 +151,19 @@ export default function TransporterFleetPage() {
         </Alert>
       ) : null}
 
+      <VehicleLocationPanel
+        description="Choose a vehicle number to inspect its latest live fleet location before dispatch or reassignment."
+        title="Vehicle location"
+        vehicles={vehicles}
+      />
+
+      <VehicleVerificationPanel
+        description="Upload the compulsory five truck photos here so internal teams can verify heavy vehicles and container units before operational approval."
+        onChange={() => loadFleet()}
+        title="Vehicle verification package"
+        vehicles={vehicles}
+      />
+
       <SurfaceCard title="Add vehicle" description="Quick transporter-side vehicle onboarding with the required capacity fields from the live vehicle schema.">
         <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreate}>
           <Input label="Plate number" value={plateNumber} onChange={(event) => setPlateNumber(event.target.value)} required />
@@ -187,7 +218,18 @@ export default function TransporterFleetPage() {
             columns={[
               { key: 'plate', header: 'Plate', render: (vehicle) => vehicle.plateNumber },
               { key: 'type', header: 'Type', render: (vehicle) => vehicle.type },
-              { key: 'status', header: 'Status', render: (vehicle) => formatStatus(vehicle.status) },
+              {
+                key: 'status',
+                header: 'Status',
+                render: (vehicle) => (
+                  <div>
+                    <p>{formatStatus(vehicle.status)}</p>
+                    <p className="text-xs text-slate-400">
+                      Verification: {formatStatus(vehicle.verificationStatus ?? 'PENDING_REVIEW')}
+                    </p>
+                  </div>
+                ),
+              },
               { key: 'driver', header: 'Driver', render: (vehicle) => vehicle.driver?.user?.fullName ?? 'Unassigned' },
             ]}
           />

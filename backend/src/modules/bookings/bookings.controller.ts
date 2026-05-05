@@ -233,7 +233,7 @@ export class DriverTripsController {
 // ─── Admin routes ─────────────────────────────────────────────────────────────
 @Controller('admin/bookings')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'SUPER_ADMIN')
+@Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF')
 export class AdminBookingsController {
   constructor(
     private readonly bookingsService: BookingsService,

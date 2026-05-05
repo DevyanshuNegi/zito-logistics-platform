@@ -114,7 +114,7 @@ export class InvoicesController {
   }
 
   @Get('admin/invoices')
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Admin invoice approval dashboard (PRD §16, §18)' })
   @ApiQuery({ name: 'status', required: false, enum: InvoiceStatus })
   @ApiQuery({ name: 'type', required: false, enum: InvoiceType })
@@ -136,14 +136,14 @@ export class InvoicesController {
   }
 
   @Get('admin/invoices/:id')
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Admin invoice detail (PRD §16)' })
   getAdminInvoice(@Param('id', ParseUUIDPipe) id: string) {
     return this.invoicesService.getForAdmin(id);
   }
 
   @Get('admin/invoices/:id/pdf')
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Admin invoice PDF download payload (PRD §16)' })
   async getAdminInvoicePdf(@Param('id', ParseUUIDPipe) id: string) {
     const pdf = await this.invoicesService.generatePdfForAdmin(id);
@@ -154,7 +154,7 @@ export class InvoicesController {
   }
 
   @Post('admin/invoices/generate')
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Generate booking invoice (PRD §16)' })
   generateBookingInvoice(@Body() dto: GenerateBookingInvoiceDto, @Req() req: any) {
     return this.invoicesService.generateForBooking(dto.bookingId, {
@@ -166,7 +166,7 @@ export class InvoicesController {
   }
 
   @Patch('admin/invoices/:id/request-approval')
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Request approval for high-value invoice changes (PRD §18)' })
   requestApproval(
     @Param('id', ParseUUIDPipe) id: string,
@@ -177,14 +177,14 @@ export class InvoicesController {
   }
 
   @Patch('admin/invoices/:id/approve')
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Approve invoice for issue (PRD §18)' })
   approveInvoice(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     return this.invoicesService.approveInvoice(id, req.user.id);
   }
 
   @Patch('admin/invoices/:id/issue')
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Issue and audit-lock invoice (PRD §16, §18)' })
   issueInvoice(
     @Param('id', ParseUUIDPipe) id: string,

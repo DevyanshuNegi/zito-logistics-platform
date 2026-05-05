@@ -24,6 +24,6 @@ Infrastructure:
 
 Local run defaults:
 
-- Backend: `http://localhost:3000`
-- Frontend: `http://localhost:3001`
-- Swagger: `http://localhost:3000/api/docs`
+- Backend: `http://127.0.0.1:5000`
+- Frontend: `http://127.0.0.1:3001`
+- Swagger: `http://127.0.0.1:5000/api/docs`

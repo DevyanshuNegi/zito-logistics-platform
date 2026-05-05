@@ -200,7 +200,7 @@ export default function AdminAuditPage() {
         </Alert>
       ) : null}
 
-      <SurfaceCard title="Approval queue filters" description="Strict PRD v10 control point for refunds, payout overrides, and admin booking cancellations.">
+      <SurfaceCard title="Approval queue filters" description="Strict control point for refunds, payout overrides, and admin booking cancellations.">
         <div className="grid gap-4 md:grid-cols-3">
           <label className="block space-y-2">
             <span className="text-sm font-medium text-slate-200">Status</span>

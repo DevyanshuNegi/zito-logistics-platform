@@ -11,6 +11,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aurenza.zito",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Zito uses your location to estimate routes, show pickup and delivery flow, and support live trip tracking.",
+        "NSCameraUsageDescription": "Zito uses your camera to capture proof of delivery, support evidence, and shipment scans.",
+        "NSPhotoLibraryUsageDescription": "Zito uses your photo library so you can upload support evidence, proof of delivery, and shipment documents.",
+        "NSPhotoLibraryAddUsageDescription": "Zito can save shipment and proof-of-delivery images when you choose to export them."
+      },
       "config": {
         "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
       }
@@ -29,6 +37,9 @@
       "config": {
         "googleMaps": { "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE" }
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     },
     "web": {
       "output": "static",
@@ -49,6 +60,11 @@
         }
       ]
     ],
+    "extra": {
+      "eas": {
+        "projectId": "SET_EAS_PROJECT_ID_BEFORE_REMOTE_BUILD"
+      }
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

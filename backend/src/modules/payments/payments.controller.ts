@@ -109,7 +109,7 @@ export class PaymentsController {
 
   @Get()
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Admin: list all payments (PRD §42)' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -124,7 +124,7 @@ export class PaymentsController {
 
   @Patch(':id/confirm')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Admin: confirm a payment (PRD §15)' })
   confirmPayment(
     @Param('id', ParseUUIDPipe) id: string,
@@ -135,7 +135,7 @@ export class PaymentsController {
 
   @Patch(':id/refund')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.AGENCY_STAFF)
   @ApiOperation({ summary: 'Admin: refund a payment (PRD §15)' })
   refundPayment(
     @Param('id', ParseUUIDPipe) id: string,

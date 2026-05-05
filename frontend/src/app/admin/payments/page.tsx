@@ -112,7 +112,7 @@ export default function AdminPaymentsPage() {
         </label>
       </SurfaceCard>
 
-      <SurfaceCard title="Admin payments dashboard" description="Escrow-aware payment review with PRD v10 approval control for refunds.">
+      <SurfaceCard title="Admin payments dashboard" description="Escrow-aware payment review with approval control for refunds.">
         {loading ? (
           <Spinner />
         ) : (

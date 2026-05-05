@@ -20,6 +20,9 @@ import {
   UpdateRateCardDto,
 } from './dto/rate-card.dto';
 
+const LOCATION_RATE_TYPES = ['ANY', 'TOWN', 'RURAL'] as const;
+type LocationRateType = (typeof LOCATION_RATE_TYPES)[number];
+
 type ListFilters = {
   vehicleType?: VehicleType;
   serviceType?: ServiceType;
@@ -74,10 +77,17 @@ export class RateCardsService {
   }
 
   async create(dto: CreateRateCardDto, userId: string) {
+    const countryCode = this.normalizeCountry(dto.countryCode);
+    const county = this.normalizeCounty(dto.county, countryCode);
+    const localityType = this.normalizeLocalityType(dto.localityType);
+
     const latestVersion = await this.prisma.rateCard.findFirst({
       where: {
         vehicleType: dto.vehicleType,
         serviceType: dto.serviceType,
+        countryCode,
+        county,
+        localityType,
       },
       orderBy: { version: 'desc' },
     });
@@ -88,6 +98,9 @@ export class RateCardsService {
           where: {
             vehicleType: dto.vehicleType,
             serviceType: dto.serviceType,
+            countryCode,
+            county,
+            localityType,
             isActive: true,
           },
           data: { isActive: false },
@@ -98,6 +111,9 @@ export class RateCardsService {
         data: {
           vehicleType: dto.vehicleType,
           serviceType: dto.serviceType,
+          countryCode,
+          county,
+          localityType,
           baseFare: dto.baseFare,
           ratePerKm: dto.ratePerKm,
           perStopRate: dto.perStopRate ?? 0,
@@ -120,6 +136,9 @@ export class RateCardsService {
     const current = await this.getById(id);
 
     if (
+      dto.countryCode == null &&
+      dto.county == null &&
+      dto.localityType == null &&
       dto.baseFare == null &&
       dto.ratePerKm == null &&
       dto.perStopRate == null &&
@@ -130,9 +149,18 @@ export class RateCardsService {
       throw new BadRequestException('At least one field must be provided');
     }
 
+    const nextCountryCode = this.normalizeCountry(dto.countryCode ?? current.countryCode);
+    const nextCounty = this.normalizeCounty(dto.county ?? current.county, nextCountryCode);
+    const nextLocalityType = this.normalizeLocalityType(
+      dto.localityType ?? current.localityType,
+    );
+
     const nextValues = {
       vehicleType: current.vehicleType,
       serviceType: current.serviceType,
+      countryCode: nextCountryCode,
+      county: nextCounty,
+      localityType: nextLocalityType,
       baseFare: dto.baseFare ?? current.baseFare,
       ratePerKm: dto.ratePerKm ?? current.ratePerKm,
       perStopRate: dto.perStopRate ?? current.perStopRate,
@@ -147,6 +175,9 @@ export class RateCardsService {
         where: {
           vehicleType: current.vehicleType,
           serviceType: current.serviceType,
+          countryCode: current.countryCode,
+          county: current.county,
+          localityType: current.localityType,
           isActive: true,
         },
         data: { isActive: false },
@@ -165,18 +196,37 @@ export class RateCardsService {
   }
 
   async calculate(dto: CalculateRateCardDto) {
-    const rateCard = await this.prisma.rateCard.findFirst({
+    const countryCode = this.normalizeCountry(dto.countryCode);
+    const county = this.normalizeCounty(dto.county, countryCode);
+    const localityType = this.normalizeLocalityType(dto.localityType);
+
+    const candidateCards = await this.prisma.rateCard.findMany({
       where: {
         vehicleType: dto.vehicleType,
         serviceType: dto.serviceType,
+        countryCode,
         isActive: true,
       },
-      orderBy: { version: 'desc' },
     });
+
+    const rankedCards = candidateCards
+      .map((rateCard) => ({
+        rateCard,
+        score: this.scoreRateCardScope(rateCard, county, localityType, countryCode),
+      }))
+      .filter((entry) => entry.score >= 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return right.rateCard.version - left.rateCard.version;
+      });
+
+    const rateCard = rankedCards[0]?.rateCard;
 
     if (!rateCard) {
       throw new NotFoundException(
-        `No active rate card for ${dto.vehicleType} + ${dto.serviceType}`,
+        `No active rate card for ${dto.vehicleType} + ${dto.serviceType} in ${countryCode}${county ? ` / ${county}` : ''}${localityType !== 'ANY' ? ` / ${localityType}` : ''}`,
       );
     }
 
@@ -185,7 +235,7 @@ export class RateCardsService {
     const distanceFare = Number((effectiveDistance * rateCard.ratePerKm).toFixed(2));
     const stopFare = Number((dto.stopCount * rateCard.perStopRate).toFixed(2));
     const surgeMultiplier = rateCard.surgeMultiplier;
-    const country = COUNTRY_CONFIGS[this.normalizeCountry(dto.countryCode)];
+    const country = COUNTRY_CONFIGS[countryCode];
     const countryAdjustedBaseFare = this.round(baseFare * country.rateMultiplier);
     const countryAdjustedDistanceFare = this.round(
       distanceFare * country.rateMultiplier,
@@ -217,6 +267,11 @@ export class RateCardsService {
 
     return {
       rateCard,
+      pricingScope: {
+        countryCode: rateCard.countryCode,
+        county: rateCard.county,
+        localityType: rateCard.localityType,
+      },
       effectiveDistance,
       baseCurrency: DEFAULT_CURRENCY,
       country,
@@ -243,6 +298,9 @@ export class RateCardsService {
       notes: [
         'Country pricing applies a country-specific rate multiplier before tax so a shared Phase 0 rate-card table can still serve multi-country pricing rules.',
         'If no currency is requested, the quote defaults to the configured currency for the selected operating country.',
+        countryCode === 'KE'
+          ? 'Kenya pricing can now resolve to a county-level card and can differentiate town vs rural coverage before tax and surge are applied.'
+          : 'Location-scope fallback still respects the active country pricing card before tax and surge are applied.',
       ],
     };
   }
@@ -261,6 +319,75 @@ export class RateCardsService {
       throw new BadRequestException(`Unsupported country code ${code}`);
     }
     return normalized;
+  }
+
+  private normalizeCounty(county: string | null | undefined, countryCode: SupportedCountryCode) {
+    if (countryCode !== 'KE') {
+      return null;
+    }
+
+    const trimmed = county?.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    return trimmed
+      .split(/\s+/)
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  private normalizeLocalityType(value?: string | null): LocationRateType {
+    const normalized = (value ?? 'ANY').toUpperCase() as LocationRateType;
+    if (!LOCATION_RATE_TYPES.includes(normalized)) {
+      throw new BadRequestException(`Unsupported locality type ${value}`);
+    }
+    return normalized;
+  }
+
+  private scoreRateCardScope(
+    rateCard: {
+      county: string | null;
+      localityType: string;
+    },
+    county: string | null,
+    localityType: LocationRateType,
+    countryCode: SupportedCountryCode,
+  ) {
+    let score = 100;
+
+    if (countryCode !== 'KE') {
+      if (rateCard.county) {
+        return -1;
+      }
+      if (rateCard.localityType !== 'ANY') {
+        return -1;
+      }
+      return score;
+    }
+
+    if (county) {
+      if (rateCard.county && rateCard.county !== county) {
+        return -1;
+      }
+      if (rateCard.county === county) {
+        score += 20;
+      }
+    } else if (rateCard.county) {
+      return -1;
+    }
+
+    if (localityType !== 'ANY') {
+      if (rateCard.localityType === localityType) {
+        score += 10;
+      } else if (rateCard.localityType !== 'ANY') {
+        return -1;
+      }
+    } else if (rateCard.localityType !== 'ANY') {
+      return -1;
+    }
+
+    return score;
   }
 
   private convertCurrency(

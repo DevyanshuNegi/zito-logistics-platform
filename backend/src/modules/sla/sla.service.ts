@@ -75,6 +75,13 @@ export class SlaService {
       deliveryMinutes: Number(process.env.SLA_WAREHOUSE_DELIVERY_MINUTES ?? 1440),
       noShowGraceMinutes: Number(process.env.SLA_WAREHOUSE_NO_SHOW_GRACE_MINUTES ?? 60),
     },
+    [ServiceType.RAIL]: {
+      assignmentMinutes: Number(process.env.SLA_RAIL_ASSIGNMENT_MINUTES ?? 180),
+      acceptanceMinutes: Number(process.env.SLA_RAIL_ACCEPTANCE_MINUTES ?? 60),
+      pickupMinutes: Number(process.env.SLA_RAIL_PICKUP_MINUTES ?? 720),
+      deliveryMinutes: Number(process.env.SLA_RAIL_DELIVERY_MINUTES ?? 4320),
+      noShowGraceMinutes: Number(process.env.SLA_RAIL_NO_SHOW_GRACE_MINUTES ?? 120),
+    },
   };
 
   constructor(

@@ -14,6 +14,9 @@ export type SessionUser = {
   role: string;
   status?: string | null;
   agencyId?: string | null;
+  staffScope?: string | null;
+  staffDepartment?: string | null;
+  staffAgencyName?: string | null;
 };
 
 export type StoredSession = {
@@ -81,7 +84,7 @@ function normalizePath(path: string) {
 }
 
 export function getApiOrigin() {
-  const fallback = 'http://localhost:3000';
+  const fallback = 'http://127.0.0.1:3001';
   if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/, '');
   }
@@ -206,6 +209,7 @@ export function consumeSessionNotice() {
 function isAuthSurface(pathname: string) {
   return (
     pathname === '/login' ||
+    pathname.startsWith('/agency/login') ||
     pathname.startsWith('/partners/login') ||
     pathname.startsWith('/internal/login') ||
     pathname.startsWith('/register') ||
@@ -215,8 +219,11 @@ function isAuthSurface(pathname: string) {
   );
 }
 
-function resolvePortalKindForSession(role?: string | null): PortalKind {
-  return getPortalKindForRole(role ?? null);
+function resolvePortalKindForSession(
+  role?: string | null,
+  staffScope?: string | null,
+): PortalKind {
+  return getPortalKindForRole(role ?? null, staffScope ?? null);
 }
 
 function handleUnauthorizedSession(message: string) {
@@ -230,7 +237,7 @@ function handleUnauthorizedSession(message: string) {
   }
 
   const { user } = getStoredSession();
-  const portalKind = resolvePortalKindForSession(user?.role);
+  const portalKind = resolvePortalKindForSession(user?.role, user?.staffScope);
   const loginPath = getPortalConfig(portalKind).loginPath;
 
   clearSession();

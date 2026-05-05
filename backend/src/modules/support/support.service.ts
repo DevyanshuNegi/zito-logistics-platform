@@ -46,6 +46,30 @@ export class SupportService {
   // PRD §36 — Admin/Staff: get all tickets
   async findAll() {
     return this.prisma.supportTicket.findMany({
+      include: {
+        booking: {
+          select: {
+            id: true,
+            reference: true,
+            status: true,
+          },
+        },
+        raiser: {
+          select: {
+            fullName: true,
+            email: true,
+            phone: true,
+            role: true,
+          },
+        },
+        handler: {
+          select: {
+            fullName: true,
+            email: true,
+            phone: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

@@ -251,7 +251,10 @@ export class DriverMatchingService {
     if (weight <= 500)  return VehicleType.VAN;
     if (weight <= 3000) return VehicleType.TRUCK_3T;
     if (weight <= 7000) return VehicleType.TRUCK_7T;
-    return VehicleType.TRUCK_14T;
+    if (weight <= 14000) return VehicleType.TRUCK_14T;
+    if (weight <= 22000) return VehicleType.TRUCK_22T;
+    if (weight <= 30000) return VehicleType.CONTAINER_20FT;
+    return VehicleType.CONTAINER_40FT;
   }
 
   private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {

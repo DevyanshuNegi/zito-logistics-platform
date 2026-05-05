@@ -14,23 +14,42 @@ FTL (Full Truck Load) — long-haul freight transport
 PTL / LCL (Partial Load) — consolidated cargo shipments
 Courier / Last-mile delivery — direct-to-door delivery
 Warehouse & storage services — managed storage with full inventory control
+Containerized trucking — explicit 20ft and 40ft container movement
+Rail / SGR corridor logistics — container rail movement such as Mombasa port to inland rail-linked nodes
 Fleet & transporter management — vehicle lifecycle and driver coordination
 Multi-country logistics — Africa-ready, offline-capable operations
 2. 👤 User & Role System
 ZITO supports multiple user types within a single unified identity. One account may hold multiple roles simultaneously, governed by the RBAC system.
 User Roles
 One user → multiple roles allowed. Permissions enforced at API and UI level.
+Internal operations staffing rule:
+- Super Admin and Admin are governance roles, not the only people allowed to operate the platform day to day
+- internal operational execution must also support staffed departmental users under the Agency Staff / internal team model
+- minimum internal departments required:
+  - Operations staff: dispatch, booking control, fleet coordination, assignment handling
+  - Customer care staff: user-request-driven support handling, ticket ownership, issue resolution, escalation to operations or accounts
+  - Accounts staff: invoices, payments, refunds, reconciliation, accounting follow-up
+- internal staff may be represented by the platform role `AGENCY_STAFF` with a department / desk classification such as `OPERATIONS`, `CUSTOMER_CARE`, or `ACCOUNTS`
+- staff scope must also be modeled:
+  - Head Office staff = centrally supervised operations, support, and finance teams
+  - Agency Staff = branch / station / field teams tied to a specific agency
+- internal provisioning UI must allow controlled creation of Customer, Corporate, Driver, Agent, Transporter, Courier Company, Warehouse Partner, Head Office Staff, and Agency Staff accounts from the admin workspace
+- internally provisioned operational users may be activated directly by authorized admins for testing and operational readiness
 3. 🔐 Authentication System
 Unified Login
 All users authenticate through a single identity system, but not through one shared public app surface.
 App split rule:
 Zito Logistics Service App = Individual Customer + Corporate
 Zito Partners App = Driver + Agent + Transporter + Courier Company + Warehouse Partner
-Zito Internal Ops = Super Admin + Admin + Agency / Agency Staff + internal operations teams
+Zito Internal Ops = Super Admin + Admin + Head Office Staff
+Zito Agency Desk = Agency Staff
 Customers and partners must not see internal-role registration or internal login entry points in their public apps.
 Internal roles must use a separate private login path and separate internal web/app experience.
 Agent is an external supply-side partner role, separate from Agency / Agency Staff. Agents source vehicles and loads for commission, onboard drivers, manage supply capacity, and operate through Zito Partners.
 Agency / Agency Staff remains an internal operating structure and must not be exposed in the public partner login or registration flow.
+Internal teams must use separate private internal routes and must not be mixed into customer or partner login entry points.
+Internal staff who handle support, operations, finance, and accounting must authenticate into an internal workspace, even when they are not platform admins.
+Agency staff must authenticate through a dedicated agency login entry point, separate from the head-office/internal login entry point.
 identifier = phone OR email
 Login Methods
 Phone OTP (primary method)
@@ -70,6 +89,8 @@ OTP must be single-use only
 OTP must be stored hashed at rest
 Verification target must be masked in the UI
 Failed OTP responses must show attempts remaining whenever the account is not yet locked
+OTP provider failures must be distinguished from invalid credentials; provider-delivery failure, timeout, or upstream outage must surface as an integration / service-availability error, not as a false password or user-not-found response
+Auth health monitoring must include OTP provider connectivity for SMS and email channels used in the active market
 Fallback:
 Public self-service auth is split by app surface:
 Zito Logistics Service App self-service roles: Individual Customer, Corporate
@@ -103,6 +124,23 @@ Vehicle insurance & permit expiry tracking (transporters)
 System must trigger alerts before expiry (e.g., 15 days prior)
 Expired documents → automatic suspension of driver/vehicle
 Re-verification required before reactivation
+Verification Control Rules:
+- document upload does not equal verification; every uploaded document or photo pack must enter a pending_review state first
+- an account, driver, transporter, courier company, warehouse partner, or fleet asset must not become active only because the first file was uploaded
+- reviewer action must capture reviewer identity, action timestamp, verification status, and mandatory rejection reason when rejected
+- verification workflow must support: pending_review -> approved -> rejected -> resubmission_required -> approved
+- each document record must support document number or reference where applicable, issuing authority, country of issue, issue date, expiry date, uploaded timestamp, and reviewer notes
+- the product must support front/back or multi-view capture where the document or inspection workflow requires more than one image
+Role-Based Verification Matrix:
+- Customer: phone OTP, email OTP or password completion path, National ID or Passport, and manual review only where policy, fraud risk, or regulated service requires it
+- Corporate / Agent / Transporter / Courier Company / Warehouse Partner: company registration evidence, KRA PIN / tax identity where billing or contracting applies, authorized signatory ID, and approval of the business profile before activation
+- Driver: National ID, Driving License, live driver photo or selfie for identity confirmation, expiry tracking, and approval before the driver can become dispatch-eligible
+- Transporter and Courier Company: both organization verification and operational verification must exist; company approval alone is not enough to make vehicles or drivers eligible for live dispatch
+- Fleet-capable accounts must verify every managed vehicle and every managed driver separately before those assets can be used on bookings
+Kenya Logistics Verification Context:
+- Kenya logistics, import, export, and cross-border operations are document-led and multi-agency; Zito must not model verification as a simple one-file upload
+- where the booking type touches import, export, container, rail, port, ICD, or regulated cargo flow, the platform must support trade-document verification checkpoints in addition to user KYC
+- compliance teams must be able to review and hold a shipment, user, or vehicle because of missing documentation, customs state, permit state, inspection expiry, or mismatch between uploaded records and the actual asset
 5. 🗺️ Location System
 All addresses require map-based selection (lat/lng mandatory)
 No manual-only text entry permitted
@@ -185,6 +223,24 @@ Maintenance schedule tracking
 Insurance validity tracking
 Compliance documentation
 Vehicle performance analytics
+Fleet Verification & Physical Evidence:
+- every fleet asset used for live logistics must support a physical verification workflow in addition to document verification
+- trucks and commercial goods vehicles must not become dispatch-eligible, marketplace-eligible, or billable until the verification pack is approved
+- compulsory truck verification photos:
+  - dashboard / interior cockpit view
+  - front view
+  - right-side view
+  - left-side view
+  - rear / backside view
+- all 5 truck photos are mandatory; missing any required view blocks approval
+- each compulsory truck photo must carry its own review status:
+  - approved
+  - rejected
+  - resubmission_required
+- replacing any previously reviewed truck photo must return that photo and the overall vehicle verification status to pending_review until the new image is reviewed
+- photos should be current and captured as near to verification time as operationally possible; where device capability permits, capture timestamp and location metadata
+- rejected vehicle photos must produce a resubmission_required state with explicit reviewer notes describing what is missing, unclear, or inconsistent
+- smaller vehicles may use a policy-defined reduced image package, but truck verification always requires the 5 compulsory views above
 10. Warehouse System
 Structure
 Warehouse → Zone → Rack → Bin
@@ -269,28 +325,43 @@ Escrow system for booking amounts
 Automated refunds on cancellations
 Driver payouts on completion
 B2B credit billing with cycle management
-Bank Payment & Transfer Support:
-Supported Bank Operations:
-- Bank Transfer (NEFT/RTGS equivalent per country)
-- Direct bank deposit (offline/online)
-- Corporate bank payments for B2B clients
+Kenya Banking & Mobile Money Structure:
+M-Pesa collection modes supported at Kenya launch:
+- Lipa na M-Pesa Online / STK Push for in-app checkout
+- C2B collection against PayBill shortcode
+- Buy Goods / Till collection where merchant model requires it
+M-Pesa payout and operations modes supported where commercial workflow requires:
+- B2C disbursement for customer refunds, driver payouts, and approved compensation
+- B2B transfer for approved business-to-business settlement flows
+- reversal and transaction-status checks for failed, disputed, or reconciled transactions
+Kenya banking rails supported for receivables and payables:
+- KEPSS / RTGS for high-value and time-sensitive bank transfers
+- EFT / ACH-style bank transfer through the local clearing structure for standard corporate settlement
+- PesaLink or equivalent instant bank-to-bank rail where enabled by partner bank
+- direct bank deposit with manual verification path
+- batch corporate bank payments for invoices, partner settlement, payroll, and finance operations
 Receivable (Customer → Platform):
-- Customers can pay via bank transfer
-- System must support payment reference upload or auto reconciliation
-- Payment verification required before service activation (for bank mode)
+- customers can pay via M-Pesa, card, wallet, or bank transfer
+- the system must store M-Pesa receipt code, MSISDN, shortcode or till identifier, account reference, amount, and payment timestamp
+- the system must store bank payment reference, payer account name where available, bank name, amount, proof, and verification status
+- payment verification is required before service activation for bank-transfer and manual-deposit modes unless contract credit terms apply
 Payable (Platform → Users):
-- Driver payouts via bank transfer
-- Vendor / transporter payments via bank
-- Warehouse partner settlement via bank
+- driver payouts may be made via M-Pesa B2C or bank transfer according to role setup and limits
+- vendor, transporter, courier-company, and warehouse-partner settlement may be made via bank transfer or approved B2B mobile-money flow
+- finance and accounts teams must be able to choose the payout rail per beneficiary and contract
 Rules:
-- Bank payments may require manual or automated reconciliation
-- Large transactions should default to bank mode
-- Payment status must reflect: pending → verified → completed
+- Kenya launch default billing and settlement currency is KES unless contractually overridden
+- high-value transfers should default to bank mode, especially KEPSS / RTGS or approved corporate transfer rails
+- payment status must reflect: initiated → pending → verified → completed, with failed, reversed, expired, disputed, and refunded states where applicable
+- M-Pesa callbacks and bank reconciliation updates must be idempotent and must not duplicate settlement
+- configurable transaction limits, approval thresholds, and rail eligibility must remain aligned with active provider and banking rules
 Integration:
-- Support integration with local African banking APIs (future)
-- Support multi-currency settlement via bank channels
+- support integration with Safaricom Daraja for M-Pesa collection, status, reversal, and disbursement flows
+- support integration with Kenyan banking APIs, file-based settlement, or reconciliation import for EFT, RTGS, and instant-bank-transfer rails
+- support multi-currency settlement via bank channels where country rollout requires it, while Kenya launch remains KES-first
 Audit:
-- All bank transactions must be logged with reference number and proof
+- all bank transactions must be logged with reference number and proof
+- all M-Pesa transactions must be logged with request payload, callback payload, provider receipt, and reconciliation outcome
 Partial & Split Payment Support:
 Allow advance payment (e.g., percentage-based booking confirmation)
 Remaining balance payable at delivery or billing cycle
@@ -324,25 +395,157 @@ User must be able to retry or switch payment method
 Failed transactions must be logged and visible to user and admin
 16. 🧾 Invoice & Billing System
 Invoice Types
+- pro forma quote / estimate
+- tax invoice
+- service invoice for non-instant credit billing workflow
+- customer receipt
+- credit note
+- debit note
+- monthly account statement
+Kenya Invoice Structure & Tax Compliance:
+- Kenya launch invoices for taxable transactions must be KRA and eTIMS compatible
+- Kenya VAT treatment model must support the general rate, zero-rated supplies, exempt supplies, and non-taxable lines according to active law and product configuration
+- invoice numbering must be unique, sequential, immutable after issue, and traceable to the original booking, contract, warehouse order, or payout event
+- invoice and receipt data model must support at minimum:
+  - seller legal name or trade name
+  - seller branch or operation location where applicable
+  - seller address and KRA PIN
+  - invoice or receipt number
+  - issue date and issue time
+  - customer legal name
+  - customer KRA PIN for B2B, corporate, and any taxable buyer workflow that requires buyer PIN capture
+  - customer phone or email where used for delivery
+  - service description and service type
+  - vehicle class or warehouse service line where relevant
+  - quantity, unit price, taxable value, VAT rate, VAT amount, and total amount
+  - currency, with KES as default Kenya billing currency
+  - booking, consignment, warehouse, or contract reference
+  - payment reference such as M-Pesa receipt code or bank reference once settled
+  - county or service-area label where county-based pricing materially affects the billed rate
+  - eTIMS control fields, QR, or submission reference where enabled by the chosen compliance implementation
+- invoice PDF and machine-readable payload must both be stored for audit and customer download
 Billing Flow
-service complete → invoice generated → payment requested → receipt issued
+- immediate-pay job: quote confirmed → payment verified → tax invoice or receipt issued → proof retained
+- post-service job: service complete → draft invoice generated → approval if required → tax invoice issued → payment requested → receipt issued on settlement
+- credit-billing account: service complete or cycle close → draft statement lines consolidated → invoice issued → payment received and reconciled → receipt issued
+Rules:
+- credit note and debit note flows must reference the original invoice number and reason code
+- prior issued invoices must never be mutated in place; corrections must happen through versioned notes
+- VAT-registered Kenya operations must support monthly VAT return and payment calendars aligned to the statutory due date on or before the 20th day of the following month
+- invoice aging must support at least current, 1-30, 31-60, 61-90, and 90+ day buckets
+- finance users must be able to distinguish quote, invoice, receipt, credit note, and debit note in UI and exports
+- county-based pricing decisions must remain visible in the internal audit trail even if customer-facing PDFs use a simplified readable service-area label
+- invoice, receipt, and amendment records for Kenya operations must be retained according to active statutory record-keeping obligations, with 5-year retention available as the minimum finance-control baseline
 17. 🏬 Warehouse Billing
 storage_fee = space_units × days_stored × rate_per_unit
 Handling charges (inbound/outbound)
 Value-added service charges
 Monthly consolidated billing for B2B clients
+Rules:
+- warehouse invoices in Kenya must use the same KRA / eTIMS-compliant invoice structure as transport invoices
+- warehouse billing lines must support GRN, GDN, SKU, cold-chain, and VAS references where applicable
+- monthly consolidation must preserve per-owner and per-service breakdown while still producing a single finance-approved invoice set
 18. 📊 Multi-Service Billing
 All services consumed in a single order — transport, warehouse, and courier — are consolidated into one invoice. This reduces billing overhead for corporate clients.
 Transport + Warehouse + Courier = Single Invoice
+Rules:
+- consolidated billing must preserve separate service lines for transport, courier, warehouse, storage, handling, VAS, and other billable items
+- VAT, zero-rated, exempt, or non-taxable treatment must remain traceable per line item
+- county-based transport pricing and warehouse service-area pricing must remain visible in the internal audit model even when a single customer invoice is issued
 19. 🧠 Rate Card System
 Dynamic Pricing Control Panel:
 Admin can update pricing in real-time
 Zone-wise pricing overrides
 Emergency surge controls
 Competitor-based pricing adjustment
+County-aware pricing for Kenya
+Town / urban versus rural pricing bands within the same county
+Containerized pricing must support dedicated 20ft and 40ft container truck cards
+Rail / SGR pricing must support dedicated corridor pricing, including Mombasa-linked rail lanes where enabled
 Rules:
 Changes must reflect instantly (or within defined delay)
 All changes must be versioned and auditable
+- rate cards must support scope fields: country, county / region, and locality class
+- inside Kenya, the pricing engine must be able to choose a county-specific rate card before applying surge
+- inside Kenya, the pricing engine must allow separate town / urban and rural pricing for the same service and vehicle combination
+- when a county-specific pricing rule is absent, the engine must fall back to the broader country-level card according to a defined precedence order
+- rate cards must also support service + asset combinations such as FTL + 20ft container truck, FTL + 40ft container truck, Rail / SGR + 20ft container slot, and Rail / SGR + 40ft container slot
+19.1 Kenya Rail Booking Model
+Kenya train booking exists in two distinct operational patterns and the product must treat them differently:
+- passenger rail booking = schedule search -> passenger details -> payment -> confirmation code / ticket
+- freight rail booking = corridor selection -> container / cargo details -> documentation & customs readiness -> rail allocation -> ICD / final-mile handoff
+Rules:
+- Zito Rail / SGR booking must follow the freight rail model, not the passenger e-ticket model
+- Rail / SGR must be modeled as a corridor logistics service for freight and container movement such as Port of Mombasa -> ICD Nairobi, Port of Mombasa -> ICD Naivasha, ICD -> Port return, and other enabled rail-linked inland nodes
+- rail booking must support import, export, domestic repositioning, and transit / corridor use cases where commercially enabled
+- the booking request must capture at minimum:
+  - corridor / lane
+  - container size or cargo class
+  - direction of movement
+  - origin node and destination node
+  - first-mile / last-mile truck requirement
+  - consignor and consignee details
+  - clearing agent or documentation owner where applicable
+- rail scheduling must support regular train departures rather than only on-demand dispatch logic
+- rail service availability must support corridor calendars, cutoff times, and booking-acceptance windows
+- rail pricing must support corridor tariffs, container-size bands, inland node differentials, and optional first-mile / last-mile trucking add-ons
+19.2 Kenya Container Booking & Port / ICD Workflow
+Kenya container logistics is intermodal and document-led. The product must support port, rail, ICD, yard, warehouse, and final-mile handoff rather than treating a container move as a simple truck booking.
+Operational modes:
+- import container flow
+- export container flow
+- merchant haulage flow
+- through-bill-of-lading / railtainer flow
+- ICD-to-warehouse or warehouse-to-ICD final-mile flow
+- empty-container repositioning flow
+Required booking fields:
+- container size: 20ft or 40ft, with extensibility for reefer, tank, or special equipment
+- container number where already assigned
+- container count
+- commodity or cargo description
+- gross weight
+- seal number where applicable
+- shipping line, bill of lading, or equivalent shipment reference where applicable
+- customs declaration / entry reference where applicable
+- Import Declaration Form / IDF reference where applicable
+- KenTrade / NESWS reference where applicable
+- KRA release / iCMS / customs clearance state where applicable
+- port, terminal, depot, ICD, warehouse, or customer delivery location
+- first-mile and last-mile transport requirements
+Required trade document pack where applicable:
+- pro forma invoice
+- commercial invoice
+- packing list
+- bill of lading or airway bill
+- certificate of origin
+- certificate of conformity / PVoC where required for regulated goods
+- permit / license for restricted goods
+- import declaration form / IDF
+- customs entry / declaration reference
+- release order and proof of customs payment where applicable
+- logbook and roadworthiness / inspection certificate where the move involves motor-vehicle importation or release of imported fleet assets
+- clearing-agent identity and ownership of the customs process
+Milestone model:
+- booking_created
+- documents_pending
+- customs_processing
+- customs_cleared
+- port_or_terminal_release_ready
+- gated_in_or_ready_for_pickup
+- loaded_to_rail_or_truck
+- departed
+- arrived_at_icd_or_inland_node
+- ready_for_final_dispatch
+- delivered_or_returned
+Rules:
+- import container jobs must support documentation and clearance checkpoints before rail or truck release
+- export container jobs must support empty pickup, stuffing readiness, gate-in readiness, and movement to port by truck or rail
+- the platform must support Through Bill of Lading and merchant-haulage operating patterns where enabled by corridor and commercial agreement
+- Naivasha and Nairobi ICD flows must be treated as operational nodes, not free-text addresses
+- bookings tied to port / ICD flows must support document-pack upload and compliance-state tracking before dispatch
+- one commercial booking may span multiple operational legs: port / terminal -> rail -> ICD -> truck -> customer or the reverse
+- customer-facing UX may simplify this into a single booking journey, but the internal model must preserve each operational leg and its milestone history
+- rail and container operations must support a one-stop-control model for dispatch, customer care, finance, and compliance teams because handoff failure often happens between organizations rather than inside a single vehicle trip
 20. 🏢 B2B Contract System
 Custom contract pricing per client
 Credit billing with defined credit limits
@@ -848,10 +1051,12 @@ Account statements
 44.20 MARKETPLACE / AGGREGATOR MODE
 Capabilities:
 Third-party transporter onboarding
+Third-party courier company onboarding
 Warehouse partner onboarding
 Verification & approval system
 Operations:
 Booking acceptance by partners
+Courier-company acceptance and bidding for courier work
 Service availability by location
 Pricing:
 Fixed pricing
@@ -861,6 +1066,7 @@ Control:
 Performance monitoring
 Suspension capability
 Policy enforcement
+Admin and Super Admin must both be able to onboard, approve, suspend, price, and publish opportunities to Agent, Transporter, Courier Company, and Warehouse Partner marketplace supply from the internal marketplace control surface
 Revenue Model:
 Commission per transaction
 Service fees
@@ -1038,6 +1244,10 @@ Finance sign-off for payment, wallet, invoice, refund, payout, and reconciliatio
 Support sign-off for ticketing, escalation, and customer care workflows
 Security or compliance sign-off for authentication, audit, privacy, and access control
 Technology sign-off for APIs, data integrity, monitoring, rollback, and infrastructure readiness
+Local QA Environment Standard
+All local web QA, screenshots, demos, and acceptance evidence for the Zito web frontend must use http://127.0.0.1:3001 as the canonical frontend URL.
+All local API and Swagger verification must use http://127.0.0.1:5000 and http://127.0.0.1:5000/api/docs as the canonical backend URLs.
+localhost:3000 must not be treated as the approved local Zito web frontend address for acceptance or demo evidence; if an older local process is still bound there, it must be stopped before QA sign-off is recorded.
 Release Rule
 No launch-critical module may go live without written UAT sign-off and tracked closure of all critical defects
 56. Requirement Traceability & Change Control
@@ -1067,7 +1277,7 @@ Commercial Model: The platform must support platform-fee charging per owned vehi
 Courier Supply Chain Mode: Courier companies use the Zito portal as their operations workspace for county-to-county supply-chain execution. Each movement plan must store whether execution is owned-fleet, CFA-network, or blended, while preserving one booking, tracking, scan, and handoff chain across the journey.
 Multi-Load / Multi-Unload Rules: Courier-company requests must support multiple loading points and multiple unloading points. Booking validation must require at least one load or pickup stop and at least one unload or delivery stop, while preserving ordered stop sequencing for routing, scanning, and handoff visibility.
 Operations & Traceability: Every parcel or shipment movement under courier-company mode must remain linked to vehicle, driver, booking, scan, waybill or LR, and destination chain-of-custody records exactly like the base logistics flow.
-Implementation Guidance: The app should expose separate courier-company web and mobile workspaces, dispatch visibility, scan operations, waybill access, customer-owned fleet management, and future finance automation for platform-fee billing. Where billing automation is not yet live, the PRD must mark it as a pending finance-control follow-up rather than implying completion.
+Implementation Guidance: The product must expose separate courier-company web and mobile workspaces, dispatch visibility, scan operations, waybill access, customer-owned fleet management, and a defined finance-control path for platform-fee billing. If billing automation is not yet live, the workflow must be marked explicitly as manual or controlled-finance handling rather than implied automated completion.
 59. Integrated Addendum Numbering Note
 This master PRD now incorporates the approved V10.2 and V10.3 addendum scope directly into the repository version.
 To preserve cross-reference alignment with the standalone addendum drafts and exported documents, sections 63-66 retain their original addendum numbering below.
@@ -1081,6 +1291,10 @@ The following launch-critical specification gaps are now formally closed in this
 - Platform fee logic previously existed only as a generic statement; this PRD now defines transaction fees, subscription tiers, per-vehicle fees, agent commissions, driver fees, waiver logic, and invoice rules.
 - UX and interface behavior previously had no formal standard; this PRD now defines a map-first, card-native design system and screen-by-screen experience specification for customer, driver, admin, and transporter-facing products.
 - The PRD now treats the visible product experience, operational back office, and commercial model as one connected system rather than separate unaligned notes.
+62.1 V10.2 Source Harmonization Note
+The standalone V10.2 addendum document has been reviewed again and its warehouse, own-fleet, and commercial controls have been harmonized into this master PRD.
+Where the archived addendum is narrower than later approved master decisions, this master PRD supersedes it.
+Example: the archived addendum limited own-fleet eligibility more tightly, while the approved master PRD now supports policy-enabled customer-owned fleets and customer-managed drivers in addition to the classic partner fleet roles.
 63. Full Warehouse Management & Booking System
 Objective
 The warehouse module is not just storage. It is a full operational system covering customer warehouse booking, inbound appointment scheduling, receiving, inventory control, picking, packing, dispatch, cold chain, value-added services, reporting, and billing.
@@ -1099,6 +1313,25 @@ Every warehouse location must declare:
 - service radius
 - dock count and dock type
 - special handling capability (hazmat, cold chain, bulky, high-value)
+Warehouse physical hierarchy must support:
+- Warehouse -> Zone -> Rack -> Row or Shelf -> Bin
+- every bin must be uniquely addressable and queryable in real time
+Minimum bin master data:
+- bin_id
+- zone_id
+- rack_id
+- row_or_shelf_ref
+- storage_type
+- max_weight_kg
+- max_volume_cbm
+- occupancy_status
+- current_owner_id
+- current_sku
+- current_quantity
+Additional structure rules:
+- zone types may include Dry, Cold, Bonded, Open Yard, and Quarantine with separate pricing where commercial rules require it
+- warehouse operations must expose a visual rack/bin map for occupancy visibility
+- one owner per bin remains the default enforcement rule; any shared-bin exception requires explicit product and contract enablement plus auditable segregation controls
 63.2 Customer Warehouse Booking Portal
 Customers, Corporates, and Courier Companies must be able to self-book warehouse space from the app or portal without a manual phone workflow.
 Booking flow:
@@ -1118,6 +1351,10 @@ Minimum warehouse booking fields:
 - special handling requirements
 - insurance required flag
 - associated transport booking, LR, or waybill where applicable
+Warehouse discovery and commercial rules:
+- warehouse search must support filters for location, storage type, available capacity, price, and partner rating
+- booking quote must be visible before confirmation
+- booking confirmation may depend on advance payment, credit approval, or contracted billing terms
 63.3 Dock & Inbound Appointment Scheduling
 Each warehouse must support structured dock-slot scheduling.
 Rules:
@@ -1127,6 +1364,20 @@ Rules:
 - arriving vehicles trigger check-in, driver verification, dock assignment, and GRN initiation
 - outbound dispatch must support separate appointment scheduling
 - no-show slot grace period is configurable; default policy is 30 minutes before release
+Inbound appointment fields must support:
+- date
+- time window
+- vehicle type
+- pallet or unit count
+- driver contact
+Outbound release requests must support:
+- requested SKU list
+- quantities
+- delivery address
+- preferred dispatch date
+Partner actions:
+- warehouse partner may accept, reschedule, or reject an appointment with reason
+- configurable no-appointment policy may reject unannounced vehicles
 63.4 Goods Receiving Note (GRN) System
 Every inbound warehouse movement must generate a GRN.
 GRN lifecycle:
@@ -1155,6 +1406,21 @@ Discrepancies must automatically raise:
 - loss detection event
 - warehouse issue / support event
 - claim workflow input where damage or shortage is present
+GRN completion controls:
+- GRN PDF must include GRN number, warehouse, customer, SKU list, quantities, condition notes, receiver signature, and timestamp
+- signed GRNs must become audit-locked after completion
+- short, excess, and damaged receipt variance must be preserved as separate discrepancy categories
+63.4.1 Damage At GRN And Quarantine Control
+When damage is detected during GRN:
+- receiver must classify damage type, capture photo evidence, and record affected quantity
+- affected inventory must move to a Quarantine Zone state until resolved
+- customer must be notified immediately with report and evidence
+- customer options must include accept with note, raise claim, or request return / reverse movement
+- quarantine overrides require mandatory admin reason logging
+- quarantine aging must be reported, with items older than 14 days flagged for escalation
+Damage claim SLA baseline:
+- initial response target: 48 hours
+- full resolution target: 7 days unless contract overrides apply
 63.5 SKU & Product Catalog Management
 Repeated warehouse clients must be able to maintain a SKU catalog.
 Capabilities:
@@ -1164,6 +1430,12 @@ Capabilities:
 - reserved, available, on-hand, damaged, and in-transit quantities are separated
 - minimum stock thresholds generate alerts
 - ownership visibility is limited to the owning client and authorized warehouse staff
+Default SKU data must also support:
+- barcode / QR / EAN reference
+- fragile, hazmat, temperature-sensitive, and expiry-tracked flags
+- bulk CSV import for large catalogs
+- duplicate barcode detection within the same owner scope
+- full SKU movement history from GRN through dispatch
 63.6 Bin Location & Storage Assignment
 Storage hierarchy:
 Warehouse -> Zone -> Rack -> Shelf -> Bin
@@ -1174,6 +1446,13 @@ Rules:
 - manual override requires reason logging
 - multi-client inventory is allowed only with ownership separation enforced
 - no untracked storage movement is allowed; every movement must be scanned and auditable
+Put-away execution rules:
+- staff must scan both bin and item to confirm put-away
+- system must block put-away when capacity is exceeded, zone rules are violated, or the bin is already reserved for another owner
+- fast-moving SKUs may be preferentially placed near dispatch areas when configured
+Shared-bin prevention must also be enforced at data and workflow level:
+- one active owner_id per bin is the default database rule
+- booking allocation and put-away validation must reject assignment into a bin already occupied by another owner unless a future shared-storage product mode explicitly overrides it
 63.7 Pick, Pack & Dispatch Operations
 Outbound warehouse operations must support:
 - dispatch order creation from customer portal or internal operations
@@ -1188,6 +1467,12 @@ Rules:
 - wrong-SKU scans must be blocked or forced into exception handling
 - stock must reduce immediately after dispatch confirmation
 - every outbound movement must remain traceable to booking, owner, operator, vehicle, and timestamp
+Pick / pack execution details:
+- pick list must show SKU, quantity, bin location, FIFO / FEFO order, and priority
+- partial pick shortages must alert customer and supervisor before dispatch
+- packing workflow must record packaging type, final weight, and dimensions where applicable
+- dispatch note must bind picked SKU list, quantities, vehicle, and driver assignment
+- optional secondary scan quality check may be enabled before sealing
 63.8 Cross-Docking Workflow
 Cross-docking must be a first-class warehouse operation.
 Rules:
@@ -1196,6 +1481,14 @@ Rules:
 - inbound reference and outbound reference remain linked
 - scan chain must preserve full audit trail
 - same-day cross-dock avoids storage billing and applies handling charges only
+63.8.1 Warehouse-To-Warehouse Transfer
+Inter-warehouse transfer must be a supported inventory operation.
+Rules:
+- transfer request must capture source warehouse, destination warehouse, owner, SKU or batch list, quantity, transport reference, and requested transfer date
+- source inventory must move into a reserved transfer state before dispatch
+- outbound scan chain from source warehouse must link to inbound GRN or receipt workflow at destination warehouse
+- transfer inventory must remain visible to the owner as in_transfer until destination receipt is completed
+- transfer discrepancies must raise loss, damage, or support workflows exactly like customer inbound and outbound movements
 63.9 Cycle Count & Stock Take System
 Inventory control must support:
 - rolling cycle count by bin, zone, SKU, or owner
@@ -1204,6 +1497,11 @@ Inventory control must support:
 - supervisor approval for material adjustments above threshold
 - immutable audit log for all stock adjustments
 - customer-visible reconciliation reporting where contractually required
+Count execution rules:
+- cycle count must support rolling execution without full warehouse shutdown of unaffected areas
+- affected bins may be locked during count sessions
+- variance resolution must support write-off, manual adjustment, or formal loss workflow
+- recommended baseline frequency: weekly cycle counts and quarterly full stock takes
 63.10 Cold Chain & Temperature Monitoring
 Cold and frozen operations must support continuous monitoring.
 Rules:
@@ -1212,6 +1510,14 @@ Rules:
 - deviation triggers warehouse alert, supervisor escalation, customer notification, and incident record
 - temperature logs are exportable per batch, booking, or storage stay
 - cold-chain dispatch may produce a temperature-chain certificate when required
+Default temperature examples:
+- Chiller: 2-8 C
+- Frozen: -18 C
+Cold-chain operations must support:
+- sensor logging at defined intervals, with 15-minute default reference for monitored facilities
+- customer-downloadable temperature compliance certificates
+- integrated linkage between in-warehouse temperature logs and refrigerated vehicle trip telemetry where cold-chain vehicles are sensor-enabled
+- transit temperature readings must be stored against the trip record and exportable with the booking or compliance file when cold-chain transport is part of the service
 63.11 Value-Added Services (VAS)
 Supported VAS catalog must include:
 - labelling / relabelling
@@ -1239,6 +1545,10 @@ Rules:
 - warehouse fees may consolidate into a single invoice with transport and courier where commercial rules require it
 - billing must support B2B monthly consolidation and per-owner charge breakdown
 - storage accrual must be visible in customer-facing reporting
+Warehouse partner settlement rules:
+- default settlement cycle may run monthly unless contract overrides apply
+- standard settlement target is payment within 5 business days after approved monthly reconciliation
+- disputed warehouse charges must remain separately visible from approved payable amounts
 63.13 Customer Self-Service Warehouse Portal
 Warehouse clients must see:
 - live stock dashboard
@@ -1249,6 +1559,12 @@ Warehouse clients must see:
 - storage cost tracker
 - downloadable GRN, GDN, invoice, and temperature log files
 - support / discrepancy ticketing
+Customer warehouse portal must additionally support:
+- per-SKU bin-level visibility
+- expiry tracker for FEFO goods
+- projected storage cost accrual
+- downloadable document vault for GRN, dispatch note, packing list, waybill, invoice, and temperature logs
+- optional stock valuation where customer cost data is enabled
 63.14 Warehouse SLA Definitions
 Minimum SLA framework:
 - GRN completion after arrival
@@ -1260,6 +1576,14 @@ Minimum SLA framework:
 - discrepancy resolution turnaround
 - cycle count reporting turnaround
 All warehouse SLAs must be configurable by account tier, site type, and contract.
+63.14.1 Minimum Warehouse Staff Roles
+Required operational roles:
+- Warehouse Manager: approvals, staff supervision, dispute resolution, partner reporting, financial summary
+- Warehouse Receiver: inbound receiving, damage flagging, appointment check-in, put-away confirmation
+- Picker / Packer: pick execution, pack confirmation, dispatch-note preparation, load confirmation
+- Stock Controller: cycle counts, variance review, SKU control, low-stock monitoring
+- Gate Security: vehicle check-in, appointment verification, gate scan control
+Access must be role-scoped so that inbound, outbound, counting, and financial controls are separated appropriately.
 64. Own Fleet Management System
 Objective
 Any eligible account using Zito as an operating system for its own vehicles must be able to onboard, manage, assign, monitor, and commercially account for fleet assets within the platform.
@@ -1269,7 +1593,8 @@ Fleet-capable roles:
 - Courier Company: may add vehicles, drivers, and operate in owned-fleet or blended CFA mode.
 - Transporter: may add vehicles and drivers, assign those drivers onto owned vehicles, and expose capacity to marketplace.
 - Agent: may add managed vehicles and sourced drivers and participate in marketplace supply.
-- Individual Customer: may add a small owned fleet for internal use where enabled by product policy, including customer-managed drivers linked to that fleet.
+- Individual Customer: customer-owned fleet is a controlled capability. When enabled for the account, plan, or rollout policy, the customer may add a small internal-use fleet, including customer-managed drivers linked to that fleet.
+- Driver: may operate a self-owned vehicle in solo-driver mode where product policy permits; the driver owns the vehicle record and uses the Driver app as the execution surface.
 Rules:
 - fleet visibility is ownership-scoped
 - a role may only access vehicles, drivers, and assignments under its permitted scope
@@ -1280,10 +1605,16 @@ Vehicle onboarding flow:
 - selects Add Vehicle
 - enters vehicle metadata
 - uploads compliance documents
+- uploads mandatory vehicle image package
 - vehicle status becomes pending_verification
 - admin or authorized ops reviews documents
 - approved vehicle becomes active and billable
 - rejected vehicle shows rejection reason and resubmission path
+Minimum registration steps also include:
+- ownership declaration: owned, leased, or company-assigned
+- listing intent selection: private use, platform trips, vehicle hire, marketplace bidding, or blended
+- driver linkage decision: self-driven, assigned fleet driver, or invite flow
+- status progression from pending_verification to approved, rejected, or resubmission_required
 64.3 Vehicle Data Fields
 Vehicle master record must support:
 - registration number
@@ -1297,6 +1628,11 @@ Vehicle master record must support:
 - color
 - year of manufacture
 - optional seat count or special certifications
+Vehicle profile must additionally support:
+- plate duplicate prevention across the platform
+- ownership type
+- special features such as refrigerated body, tail-lift, crane, tarpaulin, or side-open configuration
+- platform listing mode
 64.4 Vehicle Compliance Documents
 Tracked documents include:
 - vehicle registration certificate
@@ -1309,9 +1645,23 @@ Tracked documents include:
 - vehicle images
 Rules:
 - each tracked document must support expiry date
+- each tracked document must support document number or external reference where applicable
+- each tracked document must support issuing authority and reviewer notes
 - document reminders must trigger before expiry
 - expired required compliance suspends the vehicle automatically
 - reactivation requires updated document and approval
+Vehicle image rules:
+- vehicle images are not optional for trucks and commercial goods vehicles
+- compulsory truck image categories are dashboard / interior, front, right side, left side, and rear / backside
+- all required images must be reviewed together as one verification package tied to the vehicle record and verification version
+- the reviewer must be able to reject the whole package or reject specific images and request recapture
+- vehicle activation must remain blocked until the required image package and required documents are both approved
+64.4.1 Availability And Activation Control
+Owned vehicles must support:
+- availability toggle: available_for_platform, own_use, maintenance, inactive
+- recurring availability calendar and blackout dates
+- automatic inactive state when mandatory compliance expires
+- hire-duration blocking so overlapping bookings cannot be accepted
 64.5 Fleet Dashboard for Fleet Owners
 Fleet owner dashboard must show:
 - total vehicles
@@ -1322,6 +1672,13 @@ Fleet owner dashboard must show:
 - trip history and revenue per vehicle
 - utilisation rate
 - maintenance due items
+Fleet dashboard must additionally expose:
+- platform earnings vs internal-use trips
+- hire revenue
+- idle days
+- platform fees deducted
+- top routes
+- driver performance summary where owner has permission
 64.6 Driver Management Under Own Fleet
 Fleet owner capabilities:
 - invite and onboard driver to fleet roster
@@ -1337,6 +1694,17 @@ Fleet owner capabilities:
 Rules:
 - a driver can only be linked to one active fleet owner at a time unless future multi-tenancy explicitly allows otherwise
 - driver personal financial controls remain protected from fleet owner view except approved operational earnings summaries
+Driver pairing rules:
+- multiple drivers may be associated to one vehicle for shift models, but only one driver may be active on a trip
+- solo-driver own-vehicle mode must allow the driver to be both owner and operator
+- a driver's compliance status must be approved before active assignment
+64.6.1 Driver Upgrade And Reassignment Path
+The platform must support movement from solo or independent driver mode into a managed fleet relationship.
+Rules:
+- a self-owned or independent driver may accept reassignment into a transporter, courier-company, corporate, or customer-managed fleet when invited and approved
+- historical earnings, trips, compliance, and audit records remain preserved through the upgrade
+- ownership, assignment, and payout rules must switch only from the effective reassignment date forward
+- if the driver keeps a self-owned vehicle while joining a fleet, the PRD must allow explicit separation between personal vehicle ownership and managed operational assignment
 64.7 Booking Mode - Own Fleet vs Zito Network
 Execution modes:
 - Own Fleet Mode: customer or partner vehicle plus its driver fulfills the job while Zito provides control layer, tracking, scans, and records
@@ -1346,6 +1714,13 @@ Rules:
 - mode must be stored per booking or per leg where applicable
 - one booking chain must preserve unified tracking, scan, financial, and audit history across modes
 - platform fee application depends on the selected execution mode and contract
+Vehicle-level listing modes must support:
+- private or internal only
+- platform trips
+- vehicle hire
+- marketplace bidding
+- blended or all
+Owner controls may include minimum rate, customer whitelist or blacklist, and per-vehicle coverage rules where enabled.
 64.8 Maintenance & Service Tracking
 Fleet maintenance must support:
 - last service date
@@ -1354,6 +1729,10 @@ Fleet maintenance must support:
 - maintenance status flag
 - service log with vendor, cost, and notes
 - linkage from breakdown events into maintenance history
+Vehicle exit controls:
+- ownership transfer to another account requires approval and fresh document verification
+- deregistration must be soft-delete or inactive-retain, preserving historical trips, earnings, and audit logs
+- active hire bookings, unsettled payouts, or compliance investigations block transfer or deregistration
 64.9 GPS Integration for Own Fleet
 Tracking options:
 - hardware vehicle GPS
@@ -1381,6 +1760,7 @@ Default fee model must support configurable ranges by service type:
 - FTL: percentage commission of booking value
 - PTL / LCL: percentage commission of booking value
 - Courier / Last Mile: percentage commission of booking value
+- Rail / SGR corridor shipment: configurable commission or fixed service fee by container size and corridor
 - Vehicle Hire: percentage of hire value
 - Own Fleet Mode: fixed fee per trip by vehicle class
 - Warehouse inbound / outbound: transaction fee against warehouse service line
@@ -1393,8 +1773,30 @@ Own-fleet per-trip fee schedule must exist by vehicle class, for example:
 - light truck
 - medium truck
 - heavy truck
+- 20ft container truck
+- 40ft container truck
 - refrigerated vehicle surcharge layered on base class
 Rates must be configurable and versioned. Values may be overridden per contract.
+65.1.1 Fee Model Architecture
+Core fee models:
+- per-trip commission: retained from customer charge or escrow settlement
+- per-trip direct fee: deducted from driver, transporter, or partner wallet or statement
+- monthly subscription: charged for portal and advanced module access
+- per-vehicle platform fee: recurring fee on approved fleet assets
+- hire platform fee: retained before vehicle-owner payout
+- warehouse commission: retained during partner settlement
+- premium marketplace listing fee: recurring or per-listing visibility charge
+- LCL consolidation margin: retained from consolidated run economics where applicable
+65.1.2 Launch Reference Margin Bands
+Initial commercial reference bands from the archived V10.2 addendum:
+- FTL: 18-22 percent target margin, with contract cases permitted lower
+- PTL / LCL: 22-28 percent target margin depending on fill efficiency
+- Courier / Last Mile: 20-25 percent target margin
+- Vehicle Hire daily or weekly: 12-15 percent target margin
+- Vehicle Hire monthly: 10-12 percent target margin
+- Warehouse storage commission: 8-12 percent reference range
+- Warehouse handling commission: 10 percent reference range
+These figures are default launch references, not immutable values; contract, geography, and campaign rules may override them.
 65.2 Monthly Platform Subscription Fees
 Customer-side subscription tiers must support:
 - Basic / Free
@@ -1411,6 +1813,18 @@ Every plan must define:
 - service or fleet caps where relevant
 - support priority
 - marketplace ranking or analytics entitlements where relevant
+Role-specific launch defaults may use:
+- Transporter: Starter / Growth / Enterprise, with vehicle-included thresholds and per-extra-vehicle add-ons
+- Courier Company: Basic / Professional / Enterprise
+- Corporate: Business / Corporate / Enterprise or Custom
+- Warehouse Partner: Basic / Standard / Premium by bin-count band
+- Agent: commission-only or Premium Agent monthly plan
+Illustrative pricing from the archived V10.2 addendum must be retained as launch reference configuration, not hard-coded UI text:
+- Transporter: KES 3,500 / 7,500 / 15,000, plus per-extra-vehicle add-on
+- Courier Company: KES 5,000 / 12,000 / 25,000
+- Corporate: KES 2,500 / 6,000 / Custom
+- Warehouse Partner: KES 2,000 / 5,000 / 10,000
+- Agent Premium: KES 1,500
 65.3 Per-Vehicle Monthly Platform Fee
 Fleet-managed accounts must support a monthly per-vehicle platform fee by class.
 Rules:
@@ -1419,12 +1833,17 @@ Rules:
 - fee prorates on deletion or partial month use
 - volume discount tiers are configurable
 - enterprise fleet contracts may override standard schedule
+Per-vehicle monthly logic must also support:
+- extra-vehicle add-on charging above plan-included vehicle caps
+- discount banding for larger owned fleets
+- lower effective rate on enterprise contracts or annual prepay programs
 65.4 Driver Platform Fee
 Independent drivers not covered by a fleet-owner or contract plan may use:
 - weekly subscription
 - per-trip commission
 - zero-fee promotional onboarding window
 Driver fee model must be configurable by geography, role type, and campaign.
+Launch reference for direct independent-driver fees may default to KES 30-80 per completed trip depending on vehicle class.
 65.5 Agent Commission & Fee Structure
 Agent commercial model must support:
 - commission percentage on loads sourced
@@ -1434,6 +1853,15 @@ Agent commercial model must support:
 Rules:
 - commission logic must be transparent and auditable
 - agent wallet and commission report must show source booking / source vehicle linkage
+Default launch reference may retain 20 percent of agent commission before agent payout where the commission-only agent model is enabled.
+65.5.1 Agent Own-Fleet Earnings Example
+Worked commercial example:
+- Customer Rate = KES 25,000
+- Vehicle Owner or Hire Rate = KES 20,000
+- Gross platform margin = KES 5,000
+- If the booking was agent-sourced and the agent commission on that margin event is KES 2,000, Zito may retain 20 percent of the agent commission = KES 400
+- Agent net commission payout = KES 1,600
+The exact monetary figures are illustrative only; the rule is that every sourced-load statement must show customer rate, owner rate, platform margin, agent gross commission, Zito override, and agent net payout.
 65.6 Fee Waiver, Override & Discount Conditions
 Supported waiver / discount scenarios include:
 - new driver promo period
@@ -1444,6 +1872,19 @@ Supported waiver / discount scenarios include:
 - fleet outage or platform downtime credit
 - dispute resolution fee adjustment
 All waivers and overrides require audit trail with approver, reason, and effective date.
+Launch reference promotions may include:
+- new transporter 30-day Starter-trial waiver
+- new warehouse partner 60-day trial with transaction commission still applicable
+- new corporate 30-day Business-tier trial
+- early driver cohort zero-fee onboarding window
+Discount and loyalty controls may include:
+- volume-based per-trip fee reduction after defined trip thresholds
+- GMV-based commission reduction for high-volume corporates
+- annual prepayment discount for SaaS plans
+- discounted incremental vehicle fee beyond large fleet thresholds
+Annual prepayment refund rule:
+- annual SaaS prepayment is non-refundable by default unless a contract explicitly defines a pro-rata exit clause
+- where pro-rata refunds are contractually allowed, the calculation method and earliest refund eligibility point must be stated in the commercial agreement and mirrored in billing configuration
 65.7 Platform Fee Billing & Invoicing
 Platform fees must be billed separately from operational service invoices unless a contract explicitly consolidates them.
 Billing rules:
@@ -1454,6 +1895,19 @@ Billing rules:
 - wallet auto-debit permitted where enabled
 - manual payment methods supported where wallet is insufficient
 - all platform fee movements must be visible to Super Admin and Accounts
+Fee-collection behaviors must support:
+- trip commission retained from escrow or settlement before partner payout
+- direct trip fees deducted at trip completion with configurable insufficient-funds behavior
+- monthly SaaS auto-debit or invoice billing with grace window
+- warehouse commission deducted at settlement before partner payout
+- hire platform fee withheld before owner payout
+- listing fee charged at activation and renewal
+Failure and delinquency controls may include:
+- booking restriction after repeated unpaid direct-trip fees
+- 7-day SaaS grace window followed by access restriction or suspension if not cleared
+- listing deactivation on non-payment
+- approval blocks for warehouse partners with overdue balances
+- automated receipts for every deduction, penalty, waiver, and settlement
 65.8 Fee Configuration & Administration
 Super Admin must be able to configure:
 - fee rates
@@ -1466,6 +1920,19 @@ Rules:
 - changes must be versioned
 - no silent retroactive billing changes
 - prior value, new value, approver, timestamp, and reason must be stored
+65.8.1 Default Volume And Loyalty References
+- 50+ transporter trips per month -> 5 percent reduction on direct per-trip fee
+- 100+ transporter trips per month -> 10 percent reduction on direct per-trip fee
+- KES 500,000+ corporate GMV per month -> 1 percent commission reduction subject to finance review
+- KES 1,000,000+ corporate GMV per month -> 2 percent reduction or contract-tier review
+- annual SaaS prepayment -> 15 percent reference discount
+- owned fleets above 10 vehicles -> discounted incremental vehicle fee
+65.8.2 Compliance And Currency Governance
+- multi-currency fee invoices must use configured FX source and effective-date logic
+- tax or VAT invoice fields must be jurisdiction-compliant
+- Kenya launch invoice, receipt, credit-note, and debit-note flows must be KRA and eTIMS compatible, KES-first, and able to store KRA PIN, VAT treatment, provider payment references, and immutable issue history
+- Kenya payment operations must support M-Pesa structured references and Kenyan bank-transfer references as first-class finance data fields
+- annual prepayment refund policy must be explicit in contract and billing rules
 65.9 Revenue Model Summary
 Revenue streams supported by the platform include:
 - trip commission
@@ -1480,6 +1947,22 @@ Revenue streams supported by the platform include:
 - agent platform fee where applicable
 - premium marketplace listing
 - insurance revenue share where integrated
+65.9.1 Fee Visibility By Role
+- Driver: trip fee deduction, wallet, gross vs net earnings, monthly summary
+- Transporter: per-vehicle trip fees, monthly SaaS invoice, fleet fee summary, outstanding balance
+- Corporate: monthly SaaS invoice, own-fleet commission, account statement
+- Agent: commission earned, Zito override deducted, net payout, monthly summary
+- Warehouse Partner: commission invoice, per-booking commission, net earnings, outstanding balance
+- Admin / Finance: all fee streams, revenue analytics, collection efficiency, overdue balances
+65.9.2 Admin Revenue Dashboard
+Finance operations must see:
+- total platform revenue by stream
+- monthly recurring revenue from subscriptions
+- GMV vs net revenue trend
+- outstanding balances by role and aging
+- fee waiver log with approver, reason, and waived amount
+- churn-risk view for accounts in grace or suspension states
+- revenue concentration by top customer or partner contribution
 66. App Design System & UX Specification
 Objective
 The product experience must be defined as rigorously as the operations engine. Zito must feel like a modern logistics product, not a data-entry portal. The UI model is map-first, card-native, action-forward, and mobile-credible, with standards strong enough to outperform industrial benchmarks such as Porter-style booking flows while remaining Africa-ready and offline-aware.
@@ -1488,6 +1971,7 @@ The booking experience must not default to long forms. The map is the interface;
 Required design shifts:
 - pickup and drop are map pin or search-overlay actions, not plain text form blocks on the first screen
 - vehicle selection is visual card-based with live pricing, not a dropdown
+- live pricing must show the location scope being applied when county, town, or rural pricing rules materially affect the quote
 - cargo details are progressive and mostly optional unless operationally mandatory
 - booking confirmation is a concise summary card or bottom sheet, not a separate paperwork-style page
 - booking history is card feed first; table views are secondary and report-oriented
@@ -1583,6 +2067,8 @@ Customer app mandatory screens:
 - Route Preview: distance, duration, and clear CTA into vehicle selection
 - Vehicle Selection: vertical or highly legible card list with instant fare update
 - Booking Detail: progressive optional cargo details, not mandatory long form
+- Service and vehicle choice must explicitly expose container logistics options such as 20ft and 40ft container trucks, plus a Rail / SGR lane for Mombasa-linked container movement where that service is enabled
+- when Rail / SGR or container logistics is selected, the booking flow must switch into a corridor-aware and document-aware journey with node selection such as port, ICD, warehouse, or final-delivery handoff rather than behaving like a normal same-day city courier form
 - Payment: method cards, promo handling, full breakdown, strong confirm CTA
 - Booking Confirmed: success state with reference, assignment wait state, and redirect to live tracking
 - Live Tracking: map-first tracking, ETA overlay, driver card, progress trail, call / SOS actions
@@ -1638,6 +2124,36 @@ Required admin modules must feel like:
 - Fleet Overview with card grid and compliance RAG status
 - Analytics / Reports with chart-first presentation
 - Assignment Engine with rule cards and mode toggles rather than form pages
+Required internal-workforce capabilities:
+- Admin Users & Teams workspace must create Customer, Corporate, Driver, Agent, Transporter, Courier Company, Warehouse Partner, Head Office Staff, and Agency Staff accounts
+- Admin Marketplace workspace must surface Courier Company as a first-class partner type beside Agent, Transporter, and Warehouse Partner
+- Admin and Super Admin must both be able to onboard courier companies, review their coverage, approve or suspend them, and publish courier opportunities to them from the same internal control layer
+- Admin and Super Admin must both have a dedicated Courier Company Control desk that combines account provisioning, account status control, marketplace approval state, owned-fleet visibility, and finance exposure in one internal workspace
+- Admin and Super Admin must both have a dedicated Warehouse Partner Control desk that combines account provisioning, warehouse-partner approval state, managed-site visibility, capacity context, and finance exposure in one internal workspace
+- Admin and Super Admin must both have a dedicated Workforce Control desk that separates Head Office staff from Agency Staff and allows direct creation, activation, suspension, and department assignment for Operations, Customer Care, and Accounts teams
+- Admin and Super Admin must both have a dedicated Verification Control desk covering customer KYC, driver approval, partner approval, document review, fleet verification, expiry monitoring, rejection handling, and resubmission tracking
+- the Verification Control desk must support fleet-photo review and must clearly show whether a truck is missing dashboard, front, right-side, left-side, or rear photo evidence
+- KYC review must happen at document level first, and the account status must then be recalculated from the reviewed document set:
+  - approved required set => verified
+  - missing or pending required documents => pending
+  - rejected required document => rejected
+  - activation remains a separate internal step after verification
+- owned-fleet and transporter fleet workspaces must expose the truck-photo upload workflow directly so operators can submit missing dashboard, front, right-side, left-side, and rear evidence without waiting for back-office entry
+- when creating Agency Staff or Head Office Staff, the creator must choose department / desk classification:
+  - Operations
+  - Customer Care
+  - Accounts
+- when creating staff, the creator must also choose operating scope:
+  - Head Office
+  - Agency
+- Head Office staff must route into the head-office desk and Agency Staff must route into the agency desk after sign-in
+- Customer Care desk must be request-led:
+  - users raise support requests first
+  - customer care staff then view the queue, assign to self, resolve directly, or escalate to operations/accounts
+- Operations desk must be able to view and manage platform bookings, trip status, assignment, and live operational workload
+- Accounts desk must be able to view and handle invoices, payments, refunds, and finance-control actions without requiring full admin status
+- Admin remains a supervisory control role, not the sole operator for daily dispatch, support, or finance work
+- Admin dashboard must surface customer and partner-network visibility including transporter, courier company, warehouse partner, and staff footprints
 66.10 Navigation Patterns
   Customer and Driver app navigation rules:
   - bottom tab navigation with 4 tabs maximum
@@ -1656,6 +2172,12 @@ Required admin modules must feel like:
   - internal workspace chrome reused directly inside customer or driver mobile apps
   - raw status code strings shown to end users
   - blank error pages where inline contextual empty/error states are possible
+Mobile platform coverage and release rules:
+- the shared mobile codebase must support both Android and iPhone; no user-critical workflow may be Android-only unless explicitly approved as a temporary exception
+- iPhone builds must be testable during development through Expo-compatible workflows and distributable for QA through TestFlight before public App Store release
+- Android pre-release testing may use internal APK/AAB distribution, but iPhone pre-release testing must use a managed Apple distribution path such as TestFlight or equivalent approved enterprise/internal distribution
+- iPhone configuration must include explicit permission copy for location, camera, and photo-library access where those capabilities are used for booking, tracking, POD, scans, or support evidence
+- the mobile release process must maintain parity across Android and iPhone for customer, driver, transporter, and courier-company role workflows
 66.11 Performance Targets - User Visible
 User-visible performance goals:
 - cold start to home under defined mobile threshold

@@ -1,17 +1,14 @@
-import { IsEnum, IsOptional, IsString, IsDateString } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-// PRD §4 — KYC document types required per role:
-//   CUSTOMER:          NATIONAL_ID
-//   DRIVER:            NATIONAL_ID, DRIVERS_LICENSE
-//   TRANSPORTER:       NATIONAL_ID, BUSINESS_REG, VEHICLE_REG
-//   CORPORATE:         NATIONAL_ID, BUSINESS_REG
-//   WAREHOUSE_PARTNER: NATIONAL_ID, BUSINESS_REG
 export enum KycDocumentType {
-  NATIONAL_ID     = 'NATIONAL_ID',
+  NATIONAL_ID = 'NATIONAL_ID',
   DRIVERS_LICENSE = 'DRIVERS_LICENSE',
-  BUSINESS_REG    = 'BUSINESS_REG',
-  VEHICLE_REG     = 'VEHICLE_REG',
+  BUSINESS_REG = 'BUSINESS_REG',
+  VEHICLE_REG = 'VEHICLE_REG',
+  KRA_PIN_CERT = 'KRA_PIN_CERT',
+  INSURANCE_CERT = 'INSURANCE_CERT',
+  PERMIT_CERT = 'PERMIT_CERT',
 }
 
 export class UploadKycDto {
@@ -19,7 +16,31 @@ export class UploadKycDto {
   @IsEnum(KycDocumentType)
   documentType!: KycDocumentType;
 
-  // PRD §4 — Expiry date for compliance tracking (license, insurance, permit)
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  documentNumber?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  issuingAuthority?: string;
+
+  @ApiProperty({ required: false, example: 'KE' })
+  @IsOptional()
+  @IsString()
+  countryOfIssue?: string;
+
+  @ApiProperty({ required: false, example: 'FRONT' })
+  @IsOptional()
+  @IsString()
+  documentSide?: string;
+
+  @ApiProperty({ required: false, example: '2024-01-01' })
+  @IsOptional()
+  @IsDateString()
+  issueDate?: string;
+
   @ApiProperty({ required: false, example: '2027-01-01' })
   @IsOptional()
   @IsDateString()

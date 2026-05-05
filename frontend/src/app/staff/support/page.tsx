@@ -19,6 +19,21 @@ type Ticket = {
   status: string;
   description?: string | null;
   bookingId?: string | null;
+  booking?: {
+    reference?: string | null;
+    status?: string | null;
+  } | null;
+  raiser?: {
+    fullName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    role?: string | null;
+  } | null;
+  handler?: {
+    fullName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
   createdAt?: string;
 };
 
@@ -89,12 +104,17 @@ export default function StaffSupportPage() {
     return <Spinner />;
   }
 
+  const operationsTickets = tickets.filter((ticket) =>
+    ['BOOKING', 'DRIVER'].includes(ticket.category),
+  ).length;
+  const financeTickets = tickets.filter((ticket) => ticket.category === 'PAYMENT').length;
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Queue size" value={String(tickets.length)} helper="All tickets visible to staff." />
-        <StatCard label="Open" value={String(tickets.filter((ticket) => ticket.status === 'OPEN').length)} helper="Waiting for assignment." tone="warning" />
-        <StatCard label="In progress" value={String(tickets.filter((ticket) => ticket.status === 'IN_PROGRESS').length)} helper="Currently owned by staff." tone="info" />
+        <StatCard label="Queue size" value={String(tickets.length)} helper="All customer and partner requests visible to customer care." />
+        <StatCard label="Ops-related" value={String(operationsTickets)} helper="Booking and driver issues to hand off into operations when needed." tone="warning" />
+        <StatCard label="Payment-related" value={String(financeTickets)} helper="Invoice and payment issues that may need accounts review." tone="info" />
       </div>
 
       {error ? (
@@ -103,7 +123,7 @@ export default function StaffSupportPage() {
         </Alert>
       ) : null}
 
-      <SurfaceCard title="Support queue" description="Assign and resolve tickets from the Phase 1 support panel.">
+      <SurfaceCard title="Customer care queue" description="Review requests raised by users, take ownership, resolve them directly, or escalate them to operations or accounts.">
         <Table
           rows={tickets}
           columns={[
@@ -113,7 +133,21 @@ export default function StaffSupportPage() {
               render: (ticket) => (
                 <div>
                   <p className="font-semibold text-white">{ticket.category}</p>
-                  <p className="text-xs text-slate-400">{ticket.bookingId ?? 'General support'}</p>
+                  <p className="text-xs text-slate-400">
+                    {ticket.booking?.reference ?? ticket.bookingId ?? 'General support'}
+                  </p>
+                </div>
+              ),
+            },
+            {
+              key: 'requester',
+              header: 'Requester',
+              render: (ticket) => (
+                <div>
+                  <p className="font-medium text-slate-100">{ticket.raiser?.fullName ?? 'Unknown user'}</p>
+                  <p className="text-xs text-slate-400">
+                    {ticket.raiser?.role ? formatStatus(ticket.raiser.role) : 'User'} · {ticket.raiser?.email ?? ticket.raiser?.phone ?? 'No contact'}
+                  </p>
                 </div>
               ),
             },
@@ -133,7 +167,10 @@ export default function StaffSupportPage() {
               render: (ticket) => (
                 <div className="space-y-2">
                   <p className="text-sm text-slate-300">{ticket.description ?? 'No description'}</p>
-                  <p className="text-xs text-slate-400">{formatDateTime(ticket.createdAt)}</p>
+                  <p className="text-xs text-slate-400">
+                    {formatDateTime(ticket.createdAt)}
+                    {ticket.handler?.fullName ? ` · Owner: ${ticket.handler.fullName}` : ''}
+                  </p>
                 </div>
               ),
             },

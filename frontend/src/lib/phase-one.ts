@@ -5,7 +5,7 @@ export const ROLE_PICKER_OPTIONS = [
   ...PARTNER_ROLE_OPTIONS,
 ] as const;
 
-export const SERVICE_TYPES = ['FTL', 'PTL', 'COURIER', 'WAREHOUSE'] as const;
+export const SERVICE_TYPES = ['FTL', 'PTL', 'COURIER', 'WAREHOUSE', 'RAIL'] as const;
 export const VEHICLE_TYPES = [
   'MOTORBIKE',
   'VAN',
@@ -13,6 +13,8 @@ export const VEHICLE_TYPES = [
   'TRUCK_7T',
   'TRUCK_14T',
   'TRUCK_22T',
+  'CONTAINER_20FT',
+  'CONTAINER_40FT',
   'REFRIGERATED',
 ] as const;
 export const VEHICLE_STATUSES = ['ACTIVE', 'INACTIVE', 'MAINTENANCE', 'SUSPENDED'] as const;

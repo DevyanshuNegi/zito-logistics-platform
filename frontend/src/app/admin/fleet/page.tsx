@@ -9,6 +9,7 @@ import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
 import { FuelReportPanel } from '@/components/operations/FuelReportPanel';
+import { VehicleLocationPanel } from '@/components/operations/VehicleLocationPanel';
 import { ApiError, api } from '@/lib/api';
 import { compactId, formatDateTime, formatStatus } from '@/lib/format';
 import { VEHICLE_TYPES } from '@/lib/phase-one';
@@ -32,10 +33,17 @@ type Vehicle = {
   model?: string | null;
   capacityKg?: number | null;
   status: string;
+  deviceGpsLat?: number | null;
+  deviceGpsLng?: number | null;
+  lastGpsAt?: string | null;
   insuranceExpiry?: string | null;
   permitExpiry?: string | null;
   driver?: {
     id?: string;
+    isOnline?: boolean | null;
+    currentLatitude?: number | null;
+    currentLongitude?: number | null;
+    lastLocationAt?: string | null;
     user?: {
       fullName?: string | null;
     } | null;
@@ -218,6 +226,11 @@ export default function AdminFleetPage() {
 
       {activePanel === 'fleet' ? (
         <>
+      <VehicleLocationPanel
+        description="Select a vehicle number to inspect its live location before dispatch, reassignment, or incident response."
+        title="Fleet location"
+        vehicles={vehicles}
+      />
       <SurfaceCard title="Add vehicle" description="Fleet CRUD and assignment control for admin operations.">
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreate}>
           <Input label="Plate number" value={plateNumber} onChange={(event) => setPlateNumber(event.target.value)} required />

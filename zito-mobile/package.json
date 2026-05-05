@@ -12,6 +12,11 @@
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "ios:prebuild": "expo prebuild --platform ios",
+    "ios:preview": "npx eas build --platform ios --profile preview",
+    "ios:testflight": "npx eas build --platform ios --profile production",
+    "ios:submit": "npx eas submit --platform ios --profile production",
+    "doctor": "npx expo-doctor",
     "web": "expo start --web",
     "lint": "expo lint"
   },

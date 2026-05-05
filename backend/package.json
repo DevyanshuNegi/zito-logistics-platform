@@ -16,6 +16,7 @@
     "build": "nest build",
     "prisma:generate": "prisma generate",
     "prisma:migrate:deploy": "prisma migrate deploy",
+    "qa:seed-users": "node scripts/sync-local-test-users.js",
     "neon:validate": "node scripts/validate-neon-env.js",
     "deploy:neon": "npm run neon:validate && npm run prisma:generate && npm run prisma:migrate:deploy && npm run build",
     "dev:express": "nodemon server.js",

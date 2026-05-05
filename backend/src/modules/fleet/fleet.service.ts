@@ -11,6 +11,29 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BreakdownService } from './breakdown/breakdown.service';
 import { FleetExpiryService } from './fleet-expiry.service';
 import { FuelService } from './fuel/fuel.service';
+import {
+  VEHICLE_PHOTO_CATEGORIES,
+  type VehiclePhotoCategory,
+} from './dto/upload-vehicle-photo.dto';
+
+interface MulterFile {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png'];
+const TRUCK_VERIFICATION_TYPES = new Set([
+  'TRUCK_3T',
+  'TRUCK_7T',
+  'TRUCK_14T',
+  'TRUCK_22T',
+  'CONTAINER_20FT',
+  'CONTAINER_40FT',
+  'REFRIGERATED',
+]);
 
 @Injectable()
 export class FleetService {
@@ -20,6 +43,35 @@ export class FleetService {
     private readonly fleetExpiryService: FleetExpiryService,
     private readonly fuelService: FuelService,
   ) {}
+
+  private vehicleInclude = {
+    ownerUser: { select: { id: true, fullName: true, companyName: true, role: true, phone: true } },
+    driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
+    verificationPhotos: {
+      orderBy: { createdAt: 'asc' as const },
+    },
+  };
+
+  private vehicleListInclude = {
+    ownerUser: { select: { id: true, fullName: true, companyName: true, role: true, phone: true } },
+    driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
+    verificationPhotos: {
+      orderBy: { createdAt: 'asc' as const },
+    },
+    _count: { select: { bookings: true, breakdowns: true, maintenanceLogs: true } },
+  };
+
+  private getRequiredPhotoCategories(vehicleType?: string | null): VehiclePhotoCategory[] {
+    if (!vehicleType || !TRUCK_VERIFICATION_TYPES.has(vehicleType)) {
+      return [];
+    }
+
+    return [...VEHICLE_PHOTO_CATEGORIES];
+  }
+
+  private getSafeFileName(name: string) {
+    return name.replace(/\s+/g, '_');
+  }
 
   async create(
     createVehicleDto: any,
@@ -42,6 +94,7 @@ export class FleetService {
         ...createVehicleDto,
         ownerUserId: this.resolveOwnerUserId(createVehicleDto.ownerUserId, actor),
         status: createVehicleDto.status ?? VehicleStatus.ACTIVE,
+        verificationStatus: createVehicleDto.verificationStatus ?? 'PENDING_REVIEW',
         insuranceExpiry: createVehicleDto.insuranceExpiry
           ? new Date(createVehicleDto.insuranceExpiry)
           : undefined,
@@ -49,10 +102,7 @@ export class FleetService {
           ? new Date(createVehicleDto.permitExpiry)
           : undefined,
       },
-      include: {
-        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
-        driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
-      },
+      include: this.vehicleInclude,
     });
   }
 
@@ -69,11 +119,7 @@ export class FleetService {
     return this.prisma.vehicle.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: {
-        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
-        driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
-        _count: { select: { bookings: true, breakdowns: true, maintenanceLogs: true } },
-      },
+      include: this.vehicleListInclude,
     });
   }
 
@@ -84,8 +130,7 @@ export class FleetService {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id },
       include: {
-        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
-        driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
+        ...this.vehicleInclude,
         breakdowns: { orderBy: { createdAt: 'desc' }, take: 10 },
         maintenanceLogs: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
@@ -127,10 +172,7 @@ export class FleetService {
         insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
         permitExpiry: dto.permitExpiry ? new Date(dto.permitExpiry) : undefined,
       },
-      include: {
-        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
-        driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
-      },
+      include: this.vehicleInclude,
     });
   }
 
@@ -145,10 +187,7 @@ export class FleetService {
     return this.prisma.vehicle.update({
       where: { id },
       data: { driverId },
-      include: {
-        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
-        driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
-      },
+      include: this.vehicleInclude,
     });
   }
 
@@ -165,10 +204,7 @@ export class FleetService {
         status: VehicleStatus.INACTIVE,
         driverId: null,
       },
-      include: {
-        ownerUser: { select: { id: true, fullName: true, role: true, phone: true } },
-        driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
-      },
+      include: this.vehicleInclude,
     });
   }
 
@@ -187,6 +223,172 @@ export class FleetService {
       vehicle,
       divergence,
     };
+  }
+
+  async uploadVerificationPhoto(
+    vehicleId: string,
+    dto: { category: VehiclePhotoCategory; capturedAt?: string },
+    file: MulterFile,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    const vehicle = await this.findOne(vehicleId, actor);
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Invalid image type. Allowed: JPEG or PNG.');
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      throw new BadRequestException('File too large. Maximum size is 5MB.');
+    }
+
+    const requiredCategories = this.getRequiredPhotoCategories(vehicle.type);
+    if (requiredCategories.length > 0 && !requiredCategories.includes(dto.category)) {
+      throw new BadRequestException('Unsupported verification photo category for this vehicle.');
+    }
+
+    const safeName = this.getSafeFileName(file.originalname);
+    const fileUrl = `fleet-verification/${vehicleId}/${dto.category}/${Date.now()}_${safeName}`;
+
+    const photo = await this.prisma.vehicleVerificationPhoto.upsert({
+      where: {
+        vehicleId_category: {
+          vehicleId,
+          category: dto.category,
+        },
+      },
+      create: {
+        vehicleId,
+        category: dto.category,
+        fileUrl,
+        mimeType: file.mimetype,
+        capturedAt: dto.capturedAt ? new Date(dto.capturedAt) : null,
+        status: 'PENDING_REVIEW',
+      },
+      update: {
+        fileUrl,
+        mimeType: file.mimetype,
+        capturedAt: dto.capturedAt ? new Date(dto.capturedAt) : null,
+        status: 'PENDING_REVIEW',
+        reviewedAt: null,
+        reviewedBy: null,
+        reviewNote: null,
+        rejectionReason: null,
+      },
+    });
+
+    await this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: {
+        verificationStatus: 'PENDING_REVIEW',
+        verificationReviewedAt: null,
+        verificationReviewedBy: null,
+        verificationNote: null,
+        rejectionReason: null,
+      },
+    });
+
+    return photo;
+  }
+
+  async reviewVerificationPhoto(
+    vehicleId: string,
+    photoId: string,
+    dto: { status: 'APPROVED' | 'REJECTED' | 'RESUBMISSION_REQUIRED'; note?: string; reason?: string },
+    reviewerId: string,
+  ) {
+    const photo = await this.prisma.vehicleVerificationPhoto.findFirst({
+      where: { id: photoId, vehicleId },
+      select: {
+        id: true,
+        vehicleId: true,
+      },
+    });
+
+    if (!photo) {
+      throw new NotFoundException('Vehicle verification photo not found.');
+    }
+
+    const updatedPhoto = await this.prisma.vehicleVerificationPhoto.update({
+      where: { id: photoId },
+      data: {
+        status: dto.status,
+        reviewedAt: new Date(),
+        reviewedBy: reviewerId,
+        reviewNote: dto.note?.trim() || null,
+        rejectionReason:
+          dto.status === 'APPROVED' ? null : dto.reason?.trim() || 'Review feedback required',
+      },
+    });
+
+    if (dto.status !== 'APPROVED') {
+      await this.prisma.vehicle.update({
+        where: { id: vehicleId },
+        data: {
+          verificationStatus: dto.status,
+          verificationReviewedAt: new Date(),
+          verificationReviewedBy: reviewerId,
+          verificationNote: dto.note?.trim() || null,
+          rejectionReason: dto.reason?.trim() || 'Review feedback required',
+        },
+      });
+    }
+
+    return updatedPhoto;
+  }
+
+  async reviewVehicleVerification(
+    vehicleId: string,
+    dto: { status: 'APPROVED' | 'REJECTED' | 'RESUBMISSION_REQUIRED'; note?: string; reason?: string },
+    reviewerId: string,
+  ) {
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id: vehicleId },
+      include: {
+        verificationPhotos: true,
+      },
+    });
+
+    if (!vehicle) {
+      throw new NotFoundException('Vehicle not found');
+    }
+
+    if (dto.status === 'APPROVED') {
+      const requiredCategories = this.getRequiredPhotoCategories(vehicle.type);
+      const photosByCategory = new Map(
+        vehicle.verificationPhotos.map((photo) => [photo.category, photo]),
+      );
+
+      const missingCategories = requiredCategories.filter(
+        (category) => !photosByCategory.has(category),
+      );
+      if (missingCategories.length > 0) {
+        throw new BadRequestException(
+          `Vehicle verification requires these photo categories first: ${missingCategories.join(', ')}`,
+        );
+      }
+
+      const unapprovedCategories = requiredCategories.filter((category) => {
+        const photo = photosByCategory.get(category);
+        return String(photo?.status ?? '').toUpperCase() !== 'APPROVED';
+      });
+      if (unapprovedCategories.length > 0) {
+        throw new BadRequestException(
+          `Approve the required photo set before approving the vehicle: ${unapprovedCategories.join(', ')}`,
+        );
+      }
+    }
+
+    return this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: {
+        verificationStatus: dto.status,
+        verificationReviewedAt: new Date(),
+        verificationReviewedBy: reviewerId,
+        verificationNote: dto.note?.trim() || null,
+        rejectionReason:
+          dto.status === 'APPROVED' ? null : dto.reason?.trim() || 'Review feedback required',
+      },
+      include: this.vehicleInclude,
+    });
   }
 
   async reportBreakdown(

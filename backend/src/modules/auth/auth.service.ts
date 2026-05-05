@@ -31,6 +31,10 @@ type AuthLookupUser = {
   status: AccountStatus;
   fullName: string | null;
   companyName: string | null;
+  agencyId: string | null;
+  staffDepartment: string | null;
+  staffAgencyName: string | null;
+  staffScope: 'HEAD_OFFICE' | 'AGENCY' | null;
 };
 
 const PUBLIC_SELF_SERVICE_ROLES = new Set<UserRole>([
@@ -42,6 +46,8 @@ const PUBLIC_SELF_SERVICE_ROLES = new Set<UserRole>([
   UserRole.WAREHOUSE_PARTNER,
   UserRole.CORPORATE,
 ]);
+
+const HEAD_OFFICE_AGENCY_NAME = 'Zito Head Office';
 
 @Injectable()
 export class AuthService {
@@ -111,9 +117,44 @@ export class AuthService {
   }
 
   async verifyUserStatus(userId: string, adminId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        status: true,
+        kycDocuments: {
+          select: {
+            type: true,
+            status: true,
+          },
+        },
+      },
+    });
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    const requiredDocs = {
+      CUSTOMER: ['NATIONAL_ID'],
+      DRIVER: ['NATIONAL_ID', 'DRIVERS_LICENSE'],
+      AGENT: ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
+      TRANSPORTER: ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
+      COURIER_COMPANY: ['NATIONAL_ID', 'BUSINESS_REG'],
+      CORPORATE: ['NATIONAL_ID', 'BUSINESS_REG'],
+      WAREHOUSE_PARTNER: ['NATIONAL_ID', 'BUSINESS_REG'],
+    }[user.role] ?? ['NATIONAL_ID'];
+
+    const approvedTypes = new Set(
+      user.kycDocuments
+        .filter((document) => document.status === 'APPROVED')
+        .map((document) => document.type),
+    );
+    const missingDocuments = requiredDocs.filter((documentType) => !approvedTypes.has(documentType));
+    if (missingDocuments.length > 0) {
+      throw new ConflictException(
+        `All required compliance documents must be approved first: ${missingDocuments.join(', ')}`,
+      );
     }
 
     const updatedUser = await this.prisma.user.update({
@@ -121,12 +162,15 @@ export class AuthService {
       data: { status: AccountStatus.VERIFIED },
     });
 
-    await this.prisma.kycDocument.updateMany({
-      where: { userId, status: 'PENDING' },
+    await this.prisma.auditLog.create({
       data: {
-        status: 'VERIFIED',
-        verifiedAt: new Date(),
-        verifiedBy: adminId,
+        userId: adminId,
+        action: 'USER_VERIFIED',
+        entityType: 'USER',
+        entityId: userId,
+        details: {
+          verifiedFromLegacyRoute: true,
+        } as Prisma.InputJsonValue,
       },
     });
 
@@ -203,6 +247,8 @@ export class AuthService {
       data: {
         temp_token: tempToken,
         contact: identifier,
+        debugOtp: otpResult.debugOtp ?? null,
+        debugDeliveryTarget: otpResult.debugDeliveryTarget ?? null,
         otpExpiresAt: otpResult.expiresAt?.toISOString() ?? null,
         resendAvailableAt: new Date(
           Date.now() + otpResult.cooldownRemaining * 1000,
@@ -211,6 +257,9 @@ export class AuthService {
         user: {
           fullName: user.fullName,
           companyName: user.companyName,
+          staffScope: user.staffScope,
+          staffDepartment: user.staffDepartment,
+          staffAgencyName: user.staffAgencyName,
         },
       },
     };
@@ -419,13 +468,17 @@ export class AuthService {
           role: user.role,
           fullName: user.fullName,
           companyName: user.companyName,
+          agencyId: user.agencyId,
+          staffScope: user.staffScope,
+          staffDepartment: user.staffDepartment,
+          staffAgencyName: user.staffAgencyName,
         },
       },
     };
   }
 
   private async findUserByIdentifier(identifier: string): Promise<AuthLookupUser | null> {
-    return this.prisma.user.findFirst({
+    const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ email: identifier }, { phone: identifier }],
       },
@@ -438,8 +491,45 @@ export class AuthService {
         status: true,
         fullName: true,
         companyName: true,
+        agencyId: true,
       },
     });
+
+    if (!user) {
+      return null;
+    }
+
+    if (user.role !== UserRole.AGENCY_STAFF) {
+      return {
+        ...user,
+        staffDepartment: null,
+        staffAgencyName: null,
+        staffScope: null,
+      };
+    }
+
+    const staffProfile = await this.prisma.staff.findFirst({
+      where: { userId: user.id, isActive: true },
+      select: {
+        role: true,
+        agency: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...user,
+      staffDepartment: staffProfile?.role ?? null,
+      staffAgencyName: staffProfile?.agency?.name ?? null,
+      staffScope: staffProfile
+        ? staffProfile.agency?.name === HEAD_OFFICE_AGENCY_NAME
+          ? 'HEAD_OFFICE'
+          : 'AGENCY'
+        : null,
+    };
   }
 
   private assertAccountIsActive(user: AuthLookupUser) {

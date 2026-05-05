@@ -2,11 +2,14 @@ export function normalizeRole(role?: string | null) {
   return (role ?? '').trim().toUpperCase();
 }
 
-export function getRoleHomePath(role?: string | null) {
-  switch (normalizeRole(role)) {
+export function getRoleHomePath(role?: string | null, staffScope?: string | null) {
+  const normalizedRole = normalizeRole(role);
+  const normalizedStaffScope = (staffScope ?? '').trim().toUpperCase();
+
+  switch (normalizedRole) {
     case 'SUPER_ADMIN':
     case 'ADMIN':
-      return '/admin/bookings';
+      return '/admin';
     case 'CUSTOMER':
       return '/customer/bookings';
     case 'DRIVER':
@@ -20,7 +23,7 @@ export function getRoleHomePath(role?: string | null) {
     case 'WAREHOUSE_PARTNER':
       return '/warehouse/dashboard';
     case 'AGENCY_STAFF':
-      return '/staff/support';
+      return normalizedStaffScope === 'AGENCY' ? '/agency/operations' : '/staff/operations';
     case 'CORPORATE':
       return '/corporate/bookings';
     default:

@@ -77,7 +77,7 @@ export default function RegisterPageClient({
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace(getRoleHomePath(user.role));
+      router.replace(getRoleHomePath(user.role, user.staffScope));
     }
   }, [loading, router, user]);
 

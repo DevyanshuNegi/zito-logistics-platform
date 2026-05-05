@@ -27,6 +27,11 @@ import {
   parseCoordinate,
   type GeocodeLookup,
 } from '@/lib/geo';
+import {
+  KENYA_COUNTIES,
+  LOCATION_RATE_TYPES,
+  SUPPORTED_PRICING_COUNTRIES,
+} from '@/lib/location-pricing';
 import { SERVICE_TYPES, VEHICLE_TYPES } from '@/lib/phase-one';
 import { useAppPreferences } from '@/contexts/AppPreferencesContext';
 
@@ -40,6 +45,11 @@ type RateQuoteResponse = {
   currency: string;
   totalPrice: number;
   effectiveDistance: number;
+  pricingScope?: {
+    countryCode: string;
+    county: string | null;
+    localityType: string;
+  };
   baseCurrencyQuote?: {
     currency: string;
     totalPrice: number;
@@ -53,6 +63,15 @@ const serviceCards = [
     description: 'Dedicated full-load and shifting jobs.',
     icon: Truck,
     suggestedVehicleType: 'TRUCK_7T',
+    allowedVehicleTypes: [
+      'TRUCK_3T',
+      'TRUCK_7T',
+      'TRUCK_14T',
+      'TRUCK_22T',
+      'CONTAINER_20FT',
+      'CONTAINER_40FT',
+      'REFRIGERATED',
+    ],
   },
   {
     value: 'PTL',
@@ -60,6 +79,7 @@ const serviceCards = [
     description: 'Shared-capacity freight for cartons and stock.',
     icon: Boxes,
     suggestedVehicleType: 'VAN',
+    allowedVehicleTypes: ['VAN', 'TRUCK_3T', 'TRUCK_7T'],
   },
   {
     value: 'COURIER',
@@ -67,6 +87,7 @@ const serviceCards = [
     description: 'Quick city movement for lightweight goods.',
     icon: Bike,
     suggestedVehicleType: 'MOTORBIKE',
+    allowedVehicleTypes: ['MOTORBIKE', 'VAN'],
   },
   {
     value: 'WAREHOUSE',
@@ -74,6 +95,15 @@ const serviceCards = [
     description: 'Inbound, storage, and dispatch support.',
     icon: Warehouse,
     suggestedVehicleType: 'VAN',
+    allowedVehicleTypes: ['VAN', 'TRUCK_3T', 'TRUCK_7T', 'REFRIGERATED'],
+  },
+  {
+    value: 'RAIL',
+    label: 'Rail / SGR',
+    description: 'Mombasa port and inland container rail movements.',
+    icon: Package,
+    suggestedVehicleType: 'CONTAINER_20FT',
+    allowedVehicleTypes: ['CONTAINER_20FT', 'CONTAINER_40FT'],
   },
 ] as const;
 
@@ -113,6 +143,18 @@ const vehicleMeta: Record<string, { label: string; capacity: string; note: strin
     capacity: 'Long-haul and industrial freight',
     note: 'For high-volume dedicated movement.',
     eta: '35 min ETA',
+  },
+  CONTAINER_20FT: {
+    label: '20ft Container Truck',
+    capacity: 'Port drayage and containerized freight',
+    note: 'Best for container pickup, depot transfer, and inland port legs.',
+    eta: 'Container dispatch',
+  },
+  CONTAINER_40FT: {
+    label: '40ft Container Truck',
+    capacity: 'High-volume container and export-import movement',
+    note: 'Supports large container haulage and corridor logistics.',
+    eta: 'Heavy container dispatch',
   },
   REFRIGERATED: {
     label: 'Refrigerated',
@@ -190,6 +232,9 @@ export default function NewBookingPage() {
   const [dropLng, setDropLng] = useState('');
   const [dropContactName, setDropContactName] = useState('');
   const [dropContactPhone, setDropContactPhone] = useState('');
+  const [pricingCountryCode, setPricingCountryCode] = useState('KE');
+  const [pricingCounty, setPricingCounty] = useState('');
+  const [pricingAreaType, setPricingAreaType] = useState('ANY');
   const [isScheduled, setIsScheduled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -244,7 +289,14 @@ export default function NewBookingPage() {
     () => serviceCards.find((item) => item.value === serviceType) ?? serviceCards[0],
     [serviceType],
   );
+  const availableVehicleTypes = selectedService.allowedVehicleTypes;
   const selectedVehicle = vehicleMeta[vehicleType] ?? vehicleMeta.VAN;
+
+  useEffect(() => {
+    if (!(availableVehicleTypes as readonly string[]).includes(vehicleType)) {
+      setVehicleType(selectedService.suggestedVehicleType);
+    }
+  }, [availableVehicleTypes, selectedService, vehicleType]);
 
   useEffect(() => {
     if (step !== 3 || estimatedDistance == null) {
@@ -264,6 +316,9 @@ export default function NewBookingPage() {
           {
             serviceType,
             vehicleType,
+            countryCode: pricingCountryCode,
+            county: pricingCountryCode === 'KE' && pricingCounty ? pricingCounty : undefined,
+            localityType: pricingAreaType,
             distanceKm: estimatedDistance,
             stopCount: 0,
             currency,
@@ -281,7 +336,16 @@ export default function NewBookingPage() {
         setQuoteLoading(false);
       }
     })();
-  }, [currency, estimatedDistance, serviceType, step, vehicleType]);
+  }, [
+    currency,
+    estimatedDistance,
+    pricingAreaType,
+    pricingCountryCode,
+    pricingCounty,
+    serviceType,
+    step,
+    vehicleType,
+  ]);
 
   function applyGeocode(kind: StopKind, result: GeocodeLookup) {
     if (kind === 'pickup') {
@@ -493,6 +557,16 @@ export default function NewBookingPage() {
                       ? `${estimatedDistance} km`
                       : 'Route needed'}
               </p>
+              {quote?.pricingScope ? (
+                <p className="mt-1 text-[10px] font-medium text-cyan-100/72">
+                  {quote.pricingScope.county ?? quote.pricingScope.countryCode} /{' '}
+                  {quote.pricingScope.localityType === 'ANY'
+                    ? 'Any area'
+                    : quote.pricingScope.localityType === 'TOWN'
+                      ? 'Town'
+                      : 'Rural'}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -519,6 +593,70 @@ export default function NewBookingPage() {
                 {dropAddress || 'Add drop stop'}
               </p>
             </div>
+          </div>
+
+          <div className="mt-4 rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
+              Pricing scope
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[#475569]">Country</span>
+                <select
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  value={pricingCountryCode}
+                  onChange={(event) => {
+                    const nextCountry = event.target.value;
+                    setPricingCountryCode(nextCountry);
+                    if (nextCountry !== 'KE') {
+                      setPricingCounty('');
+                      setPricingAreaType('ANY');
+                    }
+                  }}
+                >
+                  {SUPPORTED_PRICING_COUNTRIES.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[#475569]">Kenya county</span>
+                <select
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100 disabled:text-slate-400"
+                  disabled={pricingCountryCode !== 'KE'}
+                  value={pricingCounty}
+                  onChange={(event) => setPricingCounty(event.target.value)}
+                >
+                  <option value="">All Kenya counties</option>
+                  {KENYA_COUNTIES.map((county) => (
+                    <option key={county} value={county}>
+                      {county}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[#475569]">Area type</span>
+                <select
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  value={pricingAreaType}
+                  onChange={(event) => setPricingAreaType(event.target.value)}
+                >
+                  {LOCATION_RATE_TYPES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="mt-3 text-xs text-[#64748b]">
+              Kenya quotes can use county pricing and separate town versus rural rates before surge and tax are applied.
+            </p>
           </div>
         </div>
       </section>
@@ -697,13 +835,13 @@ export default function NewBookingPage() {
             </p>
             <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Instant pricing selection</h2>
 
-            <div className="mt-3 space-y-2">
-              {VEHICLE_TYPES.map((option) => {
-                const meta = vehicleMeta[option];
-                const active = option === vehicleType;
-                const Icon =
-                  option === 'MOTORBIKE'
-                    ? Bike
+              <div className="mt-3 space-y-2">
+                {availableVehicleTypes.map((option) => {
+                  const meta = vehicleMeta[option];
+                  const active = option === vehicleType;
+                  const Icon =
+                    option === 'MOTORBIKE'
+                      ? Bike
                     : option === 'VAN'
                       ? Package
                       : option === 'REFRIGERATED'

@@ -9,7 +9,10 @@ import {
   UseGuards,
   Req,
   ParseUUIDPipe,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { VehicleStatus } from '@prisma/client';
 import { FleetService } from './fleet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -17,6 +20,16 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BulkOnboardFleetDto } from './dto/bulk-onboard.dto';
 import { CreateFuelLogDto, FuelLogQueryDto } from './fuel/dto/fuel.dto';
+import { UploadVehiclePhotoDto } from './dto/upload-vehicle-photo.dto';
+import { ReviewVehiclePhotoDto } from './dto/review-vehicle-photo.dto';
+import { ReviewVehicleVerificationDto } from './dto/review-vehicle-verification.dto';
+
+interface MulterFile {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('fleet')
@@ -43,6 +56,39 @@ export class FleetController {
     @Query('driverId') driverId?: string,
   ) {
     return this.fleetService.findAll({ status, driverId }, req.user);
+  }
+
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Post(':id/verification-photos')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadVerificationPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UploadVehiclePhotoDto,
+    @UploadedFile() file: MulterFile,
+    @Req() req: any,
+  ) {
+    return this.fleetService.uploadVerificationPhoto(id, dto, file, req.user);
+  }
+
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Patch(':id/verification-photos/:photoId/review')
+  reviewVerificationPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('photoId', ParseUUIDPipe) photoId: string,
+    @Body() dto: ReviewVehiclePhotoDto,
+    @Req() req: any,
+  ) {
+    return this.fleetService.reviewVerificationPhoto(id, photoId, dto, req.user.id);
+  }
+
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Patch(':id/verification')
+  reviewVehicleVerification(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewVehicleVerificationDto,
+    @Req() req: any,
+  ) {
+    return this.fleetService.reviewVehicleVerification(id, dto, req.user.id);
   }
 
   @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'AGENT', 'TRANSPORTER')

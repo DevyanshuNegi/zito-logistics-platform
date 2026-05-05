@@ -8,7 +8,7 @@ import { getRoleHomePath } from '@/lib/roles';
 export default function UnauthorizedPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const homePath = getRoleHomePath(user?.role);
+  const homePath = getRoleHomePath(user?.role, user?.staffScope);
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">

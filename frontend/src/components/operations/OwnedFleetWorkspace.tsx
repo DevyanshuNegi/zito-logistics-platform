@@ -8,6 +8,8 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { VehicleLocationPanel } from '@/components/operations/VehicleLocationPanel';
+import { VehicleVerificationPanel } from '@/components/operations/VehicleVerificationPanel';
 import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
 import { VEHICLE_TYPES } from '@/lib/phase-one';
@@ -20,9 +22,17 @@ type Vehicle = {
   year?: number | null;
   type: string;
   status: string;
+  verificationStatus?: string | null;
   capacityKg: number;
   capacityM3?: number | null;
+  deviceGpsLat?: number | null;
+  deviceGpsLng?: number | null;
+  lastGpsAt?: string | null;
   driver?: {
+    isOnline?: boolean | null;
+    currentLatitude?: number | null;
+    currentLongitude?: number | null;
+    lastLocationAt?: string | null;
     user?: {
       fullName?: string | null;
     } | null;
@@ -31,6 +41,14 @@ type Vehicle = {
     bookings?: number;
     breakdowns?: number;
   } | null;
+  verificationPhotos?: Array<{
+    id: string;
+    category: string;
+    status?: string | null;
+    reviewNote?: string | null;
+    rejectionReason?: string | null;
+    fileUrl?: string | null;
+  }> | null;
 };
 
 type OwnedFleetWorkspaceProps = {
@@ -201,6 +219,13 @@ export function OwnedFleetWorkspace({
         {platformFeeCopy}
       </Alert>
 
+      <VehicleLocationPanel
+        description="Pick a vehicle number to inspect where your fleet unit is right now, using either onboard GPS or the assigned driver's latest live coordinates."
+        title="Vehicle location"
+        tone={tone}
+        vehicles={vehicles}
+      />
+
       {error ? (
         <Alert title="Owned fleet workspace error" variant="danger">
           {error}
@@ -351,7 +376,12 @@ export function OwnedFleetWorkspace({
               {
                 key: 'status',
                 header: 'Status',
-                render: (vehicle) => formatStatus(vehicle.status),
+                render: (vehicle) => (
+                  <div className={classes.usage}>
+                    <p>Operational: {formatStatus(vehicle.status)}</p>
+                    <p>Verification: {formatStatus(vehicle.verificationStatus ?? 'PENDING_REVIEW')}</p>
+                  </div>
+                ),
               },
               {
                 key: 'actions',
@@ -370,6 +400,17 @@ export function OwnedFleetWorkspace({
           />
         )}
       </SurfaceCard>
+
+      <VehicleVerificationPanel
+        description="Truck and container units must complete the compulsory dashboard, front, right, left, and back photo package before internal approval."
+        onChange={async () => {
+          await loadFleet();
+          await onChange?.();
+        }}
+        title="Vehicle verification package"
+        tone={tone}
+        vehicles={vehicles}
+      />
     </div>
   );
 }

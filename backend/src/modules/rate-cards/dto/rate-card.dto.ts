@@ -6,6 +6,8 @@ import {
   IsIn,
   IsNumber,
   IsOptional,
+  IsString,
+  MaxLength,
   Min,
 } from 'class-validator';
 import {
@@ -19,6 +21,19 @@ export class CreateRateCardDto {
 
   @IsEnum(ServiceType)
   serviceType: ServiceType;
+
+  @IsOptional()
+  @IsIn(SUPPORTED_COUNTRY_CODES)
+  countryCode?: (typeof SUPPORTED_COUNTRY_CODES)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  county?: string;
+
+  @IsOptional()
+  @IsIn(['ANY', 'TOWN', 'RURAL'])
+  localityType?: 'ANY' | 'TOWN' | 'RURAL';
 
   @Type(() => Number)
   @IsNumber()
@@ -54,6 +69,19 @@ export class CreateRateCardDto {
 }
 
 export class UpdateRateCardDto {
+  @IsOptional()
+  @IsIn(SUPPORTED_COUNTRY_CODES)
+  countryCode?: (typeof SUPPORTED_COUNTRY_CODES)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  county?: string;
+
+  @IsOptional()
+  @IsIn(['ANY', 'TOWN', 'RURAL'])
+  localityType?: 'ANY' | 'TOWN' | 'RURAL';
+
   @Type(() => Number)
   @IsOptional()
   @IsNumber()
@@ -113,4 +141,13 @@ export class CalculateRateCardDto {
   @IsOptional()
   @IsIn(SUPPORTED_COUNTRY_CODES)
   countryCode?: (typeof SUPPORTED_COUNTRY_CODES)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  county?: string;
+
+  @IsOptional()
+  @IsIn(['ANY', 'TOWN', 'RURAL'])
+  localityType?: 'ANY' | 'TOWN' | 'RURAL';
 }

@@ -2,6 +2,12 @@ import type { ReactNode } from 'react';
 import { PortalShell } from '@/components/layout/PortalShell';
 
 const navItems = [
+  { href: '/admin', label: 'Dashboard' },
+  { href: '/admin/users', label: 'Users & Teams' },
+  { href: '/admin/verification', label: 'Verification' },
+  { href: '/admin/workforce', label: 'Workforce' },
+  { href: '/admin/courier-companies', label: 'Courier Control' },
+  { href: '/admin/warehouse-partners', label: 'Warehouse Control' },
   { href: '/admin/alerts', label: 'Alerts' },
   { href: '/admin/system-health', label: 'System Health' },
   { href: '/admin/bookings', label: 'Bookings' },
@@ -22,7 +28,19 @@ const navItems = [
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <PortalShell title="Admin Command" allowedRoles={['ADMIN', 'SUPER_ADMIN']} navItems={navItems}>
+    <PortalShell
+      title="Admin"
+      allowedRoles={['ADMIN', 'SUPER_ADMIN']}
+      navItems={navItems}
+      workspaceLabel="Control center"
+      headerEyebrow="Operations console"
+      headerDescription="Live dispatch, controls, and alerts."
+      headerTitleMode="section"
+      showHeaderBadges
+      showSidebarRolePill={false}
+      showSidebarHeading={false}
+      sidebarBrandCompact={false}
+    >
       {children}
     </PortalShell>
   );

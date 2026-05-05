@@ -134,6 +134,7 @@ type MarketplaceDashboardResponse = {
 const PARTNER_TYPES = [
   { value: 'AGENT', label: 'Agent' },
   { value: 'TRANSPORTER', label: 'Transporter' },
+  { value: 'COURIER_COMPANY', label: 'Courier company' },
   { value: 'WAREHOUSE', label: 'Warehouse partner' },
 ] as const;
 
@@ -176,6 +177,7 @@ export default function AdminMarketplacePage() {
   const [dashboard, setDashboard] = useState<MarketplaceDashboardResponse | null>(null);
   const [agentUsers, setAgentUsers] = useState<UserOption[]>([]);
   const [transporterUsers, setTransporterUsers] = useState<UserOption[]>([]);
+  const [courierUsers, setCourierUsers] = useState<UserOption[]>([]);
   const [warehouseUsers, setWarehouseUsers] = useState<UserOption[]>([]);
   const [bookings, setBookings] = useState<BookingOption[]>([]);
   const [partnerForm, setPartnerForm] = useState(EMPTY_PARTNER_FORM);
@@ -191,10 +193,18 @@ export default function AdminMarketplacePage() {
     () =>
       partnerForm.partnerType === 'WAREHOUSE'
         ? warehouseUsers
+        : partnerForm.partnerType === 'COURIER_COMPANY'
+          ? courierUsers
         : partnerForm.partnerType === 'AGENT'
           ? agentUsers
           : transporterUsers,
-    [agentUsers, partnerForm.partnerType, transporterUsers, warehouseUsers],
+    [
+      agentUsers,
+      courierUsers,
+      partnerForm.partnerType,
+      transporterUsers,
+      warehouseUsers,
+    ],
   );
 
   const marketplaceBookings = useMemo(
@@ -210,11 +220,19 @@ export default function AdminMarketplacePage() {
     setError(null);
 
     try {
-      const [dashboardResponse, agentResponse, transporterResponse, warehouseResponse, bookingsResponse] =
+      const [
+        dashboardResponse,
+        agentResponse,
+        transporterResponse,
+        courierResponse,
+        warehouseResponse,
+        bookingsResponse,
+      ] =
         await Promise.all([
           api.get<MarketplaceDashboardResponse>('/marketplace/dashboard'),
           api.get<UsersResponse>('/users?role=AGENT&limit=100'),
           api.get<UsersResponse>('/users?role=TRANSPORTER&limit=100'),
+          api.get<UsersResponse>('/users?role=COURIER_COMPANY&limit=100'),
           api.get<UsersResponse>('/users?role=WAREHOUSE_PARTNER&limit=100'),
           api.get<BookingsResponse>('/admin/bookings?limit=100'),
         ]);
@@ -222,6 +240,7 @@ export default function AdminMarketplacePage() {
       setDashboard(dashboardResponse);
       setAgentUsers(agentResponse.data);
       setTransporterUsers(transporterResponse.data);
+      setCourierUsers(courierResponse.data);
       setWarehouseUsers(warehouseResponse.data);
       setBookings(bookingsResponse.bookings);
     } catch (caught) {
@@ -270,6 +289,8 @@ export default function AdminMarketplacePage() {
     try {
       if (partnerForm.partnerType === 'WAREHOUSE') {
         await api.post('/marketplace/partners/warehouse', payload);
+      } else if (partnerForm.partnerType === 'COURIER_COMPANY') {
+        await api.post('/marketplace/partners/courier-company', payload);
       } else if (partnerForm.partnerType === 'AGENT') {
         await api.post('/marketplace/partners/agent', payload);
       } else {
@@ -387,7 +408,7 @@ export default function AdminMarketplacePage() {
         <StatCard
           label="Open Opportunities"
           value={String(dashboard?.summary.openOpportunities ?? 0)}
-          helper="Bookings currently exposed to agent, transporter, or warehouse partners."
+          helper="Bookings currently exposed to agent, transporter, courier-company, or warehouse partners."
           tone="info"
         />
         <StatCard
@@ -412,7 +433,7 @@ export default function AdminMarketplacePage() {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SurfaceCard
           title="Partner onboarding"
-          description="Phase 5.3 onboarding, approval, and service-area registration for third-party agents, transporters, and warehouse partners."
+          description="Phase 5.3 onboarding, approval, and service-area registration for third-party agents, transporters, courier companies, and warehouse partners."
         >
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handlePartnerSubmit}>
             <label className="block space-y-2">
@@ -654,7 +675,7 @@ export default function AdminMarketplacePage() {
 
       <SurfaceCard
         title="Partner register"
-        description="Approve, reject, suspend, and review service coverage plus performance for marketplace supply."
+        description="Approve, reject, suspend, and review service coverage plus performance for marketplace supply, including courier companies."
         actions={
           <Button disabled={monitoring} variant="secondary" onClick={() => void runMonitoring()}>
             {monitoring ? 'Reviewing...' : 'Run performance review'}
@@ -755,7 +776,7 @@ export default function AdminMarketplacePage() {
 
       <SurfaceCard
         title="Marketplace opportunity board"
-        description="Published bookings, matching supply, bid activity, and awarded commission outcomes."
+        description="Published bookings, matching supply, courier and transporter bidding, and awarded commission outcomes."
       >
         <Table
           emptyMessage="No marketplace opportunities have been published yet."

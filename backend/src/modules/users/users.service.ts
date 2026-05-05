@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserRole, AccountStatus, Prisma } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import {
   DEFAULT_CURRENCY,
   DEFAULT_LANGUAGE,
@@ -18,6 +19,7 @@ import {
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UploadKycDto } from './dto/upload-kyc.dto';
 import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
+import { CreateInternalUserDto } from './dto/create-internal-user.dto';
 
 // PRD §4 — Inline Multer type (avoids @types/multer dependency)
 interface MulterFile {
@@ -36,12 +38,36 @@ interface FindAllOptions {
   agencyId?: string;
 }
 
+const INTERNAL_PROVISIONABLE_ROLES = new Set<UserRole>([
+  UserRole.CUSTOMER,
+  UserRole.CORPORATE,
+  UserRole.DRIVER,
+  UserRole.AGENT,
+  UserRole.TRANSPORTER,
+  UserRole.COURIER_COMPANY,
+  UserRole.WAREHOUSE_PARTNER,
+  UserRole.AGENCY_STAFF,
+]);
+
+const ORGANIZATION_ACCOUNT_ROLES = new Set<UserRole>([
+  UserRole.CORPORATE,
+  UserRole.AGENT,
+  UserRole.TRANSPORTER,
+  UserRole.COURIER_COMPANY,
+  UserRole.WAREHOUSE_PARTNER,
+]);
+
+const STAFF_DEPARTMENT_OPTIONS = new Set(['OPERATIONS', 'CUSTOMER_CARE', 'ACCOUNTS']);
+const STAFF_SCOPE_OPTIONS = new Set(['HEAD_OFFICE', 'AGENCY']);
+const HEAD_OFFICE_AGENCY_NAME = 'Zito Head Office';
+
 // PRD §4 — KYC document types required per role
 export const KYC_REQUIRED_DOCS: Record<string, string[]> = {
   CUSTOMER:          ['NATIONAL_ID'],
   DRIVER:            ['NATIONAL_ID', 'DRIVERS_LICENSE'],
   AGENT:             ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
   TRANSPORTER:       ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
+  COURIER_COMPANY:   ['NATIONAL_ID', 'BUSINESS_REG'],
   CORPORATE:         ['NATIONAL_ID', 'BUSINESS_REG'],
   WAREHOUSE_PARTNER: ['NATIONAL_ID', 'BUSINESS_REG'],
 };
@@ -50,6 +76,25 @@ export const KYC_REQUIRED_DOCS: Record<string, string[]> = {
 const EXPIRY_ALERT_DAYS = 15;
 const MAX_FILE_SIZE     = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+const VERIFICATION_TARGET_ROLES: UserRole[] = [
+  UserRole.CUSTOMER,
+  UserRole.CORPORATE,
+  UserRole.DRIVER,
+  UserRole.AGENT,
+  UserRole.TRANSPORTER,
+  UserRole.COURIER_COMPANY,
+  UserRole.WAREHOUSE_PARTNER,
+];
+const TRUCK_VERIFICATION_TYPES = new Set([
+  'TRUCK_3T',
+  'TRUCK_7T',
+  'TRUCK_14T',
+  'TRUCK_22T',
+  'CONTAINER_20FT',
+  'CONTAINER_40FT',
+  'REFRIGERATED',
+]);
+const TRUCK_PHOTO_CATEGORIES = ['DASHBOARD', 'FRONT', 'RIGHT', 'LEFT', 'BACK'] as const;
 
 @Injectable()
 export class UsersService {
@@ -57,6 +102,35 @@ export class UsersService {
 
   private preferencesKey(userId: string) {
     return `user-preferences:${userId}`;
+  }
+
+  private normalizeStaffScope(scope?: string | null) {
+    const normalized = scope?.trim().toUpperCase() ?? '';
+    if (STAFF_SCOPE_OPTIONS.has(normalized)) {
+      return normalized;
+    }
+    return 'AGENCY';
+  }
+
+  private async ensureHeadOfficeAgency() {
+    const existing = await this.prisma.agency.findFirst({
+      where: { name: HEAD_OFFICE_AGENCY_NAME },
+      select: { id: true },
+    });
+    if (existing) {
+      return existing.id;
+    }
+
+    const created = await this.prisma.agency.create({
+      data: {
+        name: HEAD_OFFICE_AGENCY_NAME,
+        status: 'ACTIVE',
+        address: 'Head Office',
+      },
+      select: { id: true },
+    });
+
+    return created.id;
   }
 
   private asPreferencesRecord(value: Prisma.JsonValue | null | undefined) {
@@ -81,6 +155,100 @@ export class UsersService {
           ? record.updatedAt
           : new Date().toISOString(),
     };
+  }
+
+  private getRequiredVehiclePhotoCategories(vehicleType?: string | null) {
+    if (!vehicleType) {
+      return [] as string[];
+    }
+
+    if (TRUCK_VERIFICATION_TYPES.has(vehicleType)) {
+      return [...TRUCK_PHOTO_CATEGORIES];
+    }
+
+    return [] as string[];
+  }
+
+  private isReviewPending(status?: string | null) {
+    const normalized = String(status ?? '').trim().toUpperCase();
+    return normalized === 'PENDING' || normalized === 'PENDING_REVIEW';
+  }
+
+  private getRequiredKycDocuments(role?: UserRole | string | null) {
+    if (!role) {
+      return ['NATIONAL_ID'];
+    }
+
+    return KYC_REQUIRED_DOCS[String(role)] ?? ['NATIONAL_ID'];
+  }
+
+  private deriveReviewDrivenUserStatus(input: {
+    currentStatus: AccountStatus;
+    requiredDocuments: string[];
+    documents: Array<{ type: string; status: string | null }>;
+  }) {
+    const approvedTypes = new Set(
+      input.documents
+        .filter((document) => String(document.status ?? '').toUpperCase() === 'APPROVED')
+        .map((document) => document.type),
+    );
+    const hasRejectedDocument = input.documents.some(
+      (document) => String(document.status ?? '').toUpperCase() === 'REJECTED',
+    );
+
+    if (input.currentStatus === AccountStatus.ACTIVE || input.currentStatus === AccountStatus.SUSPENDED) {
+      return input.currentStatus;
+    }
+
+    if (
+      input.requiredDocuments.length > 0 &&
+      input.requiredDocuments.every((documentType) => approvedTypes.has(documentType))
+    ) {
+      return AccountStatus.VERIFIED;
+    }
+
+    if (hasRejectedDocument) {
+      return AccountStatus.REJECTED;
+    }
+
+    return AccountStatus.PENDING;
+  }
+
+  private async refreshUserVerificationStatus(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        status: true,
+        kycDocuments: {
+          select: {
+            id: true,
+            type: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const nextStatus = this.deriveReviewDrivenUserStatus({
+      currentStatus: user.status,
+      requiredDocuments: this.getRequiredKycDocuments(user.role),
+      documents: user.kycDocuments,
+    });
+
+    if (nextStatus !== user.status) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { status: nextStatus },
+      });
+    }
+
+    return nextStatus;
   }
 
   // ─── FIND ONE ─────────────────────────────────────────────────────────────
@@ -115,7 +283,7 @@ export class UsersService {
     if (status)   where.status   = status;
     if (agencyId) where.agencyId = agencyId;
 
-    const [data, total] = await Promise.all([
+    const [users, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
         skip,
@@ -124,6 +292,7 @@ export class UsersService {
         select: {
           id:        true,
           fullName:  true,
+          companyName: true,
           email:     true,
           phone:     true,
           role:      true,
@@ -135,8 +304,44 @@ export class UsersService {
       this.prisma.user.count({ where }),
     ]);
 
+    const userIds = users.map((user) => user.id);
+    const staffProfiles = userIds.length
+      ? await this.prisma.staff.findMany({
+          where: {
+            userId: { in: userIds },
+            isActive: true,
+          },
+          select: {
+            userId: true,
+            role: true,
+            agency: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        })
+      : [];
+
+    const staffByUserId = new Map(
+      staffProfiles.map((staff) => [
+        staff.userId,
+        {
+          staffDepartment: staff.role,
+          staffAgencyName: staff.agency?.name ?? null,
+          staffScope:
+            staff.agency?.name === HEAD_OFFICE_AGENCY_NAME ? 'HEAD_OFFICE' : 'AGENCY',
+        },
+      ]),
+    );
+
     return {
-      data,
+      data: users.map((user) => ({
+        ...user,
+        staffDepartment: staffByUserId.get(user.id)?.staffDepartment ?? null,
+        staffAgencyName: staffByUserId.get(user.id)?.staffAgencyName ?? null,
+        staffScope: staffByUserId.get(user.id)?.staffScope ?? null,
+      })),
       meta: { total, page, limit, lastPage: Math.ceil(total / limit) },
     };
   }
@@ -154,6 +359,127 @@ export class UsersService {
         ...(dto.phone    && { phone: dto.phone.trim() }),
       },
     });
+  }
+
+  async createInternalUser(
+    dto: CreateInternalUserDto,
+    actorId: string,
+    actorAgencyId?: string | null,
+  ) {
+    if (!INTERNAL_PROVISIONABLE_ROLES.has(dto.role)) {
+      throw new BadRequestException('This role cannot be created from the internal user manager.');
+    }
+
+    if (ORGANIZATION_ACCOUNT_ROLES.has(dto.role) && !dto.companyName?.trim()) {
+      throw new BadRequestException('Company name is required for this account type.');
+    }
+
+    let effectiveAgencyId = dto.agencyId ?? actorAgencyId ?? undefined;
+    let normalizedStaffDepartment: string | null = null;
+    let normalizedStaffScope: string | null = null;
+    if (dto.role === UserRole.AGENCY_STAFF) {
+      normalizedStaffDepartment = dto.staffRole?.trim().toUpperCase() ?? '';
+      if (!STAFF_DEPARTMENT_OPTIONS.has(normalizedStaffDepartment)) {
+        throw new BadRequestException('Staff department is required for internal staff accounts.');
+      }
+
+      normalizedStaffScope = this.normalizeStaffScope(dto.staffScope);
+      if (normalizedStaffScope === 'HEAD_OFFICE') {
+        effectiveAgencyId = await this.ensureHeadOfficeAgency();
+      } else if (!effectiveAgencyId) {
+        throw new BadRequestException('Agency is required when creating an agency staff account.');
+      }
+    }
+
+    const normalizedEmail = dto.email?.trim().toLowerCase() || undefined;
+    const normalizedPhone = dto.phone.trim();
+
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          normalizedEmail ? { email: normalizedEmail } : undefined,
+          { phone: normalizedPhone },
+        ].filter(Boolean) as Prisma.UserWhereInput[],
+      },
+      select: { id: true },
+    });
+    if (existingUser) {
+      throw new BadRequestException('A user with this email or phone already exists.');
+    }
+
+    if (effectiveAgencyId) {
+      const agency = await this.prisma.agency.findUnique({
+        where: { id: effectiveAgencyId },
+        select: { id: true },
+      });
+      if (!agency) {
+        throw new NotFoundException('Selected agency was not found.');
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const targetStatus = dto.status ?? AccountStatus.ACTIVE;
+
+    const created = await this.prisma.user.create({
+      data: {
+        fullName: dto.fullName.trim(),
+        companyName: dto.companyName?.trim() || null,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        password: passwordHash,
+        role: dto.role,
+        status: targetStatus,
+        agencyId: dto.role === UserRole.AGENCY_STAFF ? effectiveAgencyId : dto.agencyId ?? null,
+        driverProfile:
+          dto.role === UserRole.DRIVER
+            ? {
+                create: {},
+              }
+            : undefined,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        companyName: true,
+        email: true,
+        phone: true,
+        role: true,
+        status: true,
+        agencyId: true,
+      },
+    });
+
+    if (dto.role === UserRole.AGENCY_STAFF && effectiveAgencyId) {
+      await this.prisma.staff.create({
+        data: {
+          userId: created.id,
+          agencyId: effectiveAgencyId,
+          role: normalizedStaffDepartment!,
+          isActive: true,
+        },
+      });
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actorId,
+        action: 'INTERNAL_USER_CREATED',
+        entityType: 'USER',
+        entityId: created.id,
+        details: {
+          role: created.role,
+          status: created.status,
+          agencyId: created.agencyId,
+          staffDepartment: dto.role === UserRole.AGENCY_STAFF ? normalizedStaffDepartment : null,
+          staffScope: dto.role === UserRole.AGENCY_STAFF ? normalizedStaffScope : null,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return {
+      message: 'User provisioned successfully.',
+      data: created,
+    };
   }
 
   async getPreferences(userId: string) {
@@ -242,7 +568,7 @@ export class UsersService {
 
   // ─── KYC ──────────────────────────────────────────────────────────────────
 
-  // PRD §4 — Upload KYC document; sets status to VERIFIED after upload
+  // PRD §4 — Upload KYC document and queue it for internal review
   // Schema field: `type` (not documentType)
   async uploadKycDocument(userId: string, file: MulterFile, dto: UploadKycDto) {
     await this.findOne(userId);
@@ -254,22 +580,29 @@ export class UsersService {
       throw new BadRequestException('File too large. Maximum size is 5MB');
     }
 
-    const fileUrl = `kyc/${userId}/${dto.documentType}/${Date.now()}_${file.originalname}`;
+    const safeName = file.originalname.replace(/\s+/g, '_');
+    const fileUrl = `kyc/${userId}/${dto.documentType}/${Date.now()}_${safeName}`;
 
     const doc = await this.prisma.kycDocument.create({
       data: {
         userId,
-        type:       dto.documentType,   // schema field is `type`
+        type: dto.documentType,
         fileUrl,
+        documentNumber: dto.documentNumber?.trim() || null,
+        issuingAuthority: dto.issuingAuthority?.trim() || null,
+        countryOfIssue: dto.countryOfIssue?.trim().toUpperCase() || null,
+        documentSide: dto.documentSide?.trim().toUpperCase() || null,
+        issueDate: dto.issueDate ? new Date(dto.issueDate) : null,
         expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+        reviewNote: dto.notes?.trim() || null,
         status:     'PENDING',
       },
     });
 
-    // PRD §3 — Set user to VERIFIED after first document upload
+    // PRD §3 — New or replacement uploads return the account to the review queue.
     await this.prisma.user.update({
       where: { id: userId },
-      data:  { status: AccountStatus.VERIFIED },
+      data:  { status: AccountStatus.PENDING },
     });
 
     return doc;
@@ -284,11 +617,13 @@ export class UsersService {
     });
   }
 
-  // PRD §4 — Admin approve or reject a KYC document
+  // PRD §4 — Admin review a KYC document and refresh the user's compliance status
   async verifyKycDocument(
     userId:     string,
     documentId: string,
-    status:     'APPROVED' | 'REJECTED',
+    status:     'APPROVED' | 'REJECTED' | 'RESUBMISSION_REQUIRED',
+    reviewerId: string,
+    note?:      string,
     reason?:    string,
   ) {
     const doc = await this.prisma.kycDocument.findFirst({
@@ -296,32 +631,183 @@ export class UsersService {
     });
     if (!doc) throw new NotFoundException('KYC document not found');
 
-    // Schema has: status, verifiedAt, verifiedBy — no rejectionReason field
     const updated = await this.prisma.kycDocument.update({
       where: { id: documentId },
       data: {
         status,
-        verifiedAt: status === 'APPROVED' ? new Date() : null,
-        // verifiedBy: set to reviewer ID if needed — pass via params
+        verifiedAt: new Date(),
+        verifiedBy: reviewerId,
+        reviewNote: note?.trim() || null,
+        rejectionReason:
+          status === 'APPROVED' ? null : reason?.trim() || 'Review feedback required',
       },
     });
 
-    // PRD §4 — If all required docs approved → activate account
-    if (status === 'APPROVED') {
-      const user        = await this.prisma.user.findUnique({ where: { id: userId } });
-      const requiredDocs = KYC_REQUIRED_DOCS[user?.role ?? ''] ?? ['NATIONAL_ID'];
-      const approvedDocs = await this.prisma.kycDocument.findMany({
-        where:  { userId, status: 'APPROVED' },
-        select: { type: true },               // schema field is `type`
-      });
-      const approvedTypes = approvedDocs.map((d) => d.type);
-      const allApproved   = requiredDocs.every((r) => approvedTypes.includes(r));
-      if (allApproved) {
-        await this.setStatus(userId, AccountStatus.ACTIVE);
-      }
-    }
+    const nextStatus = await this.refreshUserVerificationStatus(userId);
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: reviewerId,
+        action: 'KYC_DOCUMENT_REVIEWED',
+        entityType: 'KYC_DOCUMENT',
+        entityId: documentId,
+        details: {
+          subjectUserId: userId,
+          status,
+          note: note?.trim() || null,
+          reason: reason?.trim() || null,
+          nextAccountStatus: nextStatus,
+        } as Prisma.InputJsonValue,
+      },
+    });
 
     return updated;
+  }
+
+  async getVerificationDashboard() {
+    const [users, vehicles] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          role: { in: VERIFICATION_TARGET_ROLES },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          fullName: true,
+          companyName: true,
+          email: true,
+          phone: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          kycDocuments: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              type: true,
+              status: true,
+              fileUrl: true,
+              documentNumber: true,
+              documentSide: true,
+              expiryDate: true,
+              reviewNote: true,
+              rejectionReason: true,
+              verifiedAt: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      }),
+      this.prisma.vehicle.findMany({
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          plateNumber: true,
+          type: true,
+          status: true,
+          verificationStatus: true,
+          verificationReviewedAt: true,
+          verificationReviewedBy: true,
+          verificationNote: true,
+          rejectionReason: true,
+          createdAt: true,
+          ownerUser: {
+            select: {
+              id: true,
+              fullName: true,
+              companyName: true,
+              role: true,
+              phone: true,
+            },
+          },
+          driver: {
+            select: {
+              id: true,
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  phone: true,
+                },
+              },
+            },
+          },
+          verificationPhotos: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              category: true,
+              fileUrl: true,
+              mimeType: true,
+              status: true,
+              capturedAt: true,
+              reviewedAt: true,
+              reviewedBy: true,
+              reviewNote: true,
+              rejectionReason: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const formattedUsers = users.map((user) => {
+      const requiredDocuments = this.getRequiredKycDocuments(user.role);
+      const approvedTypes = new Set(
+        user.kycDocuments
+          .filter((document) => String(document.status ?? '').toUpperCase() === 'APPROVED')
+          .map((document) => document.type),
+      );
+      const pendingDocuments = user.kycDocuments.filter((document) =>
+        this.isReviewPending(document.status),
+      );
+
+      return {
+        ...user,
+        requiredDocuments,
+        missingDocuments: requiredDocuments.filter((documentType) => !approvedTypes.has(documentType)),
+        pendingDocumentsCount: pendingDocuments.length,
+      };
+    });
+
+    const formattedVehicles = vehicles.map((vehicle) => {
+      const requiredPhotoCategories = this.getRequiredVehiclePhotoCategories(vehicle.type);
+      const approvedCategories = new Set(
+        vehicle.verificationPhotos
+          .filter((photo) => String(photo.status ?? '').toUpperCase() === 'APPROVED')
+          .map((photo) => photo.category),
+      );
+
+      return {
+        ...vehicle,
+        requiredPhotoCategories,
+        missingPhotoCategories: requiredPhotoCategories.filter(
+          (category) => !approvedCategories.has(category),
+        ),
+      };
+    });
+
+    return {
+      summary: {
+        usersAwaitingReview: formattedUsers.filter(
+          (user) => user.pendingDocumentsCount > 0 || user.missingDocuments.length > 0,
+        ).length,
+        rejectedUsers: formattedUsers.filter((user) => user.status === AccountStatus.REJECTED).length,
+        vehiclesAwaitingReview: formattedVehicles.filter(
+          (vehicle) =>
+            this.isReviewPending(vehicle.verificationStatus) ||
+            vehicle.missingPhotoCategories.length > 0,
+        ).length,
+        rejectedVehicles: formattedVehicles.filter(
+          (vehicle) => String(vehicle.verificationStatus).toUpperCase() === 'REJECTED',
+        ).length,
+      },
+      users: formattedUsers,
+      vehicles: formattedVehicles,
+    };
   }
 
   // PRD §4 — Compliance: auto-suspend expired docs (drivers/transporters)

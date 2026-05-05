@@ -30,6 +30,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UploadKycDto } from './dto/upload-kyc.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
+import { CreateInternalUserDto } from './dto/create-internal-user.dto';
+import { ReviewKycDocumentDto } from './dto/review-kyc-document.dto';
 
 interface MulterFile {
   originalname: string;
@@ -111,6 +113,22 @@ export class UsersController {
     });
   }
 
+  @Post('internal')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Admin: provision internal staff, customers, drivers, or transporters' })
+  createInternalUser(@Req() req: any, @Body() dto: CreateInternalUserDto) {
+    return this.usersService.createInternalUser(dto, req.user.id, req.user.agencyId);
+  }
+
+  @Get('verification/dashboard')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Admin: verification control desk for KYC and fleet reviews' })
+  getVerificationDashboard() {
+    return this.usersService.getVerificationDashboard();
+  }
+
   @Get(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -164,14 +182,17 @@ export class UsersController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @ApiOperation({ summary: 'Admin: approve or reject a KYC document (PRD §4)' })
   verifyKycDocument(
+    @Req() req: any,
     @Param('id', ParseUUIDPipe) userId: string,
     @Param('documentId', ParseUUIDPipe) documentId: string,
-    @Body() body: { status: 'APPROVED' | 'REJECTED'; reason?: string },
+    @Body() body: ReviewKycDocumentDto,
   ) {
     return this.usersService.verifyKycDocument(
       userId,
       documentId,
       body.status,
+      req.user.id,
+      body.note,
       body.reason,
     );
   }
