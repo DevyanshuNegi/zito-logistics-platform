@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { SupportService } from './support.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { CreateTicketMessageDto } from './dto/create-ticket-message.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -40,6 +41,11 @@ export class SupportController {
     return this.supportService.findAll();
   }
 
+  @Get(':id')
+  getOne(@Param('id') id: string, @Req() req: any) {
+    return this.supportService.findOne(id, req.user);
+  }
+
   // ASSIGN
   @Patch(':id/assign')
   @UseGuards(RolesGuard)
@@ -58,5 +64,14 @@ export class SupportController {
     @Req() req: any,
   ) {
     return this.supportService.update(id, dto);
+  }
+
+  @Post(':id/messages')
+  addMessage(
+    @Param('id') id: string,
+    @Body() dto: CreateTicketMessageDto,
+    @Req() req: any,
+  ) {
+    return this.supportService.addMessage(id, req.user, dto.message, dto.isInternal);
   }
 }

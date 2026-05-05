@@ -19,6 +19,14 @@ export class CreateTicketDto {
   @IsString()
   bookingId?: string;
 
+  @IsOptional()
+  @IsString()
+  sourceContextType?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceContextId?: string;
+
   @IsEnum(TicketCategory)
   category: TicketCategory;
 
@@ -27,4 +35,12 @@ export class CreateTicketDto {
 
   @IsString()
   message: string;
+
+  @IsOptional()
+  @IsString()
+  autobotSummary?: string;
+
+  @IsOptional()
+  @IsString()
+  autobotArticle?: string;
 }

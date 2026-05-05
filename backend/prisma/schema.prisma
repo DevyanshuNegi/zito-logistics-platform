@@ -202,6 +202,7 @@ model User {
   reviewedLosses    LossReport[]    @relation("Reviewer")
   supportTickets    SupportTicket[] @relation("TicketRaiser")
   assignedTickets   SupportTicket[] @relation("TicketHandler")
+  supportMessages   SupportTicketMessage[] @relation("SupportMessageAuthor")
   auditLogs         AuditLog[]
   wallets           Wallet[]
   notifications     Notification[]
@@ -902,13 +903,32 @@ model SupportTicket {
   description     String
   status          TicketStatus @default(OPEN)
   priority        String       @default("MEDIUM")
+  sourceContextType String?
+  sourceContextId   String?
+  autobotSummary    String?
+  autobotArticle    String?
   resolution      String?
   closedAt        DateTime?
   escalationLevel Int          @default(1)
   escalatedAt     DateTime?
+  messages        SupportTicketMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model SupportTicketMessage {
+  id         String        @id @default(uuid())
+  ticketId    String
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id])
+  authorId    String?
+  author      User?         @relation("SupportMessageAuthor", fields: [authorId], references: [id])
+  actorType   String
+  message     String
+  isInternal  Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
 }
 
 model Notification {

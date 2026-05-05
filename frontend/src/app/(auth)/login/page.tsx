@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -82,6 +82,10 @@ type ErrorData = {
   resendRemaining?: number;
 };
 
+type WebOtpCredential = Credential & {
+  code?: string;
+};
+
 function extractErrorData(error: ApiError): ErrorData {
   const details = error.details as { data?: ErrorData } | undefined;
   return details?.data ?? {};
@@ -108,7 +112,7 @@ function loginFooter(portalKind: PortalKind) {
         </p>
         <p>
           <Link href={portal.guideHref} className="text-cyan-200 hover:text-cyan-100">
-            Need help? Open the internal guide.
+            Need help? Open the internal Help Center.
           </Link>
         </p>
       </div>
@@ -127,7 +131,7 @@ function loginFooter(portalKind: PortalKind) {
         </p>
         <p>
           <Link href={portal.guideHref} className="text-cyan-200 hover:text-cyan-100">
-            Need help? Open the agency guide.
+            Need help? Open the agency Help Center.
           </Link>
         </p>
       </div>
@@ -152,7 +156,7 @@ function loginFooter(portalKind: PortalKind) {
       ) : null}
       <p>
         <Link href={portal.guideHref} className="text-cyan-200 hover:text-cyan-100">
-          Need help? Open the user guide.
+          Need help? Open the Help Center.
         </Link>
       </p>
     </div>
@@ -189,6 +193,8 @@ function LoginPageScreen() {
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [resendRemaining, setResendRemaining] = useState<number | null>(null);
+  const otpInputRef = useRef<HTMLInputElement | null>(null);
+  const autoSubmittedOtpRef = useRef('');
 
   const selectedCountryOption =
     findCountryCodeOptionByIsoCode(countryOptionCode) ??
@@ -382,8 +388,7 @@ function LoginPageScreen() {
     await requestOtp();
   }
 
-  async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitOtpCode(code: string) {
     if (!otpSession) {
       setError('Your login session expired. Request a fresh code.');
       setStep('contact');
@@ -397,7 +402,7 @@ function LoginPageScreen() {
     try {
       const response = await api.post<OtpVerificationResponse>(
         '/auth/verify-otp',
-        { otp },
+        { otp: code },
         {
           headers: { Authorization: `Bearer ${otpSession.tempToken}` },
           token: '',
@@ -457,6 +462,11 @@ function LoginPageScreen() {
     } finally {
       setVerifyingOtp(false);
     }
+  }
+
+  async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await submitOtpCode(otp);
   }
 
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
@@ -524,6 +534,72 @@ function LoginPageScreen() {
     setResendRemaining(null);
     clearTransientState();
   }
+
+  useEffect(() => {
+    if (step !== 'otp') {
+      autoSubmittedOtpRef.current = '';
+      return;
+    }
+
+    otpInputRef.current?.focus();
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== 'otp' || otp.length !== 6 || verifyingOtp) {
+      if (otp.length !== 6) {
+        autoSubmittedOtpRef.current = '';
+      }
+      return;
+    }
+
+    if (autoSubmittedOtpRef.current === otp) {
+      return;
+    }
+
+    autoSubmittedOtpRef.current = otp;
+    void submitOtpCode(otp);
+  }, [otp, step, verifyingOtp]);
+
+  useEffect(() => {
+    if (step !== 'otp' || otpSession?.mode !== 'phone_otp' || typeof window === 'undefined') {
+      return;
+    }
+
+    const navigatorWithCredentials = navigator as Navigator & {
+      credentials?: {
+        get?: (options?: unknown) => Promise<WebOtpCredential | null>;
+      };
+    };
+
+    if (
+      !window.isSecureContext ||
+      typeof AbortController === 'undefined' ||
+      typeof navigatorWithCredentials.credentials?.get !== 'function'
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    void navigatorWithCredentials.credentials
+      .get({
+        otp: { transport: ['sms'] },
+        signal: controller.signal,
+      } as unknown)
+      .then((credential) => {
+        const code = credential?.code?.replace(/\D/g, '').slice(0, 6) ?? '';
+        if (code.length !== 6) {
+          return;
+        }
+
+        setOtp(code);
+        setInfoMessage('OTP captured from SMS. Verifying now.');
+        void submitOtpCode(code);
+      })
+      .catch(() => undefined);
+
+    return () => controller.abort();
+  }, [otpSession?.mode, step]);
 
   const verificationTarget = otpSession?.contact ?? currentContact;
   const maskedVerificationTarget = verificationTarget ? maskContact(verificationTarget) : '';
@@ -685,6 +761,7 @@ function LoginPageScreen() {
 
           <Input
             label="6-digit code"
+            ref={otpInputRef}
             placeholder="123456"
             value={otp}
             onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}

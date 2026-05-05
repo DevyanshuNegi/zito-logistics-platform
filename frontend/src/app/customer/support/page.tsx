@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
+  Bot,
   CircleAlert,
   CreditCard,
   Headset,
@@ -10,6 +12,7 @@ import {
   MessageSquareText,
   PackageSearch,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -17,7 +20,19 @@ import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import { ApiError, api } from '@/lib/api';
 import { formatDateTime, formatStatus } from '@/lib/format';
+import {
+  APP_HELP_CENTERS,
+  getHelpCenterSuggestion,
+} from '@/lib/help-center';
 import { TICKET_CATEGORIES, TICKET_PRIORITIES } from '@/lib/phase-one';
+
+type TicketMessagePreview = {
+  id: string;
+  actorType: string;
+  message: string;
+  createdAt?: string;
+  isInternal?: boolean;
+};
 
 type Ticket = {
   id: string;
@@ -27,6 +42,7 @@ type Ticket = {
   status: string;
   description?: string | null;
   createdAt?: string;
+  messages?: TicketMessagePreview[];
 };
 
 type BookingListResponse = {
@@ -95,6 +111,7 @@ function priorityTone(priority: string) {
 }
 
 export default function CustomerSupportPage() {
+  const router = useRouter();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [bookings, setBookings] = useState<BookingListResponse['bookings']>([]);
   const [bookingId, setBookingId] = useState('');
@@ -128,17 +145,26 @@ export default function CustomerSupportPage() {
     void loadSupportData();
   }, []);
 
+  const autobotSuggestion = useMemo(
+    () => getHelpCenterSuggestion(APP_HELP_CENTERS.service, message, category),
+    [message, category],
+  );
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError(null);
 
     try {
-      await api.post('/support', {
+      const created = await api.post<Ticket>('/support', {
         bookingId: bookingId || undefined,
+        sourceContextType: bookingId ? 'BOOKING' : undefined,
+        sourceContextId: bookingId || undefined,
         category,
         priority,
         message,
+        autobotSummary: autobotSuggestion?.summary,
+        autobotArticle: autobotSuggestion?.article?.title ?? undefined,
       });
 
       setBookingId('');
@@ -146,6 +172,7 @@ export default function CustomerSupportPage() {
       setPriority('MEDIUM');
       setMessage('');
       await loadSupportData();
+      router.push(`/customer/support/${created.id}`);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to create support ticket.');
     } finally {
@@ -179,7 +206,7 @@ export default function CustomerSupportPage() {
               Raise a booking or payment issue through a clean customer help desk, not an internal ops table.
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-              This support surface follows the PRD service-app direction: clear categories, quick linked-booking context, and card-based ticket visibility.
+              Start with Help Center logic, let Autobot suggest the best article, then move into a threaded support conversation only when human action is actually needed.
             </p>
 
             <div className="mt-6 flex flex-wrap gap-3">
@@ -193,7 +220,7 @@ export default function CustomerSupportPage() {
                 href="/guides/service"
                 className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-sky-200 hover:bg-sky-50"
               >
-                Open service guide
+                Open Help Center
               </Link>
             </div>
           </div>
@@ -245,7 +272,7 @@ export default function CustomerSupportPage() {
           </div>
 
           <p className="mt-3 text-sm leading-6 text-slate-500">
-            Pick the issue type first, attach a booking only when needed, then describe the problem in one concise message.
+            Pick the issue type first, attach a booking only when needed, then describe the problem once. If Autobot finds a matching article, its summary goes into the ticket so the human desk can continue without asking you to repeat yourself.
           </p>
 
           <form className="mt-5 space-y-5" onSubmit={handleCreate}>
@@ -349,7 +376,7 @@ export default function CustomerSupportPage() {
               tone="light"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              help="Keep it short and practical: route, time, payment, partner, or delivery issue."
+              help="Describe the issue clearly. Autobot will only suggest approved Help Center guidance from this message."
               required
             />
 
@@ -366,6 +393,73 @@ export default function CustomerSupportPage() {
         <div className="space-y-6">
           <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
             <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-violet-100 text-violet-700">
+                <Bot className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Autobot</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">Suggested help path</h2>
+              </div>
+            </div>
+
+            {!autobotSuggestion ? (
+              <div className="mt-5 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm leading-6 text-slate-500">
+                Describe the issue above and Autobot will suggest the best Help Center article and next action before you submit the ticket.
+              </div>
+            ) : (
+              <div className="mt-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">
+                      {autobotSuggestion.article?.title ?? 'Support triage ready'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Confidence: {formatStatus(autobotSuggestion.confidence)}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Help Center backed
+                  </span>
+                </div>
+
+                <div className="rounded-[24px] border border-violet-100 bg-violet-50 px-4 py-4">
+                  <p className="text-sm leading-6 text-slate-700">{autobotSuggestion.summary}</p>
+                </div>
+
+                {autobotSuggestion.article?.items.length ? (
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-slate-900">Key steps from the matched article</p>
+                    <div className="mt-3 space-y-2">
+                      {autobotSuggestion.article.items.slice(0, 3).map((item) => (
+                        <p key={item} className="text-sm leading-6 text-slate-600">
+                          {item}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href={autobotSuggestion.quickAction?.href ?? '/guides/service'}
+                    className="inline-flex items-center justify-center rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-sky-200 hover:bg-sky-50"
+                  >
+                    {autobotSuggestion.quickAction?.ctaLabel ?? 'Open Help Center'}
+                  </Link>
+                  <Link
+                    href="/guides/service"
+                    className="inline-flex items-center justify-center rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-sky-200 hover:bg-sky-50"
+                  >
+                    Browse all help
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-emerald-100 text-emerald-700">
                 <ShieldCheck className="h-6 w-6" />
               </div>
@@ -377,10 +471,10 @@ export default function CustomerSupportPage() {
 
             <div className="mt-5 space-y-3">
               {[
-                'Choose the issue type that matches the actual problem.',
-                'Attach a booking when support needs exact trip context.',
-                'Use high or urgent only for live delivery or payment block issues.',
-                'Track updates in the ticket feed below instead of restarting a new ticket.',
+                'Autobot checks approved Help Center content before the ticket is created.',
+                'If you submit the ticket, the support desk receives the autobot summary, your message, and the linked booking context together.',
+                'Continue the issue from one threaded conversation instead of opening duplicate tickets.',
+                'Resolved tickets can still reopen if you reply with a new update.',
               ].map((item) => (
                 <div
                   key={item}
@@ -412,45 +506,50 @@ export default function CustomerSupportPage() {
                 </div>
               ) : null}
 
-              {tickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-slate-950">
-                          {formatStatus(ticket.category)}
+              {tickets.map((ticket) => {
+                const latestMessage = ticket.messages?.[0]?.message ?? ticket.description;
+                return (
+                  <Link
+                    key={ticket.id}
+                    href={`/customer/support/${ticket.id}`}
+                    className="block rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 transition hover:border-sky-200 hover:bg-white"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-950">
+                            {formatStatus(ticket.category)}
+                          </p>
+                          <span
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusTone(ticket.status)}`}
+                          >
+                            {formatStatus(ticket.status)}
+                          </span>
+                          <span
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${priorityTone(ticket.priority)}`}
+                          >
+                            {formatStatus(ticket.priority)}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {ticket.bookingId ? bookingLookup.get(ticket.bookingId) ?? ticket.bookingId : 'General request'}
                         </p>
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusTone(ticket.status)}`}
-                        >
-                          {formatStatus(ticket.status)}
-                        </span>
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${priorityTone(ticket.priority)}`}
-                        >
-                          {formatStatus(ticket.priority)}
-                        </span>
+                        <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">
+                          {latestMessage ?? 'No description provided.'}
+                        </p>
                       </div>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {ticket.bookingId ? bookingLookup.get(ticket.bookingId) ?? ticket.bookingId : 'General request'}
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
-                        {ticket.description ?? 'No description provided.'}
-                      </p>
-                    </div>
 
-                    <div className="text-right">
-                      <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
-                        <CircleAlert className="h-3.5 w-3.5" />
-                        {formatDateTime(ticket.createdAt)}
+                      <div className="text-right">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                          <CircleAlert className="h-3.5 w-3.5" />
+                          {formatDateTime(ticket.messages?.[0]?.createdAt ?? ticket.createdAt)}
+                        </div>
+                        <p className="mt-3 text-xs font-medium text-sky-700">Open conversation</p>
                       </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>

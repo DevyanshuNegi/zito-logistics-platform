@@ -330,6 +330,11 @@ export class OtpService {
       Channel: 'sms',
     });
 
+    const appHash = process.env.TWILIO_VERIFY_ANDROID_APP_HASH?.trim();
+    if (appHash) {
+      payload.set('AppHash', appHash);
+    }
+
     try {
       await axios.post(
         `https://verify.twilio.com/v2/Services/${serviceSid}/Verifications`,

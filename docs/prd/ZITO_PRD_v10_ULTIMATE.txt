@@ -68,6 +68,9 @@ UI must support phone-first sign-in with separate country-code and local-number 
 The OTP step must show a masked verification target, change-contact action, resend countdown, and attempts-remaining messaging when the account is not yet locked.
 The resend OTP action must remain visibly present on the OTP step even during cooldown, with disabled state plus countdown text rather than disappearing.
 Canonical flow rule:
+OTP step usability rule:
+- the OTP screen must focus the code-entry field immediately on entry
+- the OTP screen should auto-submit once a complete valid six-digit code is captured by paste, platform autofill, or compatible browser-assisted OTP capture unless the active compliance flow explicitly requires a separate final confirmation action
 contact step -> OTP step for all public users -> password step only for email users -> role-based redirect after successful verification.
 Phone login completes after OTP only.
 Email login requires password after OTP verification and must not expose password entry on the initial contact step.
@@ -91,6 +94,8 @@ Verification target must be masked in the UI
 Failed OTP responses must show attempts remaining whenever the account is not yet locked
 OTP provider failures must be distinguished from invalid credentials; provider-delivery failure, timeout, or upstream outage must surface as an integration / service-availability error, not as a false password or user-not-found response
 Auth health monitoring must include OTP provider connectivity for SMS and email channels used in the active market
+OTP entry surfaces must accept full-code paste and system autofill, not only one-digit manual entry
+Phone-auth OTP UX should auto-fill wherever the platform supports it: iPhone through one-time-code autofill, Android through SMS-OTP or app-hash-compatible delivery, and compatible browsers through origin-bound WebOTP patterns where the SMS provider template supports it
 Fallback:
 Public self-service auth is split by app surface:
 Zito Logistics Service App self-service roles: Individual Customer, Corporate
@@ -106,6 +111,42 @@ Minimum guide split:
 Zito Logistics guide = Customer + Corporate
 Zito Partners guide = Driver + Agent + Transporter + Courier Company + Warehouse Partner
 Zito Internal guide = Super Admin + Admin + Agency Staff / internal operations
+Help-center requirement:
+- static role guides are not enough; each app surface must also provide a searchable in-system Help Center
+- Help Center content must be split by role and workflow context, not only by generic FAQ labels
+- minimum help-center structure:
+  - Login & OTP
+  - Booking & tracking
+  - Payments, invoices, and refunds
+  - Verification & resubmission
+  - Fleet & vehicle compliance
+  - Warehouse & scan operations
+  - Rail / container / customs flow where enabled
+  - Account & profile management
+- every major surface must expose contextual help entry points, including login, OTP, booking detail, tracking, payments, support, fleet, verification, and internal control desks
+- Help Center must support article search, article categories, issue-specific quick actions, and "contact support" handoff from the article surface
+- delivery order requirement: the searchable Help Center must ship before Autobot goes live, because the bot must answer from approved article content rather than ad-hoc copy
+Autobot requirement:
+- ZITO must provide an in-app support assistant ("Autobot") across customer, partner, and internal surfaces
+- Autobot must answer approved help-center content only, and must not invent policy, pricing, or compliance instructions
+- Autobot must support at minimum:
+  - FAQ answers from approved knowledge articles
+  - login / OTP troubleshooting
+  - booking / tracking guidance
+  - payment / invoice / refund guidance
+  - verification / resubmission guidance
+  - fleet / photo-upload / compliance guidance
+  - support-ticket creation
+  - human-handoff escalation
+- Autobot must preserve workflow context when invoked from a booking, trip, ticket, vehicle, invoice, or support case so the user does not need to repeat identifiers manually
+- when Autobot cannot solve the issue or confidence is low, it must escalate to a human queue and attach the conversation summary, user identity, and linked workflow context
+- support conversation history must remain visible to the user in-app, similar to message history rather than one-time modal prompts
+- when a ticket is created after an Autobot interaction, the stored case must carry:
+  - autobot summary
+  - matched article title when available
+  - linked workflow context such as booking / invoice / vehicle id
+- ticket detail must open into a threaded conversation view, not only a ticket card list, so users and internal teams can continue the same issue without re-entering the case
+- launch languages must support English first and be designed so Swahili help content can be added without reworking the support model
 Session Continuity & Recovery:
 If app is closed or network lost, user should resume last step
 Incomplete flows (signup, booking) must be recoverable
@@ -778,6 +819,23 @@ Priority levels: low, medium, high, urgent
 SLA-based response timers per priority
 Escalation to supervisor on SLA breach
 Customer satisfaction rating on closure
+Help-center and support-comms extensions
+- users must be able to start from Help Center / Autobot before or after ticket creation
+- support requests should support issue-specific intake from the active object:
+  - trip / booking
+  - vehicle / fleet asset
+  - invoice / payment
+  - warehouse movement
+  - verification case
+- support messaging must preserve prior correspondence and ticket history in-app
+- customer-facing thread view must show autobot handoff summary plus all public replies in chronological order
+- support flow should distinguish:
+  - self-service article solved
+  - autobot solved
+  - agent-assisted
+  - escalated to operations
+  - escalated to accounts
+  - escalated to compliance / verification
 37. 📞 Customer Care Panel
 Support staff have access to a dedicated panel with limited read/write capabilities to assist customers efficiently.
 Staff Capabilities
@@ -787,6 +845,12 @@ Modify limited booking details (contact, instructions)
 Initiate refund requests for approval
 Log and escalate customer complaints
 Access customer communication history
+Search help-center articles and send approved article links directly into the ticket conversation
+See autobot summary before taking over a conversation
+Take over bot conversations without losing context, booking references, uploaded media, or previous troubleshooting steps
+Post replies either as:
+- public response visible to the requester
+- internal note visible only to support / operations / accounts / compliance teams
 38. 🚨 Admin Control Dashboard
 Super Admin View
 All agencies, users, and operations globally
@@ -2178,6 +2242,11 @@ Mobile platform coverage and release rules:
 - Android pre-release testing may use internal APK/AAB distribution, but iPhone pre-release testing must use a managed Apple distribution path such as TestFlight or equivalent approved enterprise/internal distribution
 - iPhone configuration must include explicit permission copy for location, camera, and photo-library access where those capabilities are used for booking, tracking, POD, scans, or support evidence
 - the mobile release process must maintain parity across Android and iPhone for customer, driver, transporter, and courier-company role workflows
+- the repository must include explicit mobile release scripts and build profiles for Android internal QA, Android production Play submission, iPhone internal QA, and iPhone TestFlight/App Store submission; release preparation must not depend on undocumented manual terminal sequences
+- the shared mobile environment template must document the runtime API host, maps key, and build-environment label required for Expo/EAS delivery, and the release guide must distinguish Windows-safe Android workflows from macOS-required local iPhone native workflows
+- Android production release readiness requires app-bundle output and Google Play track submission support; iPhone release readiness requires TestFlight-capable EAS production build configuration even when the actual Apple credentials are managed outside the repository
+- the mobile repository must use the correct Expo EAS CLI invocation path in its documented commands and scripts; ambiguous or incorrect bootstrap commands that fail on Windows shells must be replaced with a working project-local EAS CLI entrypoint
+- mobile OTP verification screens must expose autofill-friendly inputs and support automatic distribution of a full six-digit OTP into the visible code cells when the operating system or clipboard provides the entire code at once
 66.11 Performance Targets - User Visible
 User-visible performance goals:
 - cold start to home under defined mobile threshold

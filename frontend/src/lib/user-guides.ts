@@ -284,7 +284,7 @@ export const APP_GUIDES: Record<'service' | 'partners' | 'internal', AppGuide> =
         items: [
           'Account verification and activation still need a cleaner dedicated admin approval surface.',
           'The route split is implemented, but some internal workflows still depend on API-level control paths.',
-          'User guides should be updated whenever PRD authentication, role, or routing rules change.',
+          'Help-center content should be updated whenever PRD authentication, role, or routing rules change.',
         ],
       },
     ],

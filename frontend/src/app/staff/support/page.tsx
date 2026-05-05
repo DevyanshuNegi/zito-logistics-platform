@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -18,6 +20,7 @@ type Ticket = {
   priority: string;
   status: string;
   description?: string | null;
+  autobotSummary?: string | null;
   bookingId?: string | null;
   booking?: {
     reference?: string | null;
@@ -34,10 +37,20 @@ type Ticket = {
     email?: string | null;
     phone?: string | null;
   } | null;
+  messages?: Array<{
+    id: string;
+    actorType: string;
+    message: string;
+    createdAt?: string;
+  }>;
   createdAt?: string;
 };
 
 export default function StaffSupportPage() {
+  const pathname = usePathname();
+  const supportBasePath = (pathname ?? '').startsWith('/agency')
+    ? '/agency/support'
+    : '/staff/support';
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -100,21 +113,26 @@ export default function StaffSupportPage() {
     }
   }
 
-  if (loading) {
-    return <Spinner />;
-  }
-
   const operationsTickets = tickets.filter((ticket) =>
     ['BOOKING', 'DRIVER'].includes(ticket.category),
   ).length;
   const financeTickets = tickets.filter((ticket) => ticket.category === 'PAYMENT').length;
+  const botAssistedCount = useMemo(
+    () => tickets.filter((ticket) => Boolean(ticket.autobotSummary)).length,
+    [tickets],
+  );
+
+  if (loading) {
+    return <Spinner />;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <StatCard label="Queue size" value={String(tickets.length)} helper="All customer and partner requests visible to customer care." />
         <StatCard label="Ops-related" value={String(operationsTickets)} helper="Booking and driver issues to hand off into operations when needed." tone="warning" />
         <StatCard label="Payment-related" value={String(financeTickets)} helper="Invoice and payment issues that may need accounts review." tone="info" />
+        <StatCard label="Bot-assisted" value={String(botAssistedCount)} helper="Tickets that already include an autobot handoff summary." tone="success" />
       </div>
 
       {error ? (
@@ -123,7 +141,7 @@ export default function StaffSupportPage() {
         </Alert>
       ) : null}
 
-      <SurfaceCard title="Customer care queue" description="Review requests raised by users, take ownership, resolve them directly, or escalate them to operations or accounts.">
+      <SurfaceCard title="Customer care queue" description="Review requests raised by users, take ownership, open the full conversation, resolve them directly, or escalate them to operations or accounts.">
         <Table
           rows={tickets}
           columns={[
@@ -132,7 +150,7 @@ export default function StaffSupportPage() {
               header: 'Ticket',
               render: (ticket) => (
                 <div>
-                  <p className="font-semibold text-white">{ticket.category}</p>
+                  <p className="font-semibold text-white">{formatStatus(ticket.category)}</p>
                   <p className="text-xs text-slate-400">
                     {ticket.booking?.reference ?? ticket.bookingId ?? 'General support'}
                   </p>
@@ -154,7 +172,7 @@ export default function StaffSupportPage() {
             {
               key: 'priority',
               header: 'Priority',
-              render: (ticket) => ticket.priority,
+              render: (ticket) => formatStatus(ticket.priority),
             },
             {
               key: 'status',
@@ -163,14 +181,19 @@ export default function StaffSupportPage() {
             },
             {
               key: 'details',
-              header: 'Details',
+              header: 'Latest context',
               render: (ticket) => (
                 <div className="space-y-2">
-                  <p className="text-sm text-slate-300">{ticket.description ?? 'No description'}</p>
+                  <p className="text-sm text-slate-300">
+                    {ticket.messages?.[0]?.message ?? ticket.description ?? 'No description'}
+                  </p>
                   <p className="text-xs text-slate-400">
-                    {formatDateTime(ticket.createdAt)}
+                    {formatDateTime(ticket.messages?.[0]?.createdAt ?? ticket.createdAt)}
                     {ticket.handler?.fullName ? ` · Owner: ${ticket.handler.fullName}` : ''}
                   </p>
+                  {ticket.autobotSummary ? (
+                    <p className="text-xs text-cyan-300">Autobot summary attached</p>
+                  ) : null}
                 </div>
               ),
             },
@@ -179,6 +202,12 @@ export default function StaffSupportPage() {
               header: 'Actions',
               render: (ticket) => (
                 <div className="space-y-2">
+                  <Link
+                    className="inline-flex items-center justify-center rounded-2xl border border-cyan-500/40 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/10"
+                    href={`${supportBasePath}/${ticket.id}`}
+                  >
+                    Open thread
+                  </Link>
                   {ticket.status === 'OPEN' ? (
                     <Button disabled={busyId === ticket.id} onClick={() => void assignTicket(ticket.id)}>
                       Assign to me

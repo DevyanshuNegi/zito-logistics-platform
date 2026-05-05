@@ -1,10 +1,10 @@
 import { AppGuidePage } from '@/components/guides/AppGuidePage';
-import { APP_GUIDES } from '@/lib/user-guides';
+import { APP_HELP_CENTERS } from '@/lib/help-center';
 
 export default function InternalGuidePage() {
   return (
     <AppGuidePage
-      guide={APP_GUIDES.internal}
+      guide={APP_HELP_CENTERS.internal}
       backHref="/internal/login"
       backLabel="Back to Zito Internal login"
     />

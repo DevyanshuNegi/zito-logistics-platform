@@ -253,7 +253,7 @@ export function PortalShell({
                   : 'text-cyan-200 hover:text-cyan-100',
               ].join(' ')}
             >
-              Open user guide
+              Open Help Center
             </Link>
             <div className="mt-4 flex gap-2">
               <Button

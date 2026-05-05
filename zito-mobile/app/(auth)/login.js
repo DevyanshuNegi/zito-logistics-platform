@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const otpRefs = useRef([]);
   const timerRef = useRef(null);
+  const autoSubmittedOtpRef = useRef('');
   const { login } = useAuth();
 
   const startTimer = () => {
@@ -90,7 +91,7 @@ export default function LoginScreen() {
     }
   };
 
-  const handleVerifyOtp = async () => {
+  const handleVerifyOtp = useCallback(async () => {
     const code = otp.join('');
     if (code.length < 6) {
       setError('Enter all 6 digits.');
@@ -122,14 +123,35 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [login, otp, email]);
 
   const handleOtpChange = (value, index) => {
-    if (!/^\d?$/.test(value)) return;
+    const digitsOnly = value.replace(/\D/g, '');
+    if (!digitsOnly) {
+      const next = [...otp];
+      next[index] = '';
+      setOtp(next);
+      return;
+    }
+
+    if (digitsOnly.length > 1) {
+      const next = [...otp];
+      digitsOnly
+        .slice(0, 6)
+        .split('')
+        .forEach((digit, digitIndex) => {
+          next[digitIndex] = digit;
+        });
+      setOtp(next);
+      const nextFocusIndex = Math.min(digitsOnly.length, 5);
+      otpRefs.current[nextFocusIndex]?.focus();
+      return;
+    }
+
     const next = [...otp];
-    next[index] = value;
+    next[index] = digitsOnly;
     setOtp(next);
-    if (value && index < 5) otpRefs.current[index + 1]?.focus();
+    if (digitsOnly && index < 5) otpRefs.current[index + 1]?.focus();
   };
 
   const handleOtpKeyPress = (event, index) => {
@@ -137,6 +159,26 @@ export default function LoginScreen() {
       otpRefs.current[index - 1]?.focus();
     }
   };
+
+  useEffect(() => {
+    const code = otp.join('');
+    if (step !== 2 || code.length !== 6 || loading) {
+      return;
+    }
+
+    if (autoSubmittedOtpRef.current === code) {
+      return;
+    }
+
+    autoSubmittedOtpRef.current = code;
+    void handleVerifyOtp();
+  }, [handleVerifyOtp, loading, otp, step]);
+
+  useEffect(() => {
+    if (otp.join('').length !== 6) {
+      autoSubmittedOtpRef.current = '';
+    }
+  }, [otp]);
 
   return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -221,10 +263,21 @@ export default function LoginScreen() {
                   onChangeText={(value) => handleOtpChange(value, index)}
                   onKeyPress={(event) => handleOtpKeyPress(event, index)}
                   keyboardType="number-pad"
-                  maxLength={1}
+                  maxLength={index === 0 ? 6 : 1}
                   textAlign="center"
                   placeholderTextColor={colors.textFaint}
                   autoFocus={index === 0}
+                  autoComplete={
+                    index === 0
+                      ? Platform.select({
+                          android: 'sms-otp',
+                          ios: 'one-time-code',
+                          default: 'off',
+                        })
+                      : 'off'
+                  }
+                  textContentType={index === 0 ? 'oneTimeCode' : 'none'}
+                  importantForAutofill={index === 0 ? 'yes' : 'no'}
                 />
               ))}
             </View>
