@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Zito Customer",
-    "slug": "zito-customer",
+    "name": "Zito Logistics Services",
+    "slug": "zito",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon-customer.png",

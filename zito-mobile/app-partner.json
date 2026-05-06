@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Zito Partner",
-    "slug": "zito-partner",
+    "name": "Zito Partners",
+    "slug": "zito",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon-partner.png",

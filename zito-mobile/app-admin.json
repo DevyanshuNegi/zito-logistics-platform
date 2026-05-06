@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Zito Admin",
-    "slug": "zito-admin",
+    "name": "Zito Management",
+    "slug": "zito",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon-admin.png",

@@ -25,7 +25,7 @@ export const FLAVOR_CONFIG: Record<AppFlavor, {
   description: string;
 }> = {
   customer: {
-    name: 'Zito Customer',
+    name: 'Zito Logistics Services',
     appId: 'com.aurenza.zito.customer',
     deepLinkScheme: 'zito-customer://',
     primaryColor: '#0066FF', // Blue
@@ -42,10 +42,10 @@ export const FLAVOR_CONFIG: Record<AppFlavor, {
       'Real-time notifications',
     ],
     defaultRoute: '/(customer)/home',
-    description: 'Zito Customer App - Book and track shipments across Africa',
+    description: 'Zito Logistics Services - Book and track shipments across Africa',
   },
   partner: {
-    name: 'Zito Partner',
+    name: 'Zito Partners',
     appId: 'com.aurenza.zito.partner',
     deepLinkScheme: 'zito-partner://',
     primaryColor: '#FF9500', // Orange
@@ -62,10 +62,10 @@ export const FLAVOR_CONFIG: Record<AppFlavor, {
       'Real-time updates',
     ],
     defaultRoute: '/(driver)/trips',
-    description: 'Zito Partner App - Manage deliveries and earn across Africa',
+    description: 'Zito Partners - Manage deliveries and earn across Africa',
   },
   admin: {
-    name: 'Zito Admin',
+    name: 'Zito Management',
     appId: 'com.aurenza.zito.admin',
     deepLinkScheme: 'zito-admin://',
     primaryColor: '#9C27B0', // Purple
@@ -82,7 +82,7 @@ export const FLAVOR_CONFIG: Record<AppFlavor, {
       'Compliance reports',
     ],
     defaultRoute: '/(internal)/dashboard',
-    description: 'Zito Admin App - Manage platform and network',
+    description: 'Zito Management - Manage platform and network',
   },
 };
 
