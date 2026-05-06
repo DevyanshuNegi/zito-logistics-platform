@@ -27,3 +27,8 @@ Local run defaults:
 - Backend: `http://127.0.0.1:5000`
 - Frontend: `http://127.0.0.1:3001`
 - Swagger: `http://127.0.0.1:5000/api/docs`
+
+Workspace log convention:
+
+- keep temporary runtime and debug logs only inside `logs/` at the repo root
+- do not leave `.log` files scattered across `backend/`, `frontend/`, or other workspace folders

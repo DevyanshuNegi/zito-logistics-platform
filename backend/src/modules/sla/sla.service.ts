@@ -12,6 +12,7 @@ import {
   VehicleStatus,
 } from '@prisma/client';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -279,7 +280,9 @@ export class SlaService {
 
     const replacement = await this.findReplacementDriver(booking);
     const nextStatus = BookingStatus.ASSIGNED;
-    const deliveryOtp = crypto.randomInt(1000, 9999).toString();
+    const deliveryOtpPlain = crypto.randomInt(1000, 9999).toString();
+    // Hash OTP before storing (security best practice)
+    const deliveryOtp = await bcrypt.hash(deliveryOtpPlain, 10);
 
     const updatedBooking = await this.prisma.$transaction(async (tx) => {
       await tx.driver.update({
@@ -296,6 +299,8 @@ export class SlaService {
             vehicleId: replacement.vehicle?.id ?? null,
             status: nextStatus,
             deliveryOtp,
+            deliveryOtpAttempts: 0,
+            deliveryOtpLockedUntil: null,
           },
           include: this.bookingInclude,
         });

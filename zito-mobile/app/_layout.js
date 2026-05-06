@@ -53,16 +53,22 @@ function RootGuard() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-      <Stack.Screen name="(auth)"        options={{ headerShown: false }} />
-      <Stack.Screen name="(agent)"       options={{ headerShown: false }} />
-      <Stack.Screen name="(driver)"      options={{ headerShown: false }} />
-      <Stack.Screen name="(customer)"    options={{ headerShown: false }} />
-      <Stack.Screen name="(courier-company)" options={{ headerShown: false }} />
-      <Stack.Screen name="(transporter)" options={{ headerShown: false }} />
-      <Stack.Screen name="(warehouse)"   options={{ headerShown: false }} />
-      <Stack.Screen name="(internal)"    options={{ headerShown: false }} />
-      <Stack.Screen name="(agency)"      options={{ headerShown: false }} />
+    <Stack 
+      screenOptions={{ 
+        headerShown: false, 
+        contentStyle: { backgroundColor: colors.bg },
+        animationEnabled: false 
+      }}
+    >
+      <Stack.Screen name="(auth)"        options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="(agent)"       options={{ headerShown: false, gestureEnabled: true }} />
+      <Stack.Screen name="(driver)"      options={{ headerShown: false, gestureEnabled: true }} />
+      <Stack.Screen name="(customer)"    options={{ headerShown: false, gestureEnabled: true }} />
+      <Stack.Screen name="(courier-company)" options={{ headerShown: false, gestureEnabled: true }} />
+      <Stack.Screen name="(transporter)" options={{ headerShown: false, gestureEnabled: true }} />
+      <Stack.Screen name="(warehouse)"   options={{ headerShown: false, gestureEnabled: true }} />
+      <Stack.Screen name="(internal)"    options={{ headerShown: false, gestureEnabled: true }} />
+      <Stack.Screen name="(agency)"      options={{ headerShown: false, gestureEnabled: true }} />
     </Stack>
   );
 }

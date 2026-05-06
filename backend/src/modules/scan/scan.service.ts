@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InventoryStatus, Prisma, ScanCheckpoint } from '@prisma/client';
 import { createHash } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 
@@ -761,6 +762,8 @@ export class ScanService {
             driverId: true,
             vehicleId: true,
             deliveryOtp: true,
+            deliveryOtpAttempts: true,
+            deliveryOtpLockedUntil: true,
             deliveryProofUrl: true,
           },
         },
@@ -781,8 +784,50 @@ export class ScanService {
       throw new BadRequestException('Delivery OTP is not available for booking');
     }
 
-    if (item.booking.deliveryOtp !== data.deliveryOtp) {
-      throw new BadRequestException('Invalid delivery OTP');
+    // Rate limiting check for OTP attempts
+    if (
+      item.booking.deliveryOtpLockedUntil &&
+      new Date() < item.booking.deliveryOtpLockedUntil
+    ) {
+      throw new BadRequestException(
+        `Delivery OTP verification is temporarily locked due to multiple failed attempts. Please try again later.`,
+      );
+    }
+
+    // Verify OTP using bcrypt (security best practice)
+    const isValidOtp = await bcrypt.compare(
+      data.deliveryOtp || '',
+      item.booking.deliveryOtp,
+    );
+
+    if (!isValidOtp) {
+      const attempts = (item.booking.deliveryOtpAttempts || 0) + 1;
+      const maxAttempts = 5;
+
+      if (attempts >= maxAttempts) {
+        // Lock the booking for 15 minutes after 5 failed attempts
+        const lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+        await this.prisma.booking.update({
+          where: { id: item.booking.id },
+          data: {
+            deliveryOtpAttempts: attempts,
+            deliveryOtpLockedUntil: lockUntil,
+          },
+        });
+        throw new BadRequestException(
+          `Invalid delivery OTP. Maximum attempts exceeded. Please try again in 15 minutes.`,
+        );
+      }
+
+      // Update attempts counter
+      await this.prisma.booking.update({
+        where: { id: item.booking.id },
+        data: { deliveryOtpAttempts: attempts },
+      });
+
+      throw new BadRequestException(
+        `Invalid delivery OTP. Attempts remaining: ${maxAttempts - attempts}`,
+      );
     }
 
     const result = await this.recordScan(
@@ -803,10 +848,13 @@ export class ScanService {
     );
 
     if (result.accepted) {
+      // Reset OTP attempts on successful verification
       await this.prisma.booking.update({
         where: { id: item.booking.id },
         data: {
           deliveryProofUrl: data.deliveryProofUrl,
+          deliveryOtpAttempts: 0,
+          deliveryOtpLockedUntil: null,
         },
       });
     }

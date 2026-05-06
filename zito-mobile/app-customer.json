@@ -1,21 +1,17 @@
 {
   "expo": {
-    "name": "Zito",
-    "slug": "zito",
+    "name": "Zito Customer",
+    "slug": "zito-customer",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "zito",
+    "icon": "./assets/images/icon-customer.png",
+    "scheme": "zito-customer",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "platforms": [
-      "ios",
-      "android",
-      "web"
-    ],
+    "platforms": ["ios", "android", "web"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aurenza.zito",
+      "bundleIdentifier": "com.aurenza.zito.customer",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -33,22 +29,18 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "CAMERA",
-        "READ_MEDIA_IMAGES",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "CAMERA",
         "READ_MEDIA_IMAGES"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "foregroundImage": "./assets/images/android-icon-customer-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "versionCode": 1,
-      "package": "com.aurenza.zito",
+      "package": "com.aurenza.zito.customer",
       "config": {
         "googleMaps": {
           "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
@@ -66,7 +58,7 @@
       [
         "expo-router",
         {
-          "origin": "zito://"
+          "origin": "zito-customer://"
         }
       ],
       [
@@ -87,7 +79,8 @@
       "eas": {
         "projectId": "9a3a10da-3cf5-4dba-bca8-07187831b78b"
       },
-      "router": {}
+      "router": {},
+      "appFlavor": "customer"
     },
     "experiments": {
       "typedRoutes": true,

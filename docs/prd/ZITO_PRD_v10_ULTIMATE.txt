@@ -95,13 +95,24 @@ Rules:
 Expired OTP must be rejected
 Multiple failed attempts → temporary account lock
 OTP must be single-use only
-OTP must be stored hashed at rest
+OTP must be stored hashed at rest (using bcrypt with 10 rounds)
+OTP verification must use secure comparison (bcrypt.compare) to prevent timing attacks
 Verification target must be masked in the UI
 Failed OTP responses must show attempts remaining whenever the account is not yet locked
 OTP provider failures must be distinguished from invalid credentials; provider-delivery failure, timeout, or upstream outage must surface as an integration / service-availability error, not as a false password or user-not-found response
 Auth health monitoring must include OTP provider connectivity for SMS and email channels used in the active market
 OTP entry surfaces must accept full-code paste and system autofill, not only one-digit manual entry
 Phone-auth OTP UX should auto-fill wherever the platform supports it: iPhone through one-time-code autofill, Android through SMS-OTP or app-hash-compatible delivery, and compatible browsers through origin-bound WebOTP patterns where the SMS provider template supports it
+
+Delivery OTP Rate Limiting:
+- Applies to all delivery confirmation OTP attempts across the system
+- Maximum 5 consecutive failed verification attempts per booking
+- After 5 failed attempts, the booking enters a locked state for 15 minutes
+- During lockout, any additional OTP verification attempts are rejected with lockout message
+- Lockout is automatically cleared after 15 minutes
+- Successful OTP verification resets the attempt counter to 0 and clears any existing lockout
+- Rate limiting applies across all delivery verification paths: driver app status update and warehouse scan-based delivery confirmation
+- Failed attempt counter increments regardless of verification method (driver status update vs warehouse scan)
 Fallback:
 Public self-service auth is split by app surface:
 Zito Logistics Service App self-service roles: Individual Customer, Corporate
@@ -332,6 +343,17 @@ Photo proof capture (optional but recommended)
 Timestamp and GPS validation at delivery location
 Rule:
 Delivery is marked as completed only after successful proof capture
+
+Delivery OTP Security (Enhanced Security Control):
+- OTP must be generated as 4-digit code and hashed using bcrypt (10 rounds) before storage in database
+- OTP must never be stored in plain text at rest
+- OTP verification must use bcrypt.compare() for time-safe comparison, not plain-text string matching
+- Maximum 5 verification attempts per booking delivery
+- After 5 failed OTP attempts, booking is locked for 15 minutes (automatic lockout)
+- Attempt counter increments on each failed verification; counter resets to 0 on successful verification
+- Lockout status must be clearly communicated to driver with "try again after X minutes" message
+- Admin may manually unlock a booking after 15-minute lockout period has expired
+- Rate limiting applies to all delivery OTP verification endpoints: booking status update and warehouse scan confirmation
 Vehicle Load Mapping & Validation:
 Each parcel must be mapped to a specific vehicle during loading
 Mandatory scan while loading parcels into vehicle
@@ -719,6 +741,14 @@ Full audit logs: who, what, when, where
 Rate limiting and DDoS protection
 Data encryption at rest and in transit (TLS 1.3)
 PII anonymization for GDPR/data protection compliance
+
+OTP & Sensitive Code Security:
+- All OTP codes (authentication and delivery verification) must be hashed using bcrypt (10 rounds) before database storage
+- OTP verification must use bcrypt.compare() for time-safe comparison to prevent timing attacks
+- Authentication OTP: 5 minutes validity, 5 max resend attempts, account lock after 5 failed verifications
+- Delivery OTP: 4-digit code, hashed storage, 5 max verification attempts, 15-minute booking lockout after 5 failed attempts
+- Delivery OTP lockout is automatic and non-bypassable; manual unlock by admin only after lockout period expires
+- All OTP-related failures and lockouts must be logged with timestamp and user/booking identity
 Data Deletion Policy:
 All critical data (bookings, invoices, waybills, payments) must use soft delete only
 Soft-deleted records must remain accessible for audit and recovery
@@ -1211,6 +1241,8 @@ User
 - id, role, status, contact details
 Booking
 - id, customer_id, status, route, price
+- deliveryOtp (hashed with bcrypt), deliveryOtpAttempts (int, default 0), deliveryOtpLockedUntil (DateTime, nullable)
+- deliveryProofUrl, deliveredAt
 Driver
 - id, status, rating, vehicle_id
 Vehicle
@@ -1225,6 +1257,12 @@ Payment
 - id, method, status, reference
 Wallet
 - id, user_id, balance
+
+Booking Model Security Requirements:
+- deliveryOtp: Stored as bcrypt hash (never plain text)
+- deliveryOtpAttempts: Counter for failed OTP verification attempts (reset to 0 on success)
+- deliveryOtpLockedUntil: Timestamp marking automatic 15-minute lockout after 5 failed attempts
+- All three fields are required for delivery OTP rate limiting and security enforcement
 47. INFRASTRUCTURE & SCALING
 Database baseline: Neon PostgreSQL
 Multi-region deployment (Africa coverage)
@@ -1322,6 +1360,16 @@ All external dependency failures must create a visible ops event with retry or m
 55. Testing, UAT & Sign-Off
 Mandatory Test Layers
 Unit, integration, end-to-end, role and permission, finance reconciliation, offline sync, security, performance, backup restore, and disaster recovery drills
+
+Delivery OTP Security Testing (Mandatory):
+- Delivery OTP must be verified as hashed (bcrypt) in database, never plain text
+- All 5 successful delivery OTP verifications must use bcrypt.compare() and complete without errors
+- Failed OTP verification test: enter wrong code 5 times, verify booking is locked and cannot be verified
+- Lockout message must show user when booking is locked and when they can retry
+- After 15-minute lockout period, booking must be unlocked and OTP can be re-verified
+- Rate limiting must work consistently across both driver status update and warehouse scan delivery paths
+- No plain-text OTP in logs, API responses, or error messages
+- Audit logs must record all OTP attempt failures with timestamp and user identity
 Business Sign-Off Owners
 Product or operations sign-off for workflow correctness and exception handling
 Finance sign-off for payment, wallet, invoice, refund, payout, and reconciliation flows
@@ -1350,6 +1398,15 @@ Provider credentials, templates, rate cards, user roles, and permissions are con
 Support escalation roster, SOPs, and rollback runbooks are active
 Backup restore and rollback drills are completed successfully
 A pilot or controlled live validation is completed and reviewed by operations leadership
+
+Security Sign-Off Requirements (Mandatory):
+- Delivery OTP security verified: All OTP codes are hashed with bcrypt before storage, never plain text in database
+- Delivery OTP rate limiting tested and working: 5 failed attempts → 15-minute automatic lockout
+- No plain-text OTP in logs, API responses, error messages, or backups
+- Audit logging records all OTP failures with timestamp and user identity
+- Database backup and restore tested; OTP hashes remain secure after restore
+- Security penetration testing passed for OTP brute force attacks (verified 5-attempt limit enforced)
+- All OTP-related security requirements documented and communicated to support team
 Final Verdict
 Enterprise-Grade Logistics + ERP + Warehouse Platform
 Africa-Scale Ready  •  Investor-Ready  •  Production-Ready
@@ -2370,6 +2427,8 @@ Mobile QA hardening rules:
 - the internal mobile workspace must expose a QA diagnostics screen showing the active API host, runtime environment label, token presence, user-role routing context, and live backend health response
 - mobile API clients must use a bounded request timeout and return actionable errors when the runtime cannot reach the deployed backend
 - mobile documentation and environment templates must reflect the active deployment strategy and must not reference obsolete infrastructure defaults
+- installed Android and iPhone builds must resolve the root app launch route correctly; opening the app from the launcher or root deep link scheme must never show an unmatched-route screen
+- the root mobile launch path must always land on a valid auth entry or role-routed home flow
 Registration and account-provisioning UX rules:
 - any registration, account-creation, staff-provisioning, partner-provisioning, or driver-onboarding form that captures a phone number must capture country code and local number as separate visible inputs; hidden or assumed country code behavior is not acceptable
 - phone entry defaults may be preselected per market, but the country code must remain user-editable in every registration and provisioning flow

@@ -550,6 +550,8 @@ model Booking {
   cancelledBy        String?
 
   deliveryOtp      String?
+  deliveryOtpAttempts Int @default(0)
+  deliveryOtpLockedUntil DateTime?
   deliveryProofUrl String?
   deliveredAt      DateTime?
 

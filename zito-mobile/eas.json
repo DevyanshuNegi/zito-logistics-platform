@@ -43,10 +43,72 @@
       "ios": {
         "simulator": false
       }
+    },
+    "customer-preview": {
+      "extends": "preview",
+      "appBuildGradle": "custom",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "preview",
+        "APP_FLAVOR": "customer"
+      },
+      "resourceClass": "default"
+    },
+    "customer-production": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "APP_FLAVOR": "customer"
+      }
+    },
+    "partner-preview": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "preview",
+        "APP_FLAVOR": "partner"
+      }
+    },
+    "partner-production": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "APP_FLAVOR": "partner"
+      }
+    },
+    "admin-preview": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "preview",
+        "APP_FLAVOR": "admin"
+      }
+    },
+    "admin-production": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "APP_FLAVOR": "admin"
+      }
     }
   },
   "submit": {
     "production": {
+      "android": {
+        "track": "internal"
+      },
+      "ios": {}
+    },
+    "customer-production": {
+      "android": {
+        "track": "internal"
+      },
+      "ios": {}
+    },
+    "partner-production": {
+      "android": {
+        "track": "internal"
+      },
+      "ios": {}
+    },
+    "admin-production": {
       "android": {
         "track": "internal"
       },
