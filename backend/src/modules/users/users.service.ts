@@ -95,6 +95,14 @@ const TRUCK_VERIFICATION_TYPES = new Set([
   'REFRIGERATED',
 ]);
 const TRUCK_PHOTO_CATEGORIES = ['DASHBOARD', 'FRONT', 'RIGHT', 'LEFT', 'BACK'] as const;
+const COMPLIANCE_SUSPEND_ROLES = new Set<UserRole>([
+  UserRole.DRIVER,
+  UserRole.AGENT,
+  UserRole.TRANSPORTER,
+  UserRole.COURIER_COMPANY,
+  UserRole.WAREHOUSE_PARTNER,
+]);
+const REVIEW_OVERDUE_HOURS = 48;
 
 @Injectable()
 export class UsersService {
@@ -665,6 +673,12 @@ export class UsersService {
   }
 
   async getVerificationDashboard() {
+    const automationRun = await this.runComplianceAutomationScan();
+    const now = new Date();
+    const expiringThreshold = new Date(now);
+    expiringThreshold.setDate(expiringThreshold.getDate() + EXPIRY_ALERT_DAYS);
+    const reviewThreshold = new Date(now.getTime() - REVIEW_OVERDUE_HOURS * 60 * 60 * 1000);
+
     const [users, vehicles] = await Promise.all([
       this.prisma.user.findMany({
         where: {
@@ -790,6 +804,129 @@ export class UsersService {
       };
     });
 
+    const expiringDocuments = formattedUsers.flatMap((user) =>
+      user.kycDocuments
+        .filter((document) => {
+          const expiryDate = document.expiryDate ? new Date(document.expiryDate) : null;
+          if (!expiryDate) {
+            return false;
+          }
+
+          return (
+            String(document.status ?? '').toUpperCase() === 'APPROVED' &&
+            expiryDate > now &&
+            expiryDate <= expiringThreshold
+          );
+        })
+        .map((document) => ({
+          userId: user.id,
+          subjectLabel: user.fullName ?? user.companyName ?? user.phone ?? user.id,
+          role: user.role,
+          documentType: document.type,
+          expiryDate: document.expiryDate,
+        })),
+    );
+
+    const expiredDocuments = formattedUsers.flatMap((user) =>
+      user.kycDocuments
+        .filter((document) => String(document.status ?? '').toUpperCase() === 'EXPIRED')
+        .map((document) => ({
+          userId: user.id,
+          subjectLabel: user.fullName ?? user.companyName ?? user.phone ?? user.id,
+          role: user.role,
+          documentType: document.type,
+          expiryDate: document.expiryDate,
+        })),
+    );
+
+    const overdueUserReviews = formattedUsers.flatMap((user) =>
+      user.kycDocuments
+        .filter((document) => {
+          const createdAt = document.createdAt ? new Date(document.createdAt) : null;
+          return Boolean(createdAt) && this.isReviewPending(document.status) && createdAt <= reviewThreshold;
+        })
+        .map((document) => ({
+          userId: user.id,
+          subjectLabel: user.fullName ?? user.companyName ?? user.phone ?? user.id,
+          role: user.role,
+          documentType: document.type,
+          createdAt: document.createdAt,
+        })),
+    );
+
+    const overdueVehicleReviews = formattedVehicles
+      .filter((vehicle) => {
+        const vehicleCreatedAt = vehicle.createdAt ? new Date(vehicle.createdAt) : null;
+        const pendingVehicleReview =
+          Boolean(vehicleCreatedAt) &&
+          this.isReviewPending(vehicle.verificationStatus) &&
+          vehicleCreatedAt <= reviewThreshold;
+        const pendingPhotoReview = vehicle.verificationPhotos.some((photo) => {
+          const createdAt = photo.createdAt ? new Date(photo.createdAt) : null;
+          return Boolean(createdAt) && this.isReviewPending(photo.status) && createdAt <= reviewThreshold;
+        });
+
+        return pendingVehicleReview || pendingPhotoReview;
+      })
+      .map((vehicle) => ({
+        vehicleId: vehicle.id,
+        plateNumber: vehicle.plateNumber,
+        type: vehicle.type,
+        ownerLabel:
+          vehicle.ownerUser?.companyName ??
+          vehicle.ownerUser?.fullName ??
+          vehicle.driver?.user?.fullName ??
+          vehicle.plateNumber,
+      }));
+
+    const vehiclesMissingPhotos = formattedVehicles
+      .filter((vehicle) => vehicle.missingPhotoCategories.length > 0)
+      .map((vehicle) => ({
+        vehicleId: vehicle.id,
+        plateNumber: vehicle.plateNumber,
+        type: vehicle.type,
+        missingPhotoCategories: vehicle.missingPhotoCategories,
+      }));
+
+    const automationAlerts = [
+      expiredDocuments.length > 0
+        ? {
+            severity: 'HIGH',
+            title: `${expiredDocuments.length} expired compliance documents`,
+            detail:
+              'Operational roles tied to expired documents are automatically suspended until evidence is corrected.',
+          }
+        : null,
+      expiringDocuments.length > 0
+        ? {
+            severity: 'MEDIUM',
+            title: `${expiringDocuments.length} documents expiring within ${EXPIRY_ALERT_DAYS} days`,
+            detail: 'Customer care and compliance teams should prompt resubmission before live operations are blocked.',
+          }
+        : null,
+      overdueUserReviews.length > 0
+        ? {
+            severity: 'MEDIUM',
+            title: `${overdueUserReviews.length} KYC reviews are overdue`,
+            detail: `Pending compliance reviews older than ${REVIEW_OVERDUE_HOURS} hours need desk action.`,
+          }
+        : null,
+      overdueVehicleReviews.length > 0
+        ? {
+            severity: 'MEDIUM',
+            title: `${overdueVehicleReviews.length} vehicle reviews are overdue`,
+            detail: 'Fleet verification is waiting on photo review or final approval beyond the SLA window.',
+          }
+        : null,
+      vehiclesMissingPhotos.length > 0
+        ? {
+            severity: 'LOW',
+            title: `${vehiclesMissingPhotos.length} vehicles are missing mandatory photo packs`,
+            detail: 'Truck and container units cannot complete verification until the full photo evidence set is present.',
+          }
+        : null,
+    ].filter(Boolean);
+
     return {
       summary: {
         usersAwaitingReview: formattedUsers.filter(
@@ -804,14 +941,93 @@ export class UsersService {
         rejectedVehicles: formattedVehicles.filter(
           (vehicle) => String(vehicle.verificationStatus).toUpperCase() === 'REJECTED',
         ).length,
+        expiringDocuments: expiringDocuments.length,
+        expiredDocuments: expiredDocuments.length,
+        overdueUserReviews: overdueUserReviews.length,
+        overdueVehicleReviews: overdueVehicleReviews.length,
+        vehiclesMissingPhotos: vehiclesMissingPhotos.length,
+        autoSuspendedUsers: automationRun.autoSuspendedUsers.length,
       },
       users: formattedUsers,
       vehicles: formattedVehicles,
+      automation: {
+        lastRunAt: automationRun.lastRunAt,
+        autoSuspendedUsers: automationRun.autoSuspendedUsers,
+        alerts: automationAlerts,
+        expiringDocuments,
+        expiredDocuments,
+        overdueUserReviews,
+        overdueVehicleReviews,
+        vehiclesMissingPhotos,
+      },
     };
   }
 
   // PRD §4 — Compliance: auto-suspend expired docs (drivers/transporters)
+  private async runComplianceAutomationScan() {
+    const now = new Date();
+    const expiredDocs = await this.prisma.kycDocument.findMany({
+      where: {
+        expiryDate: { lte: now },
+        status: { in: ['APPROVED', 'EXPIRED'] },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            role: true,
+            status: true,
+            fullName: true,
+            companyName: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    const autoSuspendedUsers: Array<{
+      id: string;
+      role: UserRole;
+      subjectLabel: string;
+    }> = [];
+
+    for (const doc of expiredDocs) {
+      if (String(doc.status ?? '').toUpperCase() !== 'EXPIRED') {
+        await this.prisma.kycDocument.update({
+          where: { id: doc.id },
+          data: { status: 'EXPIRED' },
+        });
+      }
+
+      if (
+        COMPLIANCE_SUSPEND_ROLES.has(doc.user.role) &&
+        doc.user.status !== AccountStatus.SUSPENDED
+      ) {
+        await this.prisma.user.update({
+          where: { id: doc.user.id },
+          data: { status: AccountStatus.SUSPENDED },
+        });
+        autoSuspendedUsers.push({
+          id: doc.user.id,
+          role: doc.user.role,
+          subjectLabel:
+            doc.user.fullName ??
+            doc.user.companyName ??
+            doc.user.phone ??
+            doc.user.id,
+        });
+      }
+    }
+
+    return {
+      lastRunAt: now.toISOString(),
+      autoSuspendedUsers,
+    };
+  }
+
   async checkExpiringDocuments(): Promise<void> {
+    await this.runComplianceAutomationScan();
+    return;
     const alertDate = new Date();
     alertDate.setDate(alertDate.getDate() + EXPIRY_ALERT_DAYS);
 

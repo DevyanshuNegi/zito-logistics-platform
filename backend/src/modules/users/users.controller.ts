@@ -129,6 +129,14 @@ export class UsersController {
     return this.usersService.getVerificationDashboard();
   }
 
+  @Post('verification/automation')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Admin: rerun compliance automation and return the latest verification dashboard' })
+  runVerificationAutomation() {
+    return this.usersService.getVerificationDashboard();
+  }
+
   @Get(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)

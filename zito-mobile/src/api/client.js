@@ -1,10 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../constants/theme';
 
+const REQUEST_TIMEOUT_MS = 15000;
+
 export async function apiRequest(method, path, body = null) {
+  let timeout;
   try {
     const token = await AsyncStorage.getItem('accessToken');
     const headers = { 'Content-Type': 'application/json' };
+    const controller = new AbortController();
+    timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     if (token) {
       headers.Authorization = `Bearer ${token}`;
@@ -14,7 +19,10 @@ export async function apiRequest(method, path, body = null) {
       method,
       headers,
       body: body ? JSON.stringify(body) : null,
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     let data;
     try {
@@ -29,8 +37,17 @@ export async function apiRequest(method, path, body = null) {
 
     return data;
   } catch (requestError) {
+    if (requestError?.name === 'AbortError') {
+      throw new Error(
+        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds. Check API reachability or mobile network connectivity.`,
+      );
+    }
     console.error('API ERROR:', requestError.message);
     throw requestError;
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
 }
 

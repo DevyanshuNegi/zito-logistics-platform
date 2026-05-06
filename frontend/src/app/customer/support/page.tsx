@@ -110,6 +110,10 @@ function priorityTone(priority: string) {
   return 'bg-slate-100 text-slate-700';
 }
 
+function formatDeskLabel(value?: string | null) {
+  return value ? formatStatus(value) : 'Customer care';
+}
+
 export default function CustomerSupportPage() {
   const router = useRouter();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -165,6 +169,10 @@ export default function CustomerSupportPage() {
         message,
         autobotSummary: autobotSuggestion?.summary,
         autobotArticle: autobotSuggestion?.article?.title ?? undefined,
+        autobotConfidence: autobotSuggestion?.confidence ?? undefined,
+        autobotQuickAction: autobotSuggestion?.quickAction?.title ?? undefined,
+        autobotEscalationDesk: autobotSuggestion?.escalationDesk ?? undefined,
+        autobotSuggestedReply: autobotSuggestion?.suggestedReply ?? undefined,
       });
 
       setBookingId('');
@@ -425,6 +433,24 @@ export default function CustomerSupportPage() {
 
                 <div className="rounded-[24px] border border-violet-100 bg-violet-50 px-4 py-4">
                   <p className="text-sm leading-6 text-slate-700">{autobotSuggestion.summary}</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Suggested desk</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-950">
+                      {formatDeskLabel(autobotSuggestion.escalationDesk)}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Ticket metadata will route the issue toward the right internal desk after creation.
+                    </p>
+                  </div>
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Suggested reply posture</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">
+                      {autobotSuggestion.suggestedReply}
+                    </p>
+                  </div>
                 </div>
 
                 {autobotSuggestion.article?.items.length ? (

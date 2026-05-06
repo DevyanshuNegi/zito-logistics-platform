@@ -43,6 +43,10 @@ export class SupportService {
         sourceContextId: dto.sourceContextId,
         autobotSummary: dto.autobotSummary,
         autobotArticle: dto.autobotArticle,
+        autobotConfidence: dto.autobotConfidence,
+        autobotQuickAction: dto.autobotQuickAction,
+        autobotEscalationDesk: dto.autobotEscalationDesk,
+        autobotSuggestedReply: dto.autobotSuggestedReply,
         status: 'OPEN',
         messages: {
           create: [

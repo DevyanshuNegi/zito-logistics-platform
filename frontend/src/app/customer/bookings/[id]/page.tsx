@@ -69,6 +69,15 @@ type BookingDetail = {
     status: string;
     description?: string | null;
   }>;
+  freightMilestones?: Array<{
+    id: string;
+    title: string;
+    nodeLabel?: string | null;
+    status: string;
+    blockedReason?: string | null;
+    note?: string | null;
+    completedAt?: string | null;
+  }>;
 };
 
 function statusClassName(status: string) {
@@ -351,6 +360,49 @@ export default function CustomerBookingDetailPage() {
                   </p>
                 </div>
               </div>
+
+              {booking.freightMilestones?.length ? (
+                <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                    Freight handoff timeline
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {booking.freightMilestones.map((milestone) => (
+                      <div
+                        key={milestone.id}
+                        className="rounded-[20px] border border-slate-200 bg-white px-4 py-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-950">{milestone.title}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {milestone.nodeLabel ?? 'Node pending'}
+                            </p>
+                          </div>
+                          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusClassName(milestone.status)}`}>
+                            {formatStatus(milestone.status)}
+                          </span>
+                        </div>
+                        {milestone.note ? (
+                          <p className="mt-3 text-sm leading-6 text-slate-600">
+                            {milestone.note}
+                          </p>
+                        ) : null}
+                        {milestone.blockedReason ? (
+                          <p className="mt-2 text-sm text-rose-600">
+                            Blocked: {milestone.blockedReason}
+                          </p>
+                        ) : null}
+                        {milestone.completedAt ? (
+                          <p className="mt-2 text-xs text-slate-500">
+                            Completed {formatDateTime(milestone.completedAt)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

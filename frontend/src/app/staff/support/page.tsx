@@ -21,6 +21,10 @@ type Ticket = {
   status: string;
   description?: string | null;
   autobotSummary?: string | null;
+  autobotConfidence?: string | null;
+  autobotQuickAction?: string | null;
+  autobotEscalationDesk?: string | null;
+  autobotSuggestedReply?: string | null;
   bookingId?: string | null;
   booking?: {
     reference?: string | null;
@@ -117,6 +121,9 @@ export default function StaffSupportPage() {
     ['BOOKING', 'DRIVER'].includes(ticket.category),
   ).length;
   const financeTickets = tickets.filter((ticket) => ticket.category === 'PAYMENT').length;
+  const complianceTickets = tickets.filter(
+    (ticket) => ticket.autobotEscalationDesk === 'COMPLIANCE',
+  ).length;
   const botAssistedCount = useMemo(
     () => tickets.filter((ticket) => Boolean(ticket.autobotSummary)).length,
     [tickets],
@@ -128,10 +135,11 @@ export default function StaffSupportPage() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <StatCard label="Queue size" value={String(tickets.length)} helper="All customer and partner requests visible to customer care." />
         <StatCard label="Ops-related" value={String(operationsTickets)} helper="Booking and driver issues to hand off into operations when needed." tone="warning" />
         <StatCard label="Payment-related" value={String(financeTickets)} helper="Invoice and payment issues that may need accounts review." tone="info" />
+        <StatCard label="Compliance-routed" value={String(complianceTickets)} helper="Tickets flagged toward verification or compliance review." tone="warning" />
         <StatCard label="Bot-assisted" value={String(botAssistedCount)} helper="Tickets that already include an autobot handoff summary." tone="success" />
       </div>
 
@@ -192,7 +200,15 @@ export default function StaffSupportPage() {
                     {ticket.handler?.fullName ? ` · Owner: ${ticket.handler.fullName}` : ''}
                   </p>
                   {ticket.autobotSummary ? (
-                    <p className="text-xs text-cyan-300">Autobot summary attached</p>
+                    <div className="space-y-1 text-xs text-cyan-300">
+                      <p>Autobot summary attached</p>
+                      {ticket.autobotEscalationDesk ? (
+                        <p>Desk: {formatStatus(ticket.autobotEscalationDesk)}</p>
+                      ) : null}
+                      {ticket.autobotQuickAction ? (
+                        <p>Workflow: {ticket.autobotQuickAction}</p>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               ),

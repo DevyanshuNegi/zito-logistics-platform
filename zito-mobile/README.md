@@ -52,10 +52,12 @@ Before any remote build, set:
 1. `.env`
 
 ```bash
-EXPO_PUBLIC_API_URL=https://your-api-host.example.com
+EXPO_PUBLIC_API_URL=https://zito-backend.vercel.app
 EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 EXPO_PUBLIC_APP_ENV=development
 ```
+
+If you are testing against a local backend instead of the deployed Vercel stack, override `EXPO_PUBLIC_API_URL` with your local API origin before launching Expo.
 
 2. `app.json`
 
@@ -251,3 +253,4 @@ npm run doctor
 - The active mobile implementation lives in the JavaScript route tree under `app/`.
 - Mobile web is useful for preview, but operational QA must happen on Android and iPhone devices before release.
 - Android and iPhone must stay functionally aligned for customer, driver, agent, transporter, courier-company, warehouse-partner, internal-ops, and agency-desk workflows.
+- the internal mobile workspace must expose a QA diagnostics screen that shows the active API host, runtime environment, token presence, and backend health response from the device session

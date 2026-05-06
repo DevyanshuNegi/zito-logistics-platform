@@ -34,6 +34,10 @@ type SupportTicketDetail = {
   resolution?: string | null;
   autobotSummary?: string | null;
   autobotArticle?: string | null;
+  autobotConfidence?: string | null;
+  autobotQuickAction?: string | null;
+  autobotEscalationDesk?: string | null;
+  autobotSuggestedReply?: string | null;
   createdAt?: string;
   updatedAt?: string;
   booking?: {
@@ -311,6 +315,34 @@ export default function StaffSupportTicketPage() {
                     <p className="text-xs uppercase tracking-[0.24em]">Autobot handoff</p>
                   </div>
                   <p className="mt-3 leading-6 text-slate-100">{ticket.autobotSummary}</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {ticket.autobotConfidence ? (
+                      <div className="rounded-[18px] border border-cyan-500/25 bg-slate-950/30 px-3 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Confidence</p>
+                        <p className="mt-2 text-sm font-semibold text-white">
+                          {formatStatus(ticket.autobotConfidence)}
+                        </p>
+                      </div>
+                    ) : null}
+                    {ticket.autobotEscalationDesk ? (
+                      <div className="rounded-[18px] border border-cyan-500/25 bg-slate-950/30 px-3 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Suggested desk</p>
+                        <p className="mt-2 text-sm font-semibold text-white">
+                          {formatStatus(ticket.autobotEscalationDesk)}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                  {ticket.autobotQuickAction ? (
+                    <p className="mt-3 text-sm text-slate-200">
+                      Suggested workflow: <span className="font-medium text-white">{ticket.autobotQuickAction}</span>
+                    </p>
+                  ) : null}
+                  {ticket.autobotSuggestedReply ? (
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      Suggested first response: {ticket.autobotSuggestedReply}
+                    </p>
+                  ) : null}
                   {ticket.autobotArticle ? (
                     <Link href="/guides/internal" className="mt-3 inline-flex text-sm font-medium text-cyan-200 hover:text-cyan-100">
                       Matched article: {ticket.autobotArticle}

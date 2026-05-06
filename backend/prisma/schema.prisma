@@ -572,6 +572,7 @@ model Booking {
   icmsStatus          TradeDocumentStatus?
 
   stops          BookingStop[]
+  freightMilestones FreightMilestone[]
   parcels        InventoryItem[]
   waybills       Waybill[]
   lossReports    LossReport[]
@@ -585,6 +586,27 @@ model Booking {
   rtoReturn      RtoReturn?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+}
+
+model FreightMilestone {
+  id            String   @id @default(uuid())
+  bookingId      String
+  booking        Booking  @relation(fields: [bookingId], references: [id])
+  sequence       Int
+  code           String
+  title          String
+  nodeLabel      String?
+  status         String   @default("PENDING")
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  blockedReason  String?
+  note           String?
+  recordedBy     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([bookingId, sequence])
 }
 
 model BookingStop {
@@ -1015,6 +1037,10 @@ model SupportTicket {
   sourceContextId   String?
   autobotSummary    String?
   autobotArticle    String?
+  autobotConfidence String?
+  autobotQuickAction String?
+  autobotEscalationDesk String?
+  autobotSuggestedReply String?
   resolution      String?
   closedAt        DateTime?
   escalationLevel Int          @default(1)

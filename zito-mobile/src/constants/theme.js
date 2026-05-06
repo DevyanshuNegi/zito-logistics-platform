@@ -60,4 +60,6 @@ export function estimatePrice(vehicleKey, weightKg = 0, distanceKm = 20) {
 }
 
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'https://your-railway-backend.railway.app';
+  process.env.EXPO_PUBLIC_API_URL || 'https://zito-backend.vercel.app';
+
+export const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV || 'development';

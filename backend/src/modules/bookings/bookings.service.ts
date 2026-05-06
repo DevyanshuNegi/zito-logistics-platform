@@ -21,6 +21,7 @@ import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { RateBookingDto } from './dto/rate-booking.dto';
 import { UpdateTradeControlDto } from './dto/update-trade-control.dto';
+import { UpdateFreightMilestoneDto } from './dto/update-freight-milestone.dto';
 import * as crypto from 'crypto';
 import { PaymentsService } from '../payments/payments.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -159,6 +160,18 @@ export class BookingsService {
       },
     });
 
+    if (
+      this.isRailContainerBooking(
+        booking.serviceType,
+        booking.requiredVehicleType,
+        booking.tradeMode,
+        booking.railCorridorCode,
+        booking.containerReference,
+      )
+    ) {
+      await this.ensureFreightMilestones(booking.id);
+    }
+
     await this.writeAudit(customerId, 'BOOKING_CREATED', 'BOOKING', booking.id, {
       reference: booking.reference,
       serviceType: booking.serviceType,
@@ -262,6 +275,7 @@ export class BookingsService {
           driver: { include: { user: { select: { fullName: true, phone: true } } } },
           vehicle: { select: { plateNumber: true, type: true } },
           escrow: { select: { status: true, amount: true } },
+          freightMilestones: { orderBy: { sequence: 'asc' } },
         },
       }),
       this.prisma.booking.count({ where }),
@@ -273,7 +287,7 @@ export class BookingsService {
   // ─── GET DETAIL ────────────────────────────────────────────────────────────
 
   async getById(bookingId: string, requesterId: string, requesterRole: string) {
-    const booking = await this.prisma.booking.findUnique({
+    let booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
       include: {
         stops: { orderBy: { sequence: 'asc' } },
@@ -282,6 +296,7 @@ export class BookingsService {
         payments: true,
         escrow: true,
         supportTickets: { orderBy: { createdAt: 'desc' }, take: 5 },
+        freightMilestones: { orderBy: { sequence: 'asc' } },
         waybills: true,
         parcels: {
           select: {
@@ -302,6 +317,48 @@ export class BookingsService {
     });
 
     if (!booking) throw new NotFoundException('Booking not found');
+
+    if (
+      this.isRailContainerBooking(
+        booking.serviceType,
+        booking.requiredVehicleType,
+        booking.tradeMode,
+        booking.railCorridorCode,
+        booking.containerReference,
+      ) &&
+      booking.freightMilestones.length === 0
+    ) {
+      await this.ensureFreightMilestones(booking.id);
+      booking = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: {
+          stops: { orderBy: { sequence: 'asc' } },
+          driver: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
+          vehicle: true,
+          payments: true,
+          escrow: true,
+          supportTickets: { orderBy: { createdAt: 'desc' }, take: 5 },
+          freightMilestones: { orderBy: { sequence: 'asc' } },
+          waybills: true,
+          parcels: {
+            select: {
+              id: true,
+              parcelId: true,
+              status: true,
+              currentVehicleId: true,
+            },
+          },
+          _count: {
+            select: {
+              parcels: true,
+              scanEvents: true,
+              waybills: true,
+            },
+          },
+        },
+      });
+      if (!booking) throw new NotFoundException('Booking not found');
+    }
 
     // Scope check: customers can only see their own bookings
     if (
@@ -547,6 +604,9 @@ export class BookingsService {
       },
     });
 
+    await this.ensureFreightMilestones(updated.id);
+    await this.syncFreightMilestonesFromBooking(updated.id);
+
     await this.writeAudit(adminId, 'ADMIN_OVERRIDE', 'BOOKING', bookingId, {
       action: 'TRADE_CONTROL_UPDATED',
       tradeMode: updated.tradeMode,
@@ -554,6 +614,64 @@ export class BookingsService {
       customsStatus: updated.customsStatus,
       icmsStatus: updated.icmsStatus,
       pacReady: updated.pacReady,
+    });
+
+    return this.getById(bookingId, adminId, 'ADMIN');
+  }
+
+  async listFreightMilestonesByAdmin(bookingId: string, adminId: string) {
+    await this.findOrThrow(bookingId);
+    await this.ensureFreightMilestones(bookingId);
+    await this.writeAudit(adminId, 'ADMIN_VIEW', 'BOOKING', bookingId, {
+      action: 'FREIGHT_MILESTONES_VIEWED',
+    });
+
+    return this.prisma.freightMilestone.findMany({
+      where: { bookingId },
+      orderBy: { sequence: 'asc' },
+    });
+  }
+
+  async updateFreightMilestoneByAdmin(
+    bookingId: string,
+    milestoneId: string,
+    adminId: string,
+    dto: UpdateFreightMilestoneDto,
+  ) {
+    await this.ensureFreightMilestones(bookingId);
+
+    const milestone = await this.prisma.freightMilestone.findFirst({
+      where: { id: milestoneId, bookingId },
+    });
+    if (!milestone) {
+      throw new NotFoundException('Freight milestone not found');
+    }
+
+    const normalizedStatus = String(dto.status ?? '').trim().toUpperCase();
+    if (!['PENDING', 'READY', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(normalizedStatus)) {
+      throw new BadRequestException('Invalid freight milestone status');
+    }
+
+    await this.prisma.freightMilestone.update({
+      where: { id: milestoneId },
+      data: {
+        status: normalizedStatus,
+        note: dto.note?.trim() || null,
+        blockedReason:
+          normalizedStatus === 'BLOCKED' ? dto.blockedReason?.trim() || 'Blocked by operations desk' : null,
+        scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : undefined,
+        startedAt: normalizedStatus === 'IN_PROGRESS' && !milestone.startedAt ? new Date() : milestone.startedAt,
+        completedAt: normalizedStatus === 'COMPLETED' ? new Date() : normalizedStatus === 'BLOCKED' ? null : milestone.completedAt,
+        recordedBy: adminId,
+      },
+    });
+
+    await this.writeAudit(adminId, 'ADMIN_OVERRIDE', 'BOOKING', bookingId, {
+      action: 'FREIGHT_MILESTONE_UPDATED',
+      milestoneId,
+      milestoneCode: milestone.code,
+      status: normalizedStatus,
+      blockedReason: dto.blockedReason?.trim() || null,
     });
 
     return this.getById(bookingId, adminId, 'ADMIN');
@@ -1020,6 +1138,191 @@ export class BookingsService {
       railCorridorCode != null ||
       Boolean(containerReference)
     );
+  }
+
+  private buildFreightMilestoneTemplates(booking: {
+    serviceType: ServiceType;
+    tradeMode?: FreightTradeMode | null;
+    railCorridorCode?: string | null;
+    originNode?: string | null;
+    destinationNode?: string | null;
+    customsStatus?: TradeDocumentStatus | null;
+    icmsStatus?: TradeDocumentStatus | null;
+    pacReady?: boolean | null;
+  }) {
+    const templates = [
+      {
+        code: 'BOOKING_CONFIRMED',
+        title: 'Booking confirmed',
+        nodeLabel: booking.originNode ?? null,
+        status: 'COMPLETED',
+      },
+      {
+        code: 'DOCUMENT_PACK',
+        title: 'Trade document pack',
+        nodeLabel: booking.originNode ?? null,
+        status:
+          booking.tradeMode && booking.tradeMode !== FreightTradeMode.LOCAL
+            ? booking.customsStatus === TradeDocumentStatus.CLEARED ||
+              booking.customsStatus === TradeDocumentStatus.SUBMITTED ||
+              booking.customsStatus === TradeDocumentStatus.READY
+              ? 'READY'
+              : 'PENDING'
+            : 'READY',
+      },
+      {
+        code: 'CUSTOMS_CLEARANCE',
+        title: 'Customs and release control',
+        nodeLabel: booking.originNode ?? null,
+        status:
+          booking.tradeMode && booking.tradeMode !== FreightTradeMode.LOCAL
+            ? booking.customsStatus === TradeDocumentStatus.CLEARED
+              ? 'COMPLETED'
+              : booking.customsStatus === TradeDocumentStatus.HOLD
+              ? 'BLOCKED'
+              : booking.customsStatus === TradeDocumentStatus.SUBMITTED
+              ? 'IN_PROGRESS'
+              : 'PENDING'
+            : 'READY',
+      },
+      {
+        code: 'PAC_RELEASE',
+        title: 'PAC / gate release',
+        nodeLabel: booking.originNode ?? null,
+        status: booking.pacReady ? 'READY' : 'PENDING',
+      },
+      {
+        code: 'ORIGIN_HANDOFF',
+        title: booking.serviceType === ServiceType.RAIL ? 'Port / terminal handoff' : 'Origin gate-out',
+        nodeLabel: booking.originNode ?? null,
+        status: 'PENDING',
+      },
+      {
+        code: booking.serviceType === ServiceType.RAIL ? 'RAIL_LINEHAUL' : 'ROAD_LINEHAUL',
+        title: booking.serviceType === ServiceType.RAIL ? 'Rail line-haul' : 'Container line-haul',
+        nodeLabel: booking.serviceType === ServiceType.RAIL ? booking.railCorridorCode ?? null : null,
+        status:
+          booking.icmsStatus === TradeDocumentStatus.CLEARED
+            ? 'READY'
+            : booking.icmsStatus === TradeDocumentStatus.HOLD
+            ? 'BLOCKED'
+            : 'PENDING',
+      },
+      {
+        code: booking.serviceType === ServiceType.RAIL ? 'ICD_OFFLOAD' : 'DESTINATION_GATE_IN',
+        title: booking.serviceType === ServiceType.RAIL ? 'ICD / terminal offload' : 'Destination gate-in',
+        nodeLabel: booking.destinationNode ?? null,
+        status: 'PENDING',
+      },
+      {
+        code: 'LAST_MILE_DISPATCH',
+        title: 'Last-mile dispatch',
+        nodeLabel: booking.destinationNode ?? null,
+        status: 'PENDING',
+      },
+      {
+        code: 'DELIVERY_CONFIRMATION',
+        title: 'Delivery confirmation',
+        nodeLabel: booking.destinationNode ?? null,
+        status: 'PENDING',
+      },
+    ];
+
+    return templates.map((template, index) => ({
+      sequence: index + 1,
+      ...template,
+    }));
+  }
+
+  private async ensureFreightMilestones(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        serviceType: true,
+        requiredVehicleType: true,
+        tradeMode: true,
+        railCorridorCode: true,
+        containerReference: true,
+        originNode: true,
+        destinationNode: true,
+        customsStatus: true,
+        icmsStatus: true,
+        pacReady: true,
+        freightMilestones: {
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (
+      !this.isRailContainerBooking(
+        booking.serviceType,
+        booking.requiredVehicleType,
+        booking.tradeMode,
+        booking.railCorridorCode,
+        booking.containerReference,
+      )
+    ) {
+      return;
+    }
+
+    if (booking.freightMilestones.length > 0) {
+      return;
+    }
+
+    const templates = this.buildFreightMilestoneTemplates(booking);
+    await this.prisma.freightMilestone.createMany({
+      data: templates.map((template) => ({
+        bookingId,
+        sequence: template.sequence,
+        code: template.code,
+        title: template.title,
+        nodeLabel: template.nodeLabel,
+        status: template.status,
+      })),
+    });
+  }
+
+  private async syncFreightMilestonesFromBooking(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        serviceType: true,
+        tradeMode: true,
+        railCorridorCode: true,
+        originNode: true,
+        destinationNode: true,
+        customsStatus: true,
+        icmsStatus: true,
+        pacReady: true,
+      },
+    });
+
+    if (!booking) {
+      return;
+    }
+
+    const templates = this.buildFreightMilestoneTemplates(booking);
+    for (const template of templates) {
+      await this.prisma.freightMilestone.updateMany({
+        where: {
+          bookingId,
+          code: template.code,
+          status: { in: ['PENDING', 'READY', 'BLOCKED'] },
+        },
+        data: {
+          nodeLabel: template.nodeLabel,
+          status: template.status,
+        },
+      });
+    }
   }
 
   private validateStopStructure(

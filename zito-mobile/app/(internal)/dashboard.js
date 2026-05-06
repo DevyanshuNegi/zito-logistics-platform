@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'expo-router';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '../../src/api/client';
@@ -135,6 +136,15 @@ export default function InternalDashboardScreen() {
             ))
           )}
         </SectionCard>
+
+        <SectionCard title="QA diagnostics" subtitle="Mobile release confidence starts with a visible runtime and health check path.">
+          <Text style={styles.copy}>
+            Open the QA screen to confirm the active API host, app environment, token state, role routing, and the live backend health response from this device.
+          </Text>
+          <Link href="/(internal)/qa" style={styles.qaLink}>
+            <Text style={styles.qaLinkText}>Open QA diagnostics</Text>
+          </Link>
+        </SectionCard>
       </ScrollView>
     </SafeAreaView>
   );
@@ -150,6 +160,21 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, fontSize: 12, lineHeight: 18 },
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   copy: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
+  qaLink: {
+    marginTop: 14,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.bgElevated,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  qaLinkText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   rowCard: {
     marginTop: 10,
     padding: 14,

@@ -43,4 +43,20 @@ export class CreateTicketDto {
   @IsOptional()
   @IsString()
   autobotArticle?: string;
+
+  @IsOptional()
+  @IsString()
+  autobotConfidence?: string;
+
+  @IsOptional()
+  @IsString()
+  autobotQuickAction?: string;
+
+  @IsOptional()
+  @IsString()
+  autobotEscalationDesk?: string;
+
+  @IsOptional()
+  @IsString()
+  autobotSuggestedReply?: string;
 }

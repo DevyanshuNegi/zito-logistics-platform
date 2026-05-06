@@ -29,6 +29,8 @@ export type HelpCenterSuggestion = {
   quickAction: HelpCenterQuickAction | null;
   summary: string;
   confidence: 'high' | 'medium' | 'low';
+  escalationDesk: 'CUSTOMER_CARE' | 'OPERATIONS' | 'ACCOUNTS' | 'COMPLIANCE';
+  suggestedReply: string;
 };
 
 export type HelpCenterGuide = AppGuide & {
@@ -88,6 +90,44 @@ function scoreKeywords(tokens: string[], keywords: string[]) {
   }, 0);
 }
 
+function resolveEscalationDesk(
+  issueTokens: string[],
+  category?: string,
+): HelpCenterSuggestion['escalationDesk'] {
+  const complianceTokens = [
+    'verification',
+    'verify',
+    'kyc',
+    'document',
+    'documents',
+    'compliance',
+    'photo',
+    'photos',
+    'permit',
+    'insurance',
+  ];
+
+  if (
+    issueTokens.some((token) =>
+      complianceTokens.some(
+        (keyword) => keyword.startsWith(token) || token.startsWith(keyword),
+      ),
+    )
+  ) {
+    return 'COMPLIANCE';
+  }
+
+  if (category === 'PAYMENT') {
+    return 'ACCOUNTS';
+  }
+
+  if (category === 'BOOKING' || category === 'DRIVER') {
+    return 'OPERATIONS';
+  }
+
+  return 'CUSTOMER_CARE';
+}
+
 export function getHelpCenterSuggestion(
   guide: HelpCenterGuide,
   issue: string,
@@ -130,11 +170,20 @@ export function getHelpCenterSuggestion(
   const actionLine = quickAction
     ? `Suggested next action: ${quickAction.title}.`
     : 'Suggested next action: contact support with the linked workflow context.';
+  const escalationDesk = resolveEscalationDesk(issueTokens, category);
+  const suggestedReply = [
+    `Route this case to ${escalationDesk.replaceAll('_', ' ')} if human action is required.`,
+    article ? `Anchor the response on the matched article "${article.title}".` : null,
+    quickAction ? `Continue from the linked workflow action "${quickAction.title}".` : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   const summary = [
     article ? `Autobot matched "${article.title}". ${article.description}` : null,
     articleItems ? `Key guidance: ${articleItems}` : null,
     actionLine,
+    `Suggested desk: ${escalationDesk.replaceAll('_', ' ')}.`,
   ]
     .filter(Boolean)
     .join(' ');
@@ -147,6 +196,8 @@ export function getHelpCenterSuggestion(
     quickAction,
     summary,
     confidence,
+    escalationDesk,
+    suggestedReply,
   };
 }
 

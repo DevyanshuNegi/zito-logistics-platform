@@ -85,10 +85,18 @@ function normalizePath(path: string) {
 
 export function getApiOrigin() {
   const fallback = 'http://127.0.0.1:3001';
+  const deployedBackendFallback = 'https://zito-backend.vercel.app';
   if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/, '');
   }
   if (typeof window !== 'undefined') {
+    const host = window.location.hostname.replace(/\/+$/, '');
+    if (
+      host.endsWith('.vercel.app') &&
+      host !== 'zito-backend.vercel.app'
+    ) {
+      return deployedBackendFallback;
+    }
     return window.location.origin.replace(/\/+$/, '');
   }
   return fallback;

@@ -19,6 +19,7 @@ import { AssignDriverDto } from './dto/assign-driver.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { RateBookingDto } from './dto/rate-booking.dto';
 import { UpdateTradeControlDto } from './dto/update-trade-control.dto';
+import { UpdateFreightMilestoneDto } from './dto/update-freight-milestone.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -298,6 +299,30 @@ export class AdminBookingsController {
     @Body() dto: UpdateTradeControlDto,
   ) {
     return this.bookingsService.updateTradeControlByAdmin(id, req.user.id, dto);
+  }
+
+  @Get(':id/freight-milestones')
+  getFreightMilestones(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req,
+  ) {
+    return this.bookingsService.listFreightMilestonesByAdmin(id, req.user.id);
+  }
+
+  @Patch(':id/freight-milestones/:milestoneId')
+  @HttpCode(HttpStatus.OK)
+  updateFreightMilestone(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('milestoneId', ParseUUIDPipe) milestoneId: string,
+    @Request() req,
+    @Body() dto: UpdateFreightMilestoneDto,
+  ) {
+    return this.bookingsService.updateFreightMilestoneByAdmin(
+      id,
+      milestoneId,
+      req.user.id,
+      dto,
+    );
   }
 
   // POST /admin/bookings/:id/cancel

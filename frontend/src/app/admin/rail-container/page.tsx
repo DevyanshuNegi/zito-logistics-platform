@@ -9,12 +9,25 @@ import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
 import { RoutePreviewMap } from '@/components/maps/RoutePreviewMap';
 import { ApiError, api } from '@/lib/api';
-import { formatMoney, formatStatus } from '@/lib/format';
+import { formatDateTime, formatMoney, formatStatus } from '@/lib/format';
 
 type Stop = {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+};
+
+type FreightMilestone = {
+  id: string;
+  code: string;
+  title: string;
+  nodeLabel?: string | null;
+  status: string;
+  scheduledAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  blockedReason?: string | null;
+  note?: string | null;
 };
 
 type Booking = {
@@ -36,6 +49,7 @@ type Booking = {
   icmsStatus?: string | null;
   specialInstructions?: string | null;
   stops?: Stop[];
+  freightMilestones?: FreightMilestone[];
 };
 
 type BookingResponse = {
@@ -64,6 +78,23 @@ function isRailOrContainer(booking: Booking) {
   );
 }
 
+function milestoneTone(status: string) {
+  const normalized = status.toUpperCase();
+  if (normalized === 'COMPLETED') {
+    return 'border-emerald-400/25 bg-emerald-500/10 text-emerald-100';
+  }
+  if (normalized === 'IN_PROGRESS') {
+    return 'border-cyan-400/25 bg-cyan-500/10 text-cyan-100';
+  }
+  if (normalized === 'READY') {
+    return 'border-sky-400/25 bg-sky-500/10 text-sky-100';
+  }
+  if (normalized === 'BLOCKED') {
+    return 'border-rose-400/25 bg-rose-500/10 text-rose-100';
+  }
+  return 'border-slate-700/50 bg-slate-950/80 text-slate-300';
+}
+
 export default function RailContainerAdminPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
@@ -80,6 +111,7 @@ export default function RailContainerAdminPage() {
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [milestoneBusyKey, setMilestoneBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -186,6 +218,50 @@ export default function RailContainerAdminPage() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function updateMilestone(
+    milestoneId: string,
+    status: 'READY' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED',
+  ) {
+    if (!selectedBooking) {
+      return;
+    }
+
+    const key = `${milestoneId}:${status}`;
+    const note =
+      status === 'BLOCKED'
+        ? window.prompt('Blocked reason or intervention note')
+        : window.prompt('Optional milestone note') ?? '';
+
+    if (status === 'BLOCKED' && !note?.trim()) {
+      return;
+    }
+
+    setMilestoneBusyKey(key);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await api.patch(
+        `/admin/bookings/${selectedBooking.id}/freight-milestones/${milestoneId}`,
+        {
+          status,
+          note: note?.trim() || undefined,
+          blockedReason: status === 'BLOCKED' ? note?.trim() || undefined : undefined,
+        },
+      );
+      setSuccess(`Milestone marked ${formatStatus(status)}.`);
+      await loadBookings();
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : 'Unable to update the freight milestone.',
+      );
+    } finally {
+      setMilestoneBusyKey(null);
     }
   }
 
@@ -487,6 +563,94 @@ export default function RailContainerAdminPage() {
                 >
                   Open booking controls
                 </Link>
+              </div>
+
+              <div className="space-y-4 rounded-[24px] border border-slate-700/40 bg-slate-900/50 p-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Freight milestones
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-white">
+                    Port, ICD, customs, and last-mile handoff control
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Keep each freight leg visible instead of hiding rail and container work inside one booking status.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {selectedBooking.freightMilestones?.length ? (
+                    selectedBooking.freightMilestones.map((milestone) => (
+                      <div
+                        key={milestone.id}
+                        className="rounded-[20px] border border-slate-700/40 bg-slate-950/70 px-4 py-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-white">
+                              {milestone.title}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              {milestone.nodeLabel ?? 'Node pending'}
+                            </p>
+                          </div>
+                          <span
+                            className={[
+                              'rounded-full border px-3 py-1 text-[11px] font-semibold',
+                              milestoneTone(milestone.status),
+                            ].join(' ')}
+                          >
+                            {formatStatus(milestone.status)}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-3 text-xs text-slate-400 md:grid-cols-3">
+                          <p>Scheduled: {milestone.scheduledAt ? formatDateTime(milestone.scheduledAt) : 'Pending'}</p>
+                          <p>Started: {milestone.startedAt ? formatDateTime(milestone.startedAt) : 'Pending'}</p>
+                          <p>Completed: {milestone.completedAt ? formatDateTime(milestone.completedAt) : 'Pending'}</p>
+                        </div>
+                        {milestone.blockedReason ? (
+                          <p className="mt-2 text-xs text-rose-300">
+                            Blocked: {milestone.blockedReason}
+                          </p>
+                        ) : null}
+                        {milestone.note ? (
+                          <p className="mt-2 text-xs text-slate-300">
+                            Note: {milestone.note}
+                          </p>
+                        ) : null}
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {(['READY', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED'] as const).map(
+                            (status) => {
+                              const buttonKey = `${milestone.id}:${status}`;
+                              return (
+                                <Button
+                                  key={status}
+                                  disabled={milestoneBusyKey === buttonKey}
+                                  onClick={() => void updateMilestone(milestone.id, status)}
+                                  variant={
+                                    status === 'BLOCKED'
+                                      ? 'danger'
+                                      : status === 'COMPLETED'
+                                        ? 'secondary'
+                                        : 'primary'
+                                  }
+                                >
+                                  {milestoneBusyKey === buttonKey
+                                    ? 'Updating...'
+                                    : `Mark ${formatStatus(status)}`}
+                                </Button>
+                              );
+                            },
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-[20px] border border-dashed border-slate-700/50 bg-slate-950/60 px-4 py-5 text-sm text-slate-400">
+                      No freight milestones exist yet for this booking.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

@@ -51,4 +51,5 @@ export const Fonts = Platform.select({
     mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 });
-export const API_URL = "https://your-app.railway.app";
+export const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://zito-backend.vercel.app';

@@ -2343,3 +2343,30 @@ Design sign-off must be validated through usability testing with measurable outc
 - past bookings can be found quickly
 - booking flow does not feel like filling a business form
 All future customer, partner, and internal UI implementation must be reviewed against Section 66 before development sign-off and before UAT closure.
+66.17 Product Hardening Before External Go-Live
+Before company-registration-dependent integrations are finalized, the product must still be operationally strong, deployment-ready, and internally testable.
+Deployment readiness rules:
+- the current web delivery assumption is split frontend and backend deployment on Vercel; frontend and mobile runtime configuration must not retain obsolete Railway fallback hosts once Vercel deployment is active
+- deployed frontend environments must expose an explicit backend origin when frontend and backend run as separate Vercel projects
+- mobile runtime defaults may use the deployed Vercel backend origin for QA convenience, while local development may override that host explicitly through environment files
+Freight and container operational depth rules:
+- rail and container bookings must expose a visible milestone chain rather than hiding all freight progress inside a single booking status
+- milestone coverage must include at minimum document pack readiness, customs clearance, PAC readiness, origin handoff, linehaul, ICD or destination gate handoff, last-mile dispatch, and delivery confirmation where relevant
+- admin freight control desks must allow milestone status updates, notes, and blocked-state capture without leaving the booking control workflow
+- customer-facing freight bookings must expose a readable milestone timeline so import/export and corridor customers can understand where the shipment is delayed or progressing
+Autobot v2 support rules:
+- support ticket creation must persist autobot confidence, suggested quick action, escalation desk, and suggested first-response guidance in addition to the matched article summary
+- customer support creation should show the suggested desk and suggested reply posture before ticket submission so the workflow feels guided rather than form-driven
+- internal support queues and ticket threads must surface autobot routing metadata clearly enough for customer care, operations, accounts, or compliance desks to take action without re-triaging from scratch
+Compliance automation rules:
+- verification dashboards must surface expiring approved documents, expired documents, overdue user reviews, overdue vehicle reviews, missing photo packs, and any users auto-suspended by compliance automation
+- operational roles affected by expired mandatory compliance evidence may be auto-suspended according to policy, but those actions must be visible in the verification control desk
+- verification control must support explicit automation refresh so compliance teams can rerun the latest scan before taking manual decisions
+Admin workflow polish rules:
+- the main admin dashboard must surface cross-desk priorities, not just isolated module links
+- compliance backlog, automation alerts, escalated support pressure, and finance-routed support pressure must all be visible from the main command surface
+- quick actions must include direct access to the verification desk and freight-control desk
+Mobile QA hardening rules:
+- the internal mobile workspace must expose a QA diagnostics screen showing the active API host, runtime environment label, token presence, user-role routing context, and live backend health response
+- mobile API clients must use a bounded request timeout and return actionable errors when the runtime cannot reach the deployed backend
+- mobile documentation and environment templates must reflect the active deployment strategy and must not reference obsolete infrastructure defaults

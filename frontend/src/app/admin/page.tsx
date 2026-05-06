@@ -92,6 +92,33 @@ type UsersResponse = {
   data: DirectoryUser[];
 };
 
+type VerificationDashboard = {
+  summary: {
+    usersAwaitingReview: number;
+    vehiclesAwaitingReview: number;
+    expiringDocuments?: number;
+    overdueUserReviews?: number;
+    overdueVehicleReviews?: number;
+    vehiclesMissingPhotos?: number;
+    autoSuspendedUsers?: number;
+  };
+  automation?: {
+    alerts?: Array<{
+      severity: string;
+      title: string;
+      detail: string;
+    }>;
+  };
+};
+
+type SupportQueueTicket = {
+  id: string;
+  category: string;
+  priority: string;
+  status: string;
+  autobotEscalationDesk?: string | null;
+};
+
 type DashboardState = {
   bookings: Booking[];
   liveDrivers: LiveDriver[];
@@ -99,6 +126,8 @@ type DashboardState = {
   approvals: AuditDashboard | null;
   analytics: AnalyticsDashboard | null;
   directoryUsers: DirectoryUser[];
+  verification: VerificationDashboard | null;
+  supportTickets: SupportQueueTicket[];
 };
 
 type DriverMarker = {
@@ -131,6 +160,7 @@ const QUICK_ACTIONS = [
   { href: '/admin/courier-companies', label: 'Courier control', icon: 'CC', helper: 'Courier-company command desk' },
   { href: '/admin/warehouse-partners', label: 'Warehouse control', icon: 'WH', helper: 'Warehouse-partner oversight' },
   { href: '/admin/agencies', label: 'Agencies', icon: 'AG', helper: 'Manage field branches' },
+  { href: '/admin/verification', label: 'Verification', icon: 'VR', helper: 'KYC, fleet photos, and compliance automation' },
   { href: '/admin/billing', label: 'Billing', icon: 'BL', helper: 'Platform, warehouse, and inter-agency finance' },
   { href: '/admin/capacity-planning', label: 'Capacity', icon: 'CP', helper: 'Warehouse and fleet pressure desk' },
   { href: '/admin/sla', label: 'SLA', icon: 'SL', helper: 'Timers, no-shows, and escalations' },
@@ -261,11 +291,13 @@ export default function AdminPage() {
   const [dashboard, setDashboard] = useState<DashboardState>({
     bookings: [],
     liveDrivers: [],
-    alerts: null,
-    approvals: null,
-    analytics: null,
-    directoryUsers: [],
-  });
+      alerts: null,
+      approvals: null,
+      analytics: null,
+      directoryUsers: [],
+      verification: null,
+      supportTickets: [],
+    });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -282,10 +314,21 @@ export default function AdminPage() {
         api.get<AuditDashboard>('/audit/approvals'),
         api.get<AnalyticsDashboard>('/analytics/dashboard?period=monthly'),
         api.get<UsersResponse>('/users?limit=200'),
+        api.get<VerificationDashboard>('/users/verification/dashboard'),
+        api.get<SupportQueueTicket[]>('/support'),
       ]);
 
       const nextWarnings: string[] = [];
-      const [bookingsResult, driversResult, alertsResult, approvalsResult, analyticsResult, usersResult] = responses;
+      const [
+        bookingsResult,
+        driversResult,
+        alertsResult,
+        approvalsResult,
+        analyticsResult,
+        usersResult,
+        verificationResult,
+        supportResult,
+      ] = responses;
 
       if (bookingsResult.status !== 'fulfilled') {
         const message =
@@ -312,6 +355,12 @@ export default function AdminPage() {
       if (usersResult.status !== 'fulfilled') {
         nextWarnings.push('User network counts are temporarily unavailable.');
       }
+      if (verificationResult.status !== 'fulfilled') {
+        nextWarnings.push('Compliance automation telemetry is unavailable.');
+      }
+      if (supportResult.status !== 'fulfilled') {
+        nextWarnings.push('Support desk backlog is unavailable.');
+      }
 
       setDashboard({
         bookings: bookingsResult.value.bookings,
@@ -320,6 +369,8 @@ export default function AdminPage() {
         approvals: approvalsResult.status === 'fulfilled' ? approvalsResult.value : null,
         analytics: analyticsResult.status === 'fulfilled' ? analyticsResult.value : null,
         directoryUsers: usersResult.status === 'fulfilled' ? usersResult.value.data : [],
+        verification: verificationResult.status === 'fulfilled' ? verificationResult.value : null,
+        supportTickets: supportResult.status === 'fulfilled' ? supportResult.value : [],
       });
       setWarnings(nextWarnings);
       setLoading(false);
@@ -359,6 +410,16 @@ export default function AdminPage() {
   const courierCount = dashboard.directoryUsers.filter((user) => user.role === 'COURIER_COMPANY').length;
   const warehouseCount = dashboard.directoryUsers.filter((user) => user.role === 'WAREHOUSE_PARTNER').length;
   const staffCount = dashboard.directoryUsers.filter((user) => user.role === 'AGENCY_STAFF').length;
+  const compliancePending =
+    (dashboard.verification?.summary.usersAwaitingReview ?? 0) +
+    (dashboard.verification?.summary.vehiclesAwaitingReview ?? 0);
+  const complianceAlerts = dashboard.verification?.automation?.alerts ?? [];
+  const escalatedTickets = dashboard.supportTickets.filter(
+    (ticket) => ticket.status === 'ESCALATED',
+  ).length;
+  const accountsRoutedTickets = dashboard.supportTickets.filter(
+    (ticket) => ticket.autobotEscalationDesk === 'ACCOUNTS',
+  ).length;
 
   if (loading) {
     return (
@@ -471,6 +532,63 @@ export default function AdminPage() {
               <p className="mt-3 text-3xl font-semibold text-white">{item.value}</p>
             </Link>
           ))}
+        </div>
+      </SurfaceCard>
+
+      <SurfaceCard
+        tone="dark"
+        title="Operational priorities"
+        description="Cross-desk pressure points that need action across compliance, support, and finance."
+      >
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-[18px] border border-slate-700/40 bg-slate-900/60 px-4 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Compliance pending</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{compliancePending}</p>
+            <p className="mt-2 text-xs text-slate-400">Users and fleet units still awaiting verification or review.</p>
+          </div>
+          <div className="rounded-[18px] border border-slate-700/40 bg-slate-900/60 px-4 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Automation alerts</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{complianceAlerts.length}</p>
+            <p className="mt-2 text-xs text-slate-400">Expiring documents, overdue reviews, or missing photo-pack warnings.</p>
+          </div>
+          <div className="rounded-[18px] border border-slate-700/40 bg-slate-900/60 px-4 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Support escalations</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{escalatedTickets}</p>
+            <p className="mt-2 text-xs text-slate-400">Tickets already escalated beyond first-line customer care.</p>
+          </div>
+          <div className="rounded-[18px] border border-slate-700/40 bg-slate-900/60 px-4 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Accounts-routed</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{accountsRoutedTickets}</p>
+            <p className="mt-2 text-xs text-slate-400">Bot-routed payment and finance issues likely needing accounts attention.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {complianceAlerts.length > 0 ? (
+            complianceAlerts.slice(0, 4).map((alert) => (
+              <div
+                key={`${alert.severity}:${alert.title}`}
+                className="rounded-[18px] border border-slate-700/40 bg-slate-950/80 px-4 py-4"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  {formatStatus(alert.severity)}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">{alert.title}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">{alert.detail}</p>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-[18px] border border-dashed border-slate-700/50 bg-slate-950/60 px-4 py-5 text-sm text-slate-400">
+              No compliance automation alerts are currently open.
+            </div>
+          )}
+          <div className="rounded-[18px] border border-slate-700/40 bg-slate-950/80 px-4 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Next actions</p>
+            <div className="mt-3 space-y-2 text-sm text-slate-300">
+              <p>1. Clear verification items from the compliance desk before they convert into operational blocks.</p>
+              <p>2. Route payment-linked tickets into Accounts before they age into settlement disputes.</p>
+              <p>3. Use the rail/container desk when customs, PAC, or corridor handoffs begin to drift from plan.</p>
+            </div>
+          </div>
         </div>
       </SurfaceCard>
 

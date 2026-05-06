@@ -80,6 +80,25 @@ type VerificationDashboard = {
     rejectedUsers: number;
     vehiclesAwaitingReview: number;
     rejectedVehicles: number;
+    expiringDocuments?: number;
+    expiredDocuments?: number;
+    overdueUserReviews?: number;
+    overdueVehicleReviews?: number;
+    vehiclesMissingPhotos?: number;
+    autoSuspendedUsers?: number;
+  };
+  automation?: {
+    lastRunAt?: string;
+    alerts?: Array<{
+      severity: string;
+      title: string;
+      detail: string;
+    }>;
+    autoSuspendedUsers?: Array<{
+      id: string;
+      role: string;
+      subjectLabel: string;
+    }>;
   };
   users: VerificationUser[];
   vehicles: VerificationVehicle[];
@@ -126,6 +145,26 @@ export default function AdminVerificationPage() {
   useEffect(() => {
     void loadDashboard();
   }, []);
+
+  async function refreshAutomation() {
+    setBusyKey('automation:refresh');
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await api.post<VerificationDashboard>('/users/verification/automation', {});
+      setDashboard(response);
+      setSuccess('Compliance automation scan refreshed.');
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : 'Unable to refresh compliance automation.',
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   async function handleDocumentReview(
     userId: string,
@@ -223,6 +262,10 @@ export default function AdminVerificationPage() {
         <StatCard label="Rejected users" value={String(dashboard?.summary.rejectedUsers ?? 0)} helper="Accounts blocked until compliance issues are corrected." tone="danger" />
         <StatCard label="Vehicles awaiting review" value={String(dashboard?.summary.vehiclesAwaitingReview ?? 0)} helper="Fleet units still missing approved verification evidence." tone="info" />
         <StatCard label="Rejected vehicles" value={String(dashboard?.summary.rejectedVehicles ?? 0)} helper="Units requiring corrected photos or compliance evidence." tone="danger" />
+        <StatCard label="Expiring docs" value={String(dashboard?.summary.expiringDocuments ?? 0)} helper="Approved documents approaching expiry and needing action." tone="warning" />
+        <StatCard label="Overdue reviews" value={String((dashboard?.summary.overdueUserReviews ?? 0) + (dashboard?.summary.overdueVehicleReviews ?? 0))} helper="Compliance reviews older than the desk SLA threshold." tone="info" />
+        <StatCard label="Missing photo packs" value={String(dashboard?.summary.vehiclesMissingPhotos ?? 0)} helper="Truck and container units still missing mandatory image evidence." tone="warning" />
+        <StatCard label="Auto-suspended" value={String(dashboard?.summary.autoSuspendedUsers ?? 0)} helper="Operational accounts suspended automatically due to expired compliance evidence." tone="danger" />
       </div>
 
       {error ? (
@@ -239,6 +282,15 @@ export default function AdminVerificationPage() {
       <SurfaceCard
         title="User compliance review"
         description="Review customer, driver, transporter, courier company, warehouse, and corporate KYC documents before activation."
+        actions={
+          <Button
+            disabled={busyKey === 'automation:refresh'}
+            onClick={() => void refreshAutomation()}
+            variant="secondary"
+          >
+            {busyKey === 'automation:refresh' ? 'Refreshing...' : 'Refresh automation scan'}
+          </Button>
+        }
       >
         {loading && !dashboard ? (
           <Spinner />
@@ -328,6 +380,58 @@ export default function AdminVerificationPage() {
                 </div>
               </article>
             ))}
+          </div>
+        )}
+      </SurfaceCard>
+
+      <SurfaceCard
+        title="Compliance automation"
+        description="Operationally important verification issues surfaced automatically for internal intervention."
+      >
+        {loading && !dashboard ? (
+          <Spinner />
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-[18px] border border-slate-800 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+              Last scan:{' '}
+              <span className="font-semibold text-white">
+                {formatDateTime(dashboard?.automation?.lastRunAt)}
+              </span>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {(dashboard?.automation?.alerts ?? []).length > 0 ? (
+                (dashboard?.automation?.alerts ?? []).map((alert) => (
+                  <div
+                    key={`${alert.severity}:${alert.title}`}
+                    className="rounded-[18px] border border-slate-800 bg-slate-950/70 px-4 py-4"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      {formatStatus(alert.severity)}
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-white">{alert.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{alert.detail}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-slate-700/50 bg-slate-950/60 px-4 py-5 text-sm text-slate-400">
+                  No active automation alerts right now.
+                </div>
+              )}
+            </div>
+
+            {(dashboard?.automation?.autoSuspendedUsers ?? []).length > 0 ? (
+              <div className="rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-4">
+                <p className="text-sm font-semibold text-rose-100">Auto-suspended operational accounts</p>
+                <div className="mt-3 space-y-2 text-sm text-rose-50/90">
+                  {(dashboard?.automation?.autoSuspendedUsers ?? []).map((user) => (
+                    <p key={user.id}>
+                      {user.subjectLabel} - {formatStatus(user.role)}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </SurfaceCard>

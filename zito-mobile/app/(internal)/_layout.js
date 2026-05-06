@@ -32,6 +32,10 @@ export default function InternalLayout() {
         name="support"
         options={{ title: 'Support', tabBarIcon: ({ color }) => <TabIcon name="chatbox-ellipses-outline" color={color} /> }}
       />
+      <Tabs.Screen
+        name="qa"
+        options={{ title: 'QA', tabBarIcon: ({ color }) => <TabIcon name="flask-outline" color={color} /> }}
+      />
     </Tabs>
   );
 }
