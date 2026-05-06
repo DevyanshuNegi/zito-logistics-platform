@@ -38,7 +38,201 @@ Internal operations staffing rule:
 3. 🔐 Authentication System
 Unified Login
 All users authenticate through a single identity system, but not through one shared public app surface.
-App split rule:
+
+📱 2.5 Mobile App Architecture — 3 Separate Applications (MAY 2026)
+
+ZITO deploys as three independent mobile applications, each optimized for a specific user segment and business role. All three apps connect to the same unified backend API and share the same identity & database system, but maintain separate app listings on Google Play Store and Apple App Store.
+
+=== APP 1: ZITO LOGISTICS SERVICE ===
+Package Name: com.aurenza.zito.customer
+iOS Bundle ID: com.aurenza.zito.customer
+Deep Link Scheme: zito-customer://
+Target Users: Individual Customers & Corporate Accounts
+App Size: ~85 MB
+Primary Workflows:
+- Browse services and pricing
+- Create shipment bookings (FTL, PTL, Courier, Warehouse)
+- Track live shipment status and delivery
+- Upload proof of delivery documents
+- Manage multiple shipments across all service types
+- Manage multiple addresses (home, office, warehouse, etc.)
+- Process payments and view invoices
+- Customer support and help center
+- Multi-country operation with 7 currencies (KES, UGX, TZS, RWF, NGN, GHS, ZAR)
+- Multi-language support (EN, SW, FR, AM)
+App Store Listing:
+- Title: "Zito Logistics"
+- Subtitle: "Africa's Unified Logistics Platform"
+- Description: "Book and track shipments across Africa. Fast, reliable, affordable."
+- Category: Logistics / Shipping & Delivery
+- Icon: Blue branding (#0066FF)
+- Screenshots: Booking flow, tracking, pricing, delivery proof
+
+=== APP 2: ZITO PARTNERS ===
+Package Name: com.aurenza.zito.partner
+iOS Bundle ID: com.aurenza.zito.partner
+Deep Link Scheme: zito-partner://
+Target Users: Drivers, Agents, Transporters, Courier Companies, Warehouse Partners
+App Size: ~85 MB
+Primary Workflows:
+- Accept and manage active job assignments (trips, deliveries, pickups)
+- Real-time route optimization and live tracking
+- Delivery verification and proof of delivery (photos, signatures, OTP)
+- Earnings tracking and weekly settlements
+- Performance metrics and ratings
+- Fleet management (vehicle status, insurance, compliance docs)
+- Driver scheduling and shift planning
+- Warehouse inventory scanning and bin management
+- Network-wide search and partner marketplace
+- Support and escalation tools
+- Multi-country operations with local compliance
+- Real-time notifications for job offers and updates
+App Store Listing:
+- Title: "Zito Partners"
+- Subtitle: "Earn More. Deliver Smart. Grow Your Business."
+- Description: "Join Africa's largest logistics partner network. Accept jobs, earn daily, build your business."
+- Category: Business / Transportation / Logistics
+- Icon: Orange branding (#FF9500)
+- Screenshots: Accepting jobs, tracking delivery, earnings, fleet management
+
+=== APP 3: ZITO INTERNAL OPERATIONS ===
+Package Name: com.aurenza.zito.admin
+iOS Bundle ID: com.aurenza.zito.admin
+Deep Link Scheme: zito-admin://
+Target Users: Super Admin, Admin, Head Office Staff, Agency Staff
+App Size: ~85 MB
+Primary Workflows:
+- Platform dashboard and KPI monitoring
+- User account management and role provisioning
+- Network performance analytics and reporting
+- Booking approval and compliance review
+- Payment reconciliation and invoice management
+- Fleet compliance verification
+- Document verification and re-submission handling
+- Support ticket management and escalation
+- Internal team coordination and dispatch control
+- Driver and vehicle compliance tracking
+- Customs and border documentation support
+- Financial reporting and audit trails
+- System settings and configuration
+- Internal user provisioning (Staff, Agency Staff)
+- Rate & pricing configuration
+- Country-specific compliance rules management
+App Store Listing:
+- Internal deployment only (not public)
+- Distribution: MDM (Mobile Device Management) or TestFlight
+- Title: "Zito Operations"
+- Subtitle: "Platform Management & Control"
+- Icon: Purple branding (#9C27B0)
+- Access: Limited to authorized staff via verified enterprise account
+
+=== UNIFIED BACKEND ARCHITECTURE ===
+
+All three apps connect to: api.zito.local:5000 (or production equivalent)
+
+Shared Services:
+- Authentication & Identity (JWT + bcrypt)
+- Database (Neon PostgreSQL)
+- Real-time Websockets (Socket.io)
+- File Storage (S3 / Cloud Storage)
+- Payment Processing (M-Pesa, Stripe)
+- SMS/Email Notifications (Twilio)
+- Analytics & Logging
+- Maps & Routing (Google Maps)
+
+Data Isolation:
+- Customer data visible only in Customer app
+- Partner data visible only in Partner app
+- Internal data visible only in Operations app
+- API enforces role-based data filtering
+- No cross-app user leakage
+
+Authentication Flow (Same for All 3):
+Phone/Email → OTP Verification → Role Detection → App Redirect
+- Customer role → Opens Zito Logistics Service
+- Driver/Partner role → Opens Zito Partners
+- Admin/Staff role → Opens Zito Operations
+
+Deep Linking:
+zito-customer://book/booking-123 → Opens Zito Logistics Service at booking detail
+zito-partner://trip/trip-456 → Opens Zito Partners at active trip
+zito-admin://dashboard → Opens Zito Operations at dashboard
+
+=== MULTI-APP DEPLOYMENT STRATEGY ===
+
+Development:
+- All 3 apps built from same monorepo with shared app/ directory
+- Flavor-specific configurations: app-customer.json, app-partner.json, app-admin.json
+- Shared routes with role-based view logic
+- Environment variables control which features per flavor
+
+Testing:
+- All 3 APKs installable on single test device
+- QA tests each flavor independently and in combination
+- User role switching between apps tests multi-app authentication
+
+Production Rollout:
+- Simultaneous launch on Google Play Store & App Store
+- Independent version management (customer v1.0 may differ from partner v1.1)
+- Separate rate limiting and feature flags per app
+- OTA updates (Expo Updates) can target specific apps
+- Rollback can be done per-app independently
+
+User Acquisition:
+- Zito Logistics Service: Consumer marketing (social, search, influencers)
+- Zito Partners: B2B & operator marketing (logistics forums, WhatsApp groups, SMS campaigns)
+- Zito Operations: B2B enterprise sales (direct outreach to fleet operators, agencies)
+
+=== BUILD & DISTRIBUTION COMMANDS ===
+
+Build all 3 apps for preview testing:
+$ npm run build:all-preview
+Creates: zito-customer-1.0.0.apk, zito-partner-1.0.0.apk, zito-admin-1.0.0.apk
+
+Build individual apps:
+$ npm run customer:preview   # Customer app
+$ npm run partner:preview    # Partner app
+$ npm run admin:preview      # Admin app
+
+Update apps without rebuild (Over-The-Air):
+$ npm run customer:update    # Publish Customer updates
+$ npm run partner:update     # Publish Partner updates
+$ npm run admin:update       # Publish Admin updates
+
+Production builds:
+$ npm run customer:production   # Production Customer app
+$ npm run partner:production    # Production Partner app
+$ npm run admin:production      # Production Admin app
+
+Download APKs:
+1. Go to https://expo.dev
+2. Find project "zito" (ID: 9a3a10da-3cf5-4dba-bca8-07187831b78b)
+3. Click "Builds" tab
+4. For each build, click "Download" and select APK format
+
+Install on Android:
+$ adb install zito-customer-1.0.0.apk
+$ adb install zito-partner-1.0.0.apk
+$ adb install zito-admin-1.0.0.apk
+
+=== ROLLBACK & EMERGENCY PROCEDURES ===
+
+If Production Issue Detected:
+1. Immediately stop new OTA update publishing
+2. Revert to previous app version: eas update:rollback --platform android --channel production
+3. Notify users of issue via in-app notification
+4. Deploy fix and test in preview channel before re-publishing
+
+Per-App Issue Handling:
+- Customer app crashed? Rollback only customer app without affecting partner/admin
+- Partner app has bug? Fix and push update to partner app independently
+- Admin internal issue? Can patch instantly without user impact
+
+3. 🔐 Authentication System
+Unified Login
+All users authenticate through a single identity system, but not through one shared public app surface.
+
+App split rule (implemented as 3 separate mobile apps):
 Zito Logistics Service App = Individual Customer + Corporate
 Zito Partners App = Driver + Agent + Transporter + Courier Company + Warehouse Partner
 Zito Internal Ops = Super Admin + Admin + Head Office Staff
