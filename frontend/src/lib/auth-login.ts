@@ -1,6 +1,6 @@
 export type LoginMode = 'phone_otp' | 'email_otp';
 
-export const DEFAULT_COUNTRY_CODE = '+91';
+export const DEFAULT_COUNTRY_CODE = '+254';
 
 export function isEmailIdentifier(value: string) {
   return value.includes('@');

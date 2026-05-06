@@ -5,7 +5,7 @@ export type CountryCodeOption = {
   keywords?: string[];
 };
 
-export const DEFAULT_COUNTRY_ISO_CODE = 'IN';
+export const DEFAULT_COUNTRY_ISO_CODE = 'KE';
 
 const COUNTRY_CODE_DATA: CountryCodeOption[] = [
   { isoCode: 'AF', name: 'Afghanistan', dialCode: '+93' },

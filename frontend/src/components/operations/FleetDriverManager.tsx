@@ -1,11 +1,17 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PhoneContactField } from '@/components/ui/PhoneContactField';
 import { Spinner } from '@/components/ui/Spinner';
 import { ApiError, api } from '@/lib/api';
+import { buildPhoneContact, normalizePhoneNumber } from '@/lib/auth-login';
+import {
+  DEFAULT_COUNTRY_ISO_CODE,
+  findCountryCodeOptionByIsoCode,
+} from '@/lib/country-codes';
 import { formatDateTime, formatStatus } from '@/lib/format';
 
 type DriverRow = {
@@ -111,7 +117,8 @@ export function FleetDriverManager({
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [loadedVehicles, setLoadedVehicles] = useState<VehicleOption[]>(vehicles);
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [countryOptionCode, setCountryOptionCode] = useState(DEFAULT_COUNTRY_ISO_CODE);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [licenseExpiry, setLicenseExpiry] = useState('');
@@ -121,6 +128,12 @@ export function FleetDriverManager({
   const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [creationFeedback, setCreationFeedback] = useState<{
+    variant: 'success' | 'danger';
+    title: string;
+    message: string;
+  } | null>(null);
+  const fullNameRef = useRef<HTMLInputElement | null>(null);
 
   const activeDriverCount = useMemo(
     () => drivers.filter((driver) => driver.user?.status === 'ACTIVE').length,
@@ -135,6 +148,10 @@ export function FleetDriverManager({
     [drivers],
   );
   const effectiveVehicles = vehicles.length > 0 ? vehicles : loadedVehicles;
+  const selectedCountryOption = useMemo(
+    () => findCountryCodeOptionByIsoCode(countryOptionCode),
+    [countryOptionCode],
+  );
 
   async function loadVehicles() {
     try {
@@ -177,11 +194,15 @@ export function FleetDriverManager({
     setError(null);
     setSuccess(null);
     setTemporaryPassword(null);
+    setCreationFeedback(null);
 
     try {
       const response = await api.post<OnboardDriverResponse>('/drivers/onboard', {
         fullName,
-        phone,
+        phone: buildPhoneContact(
+          selectedCountryOption?.dialCode ?? '+254',
+          phoneNumber,
+        ),
         email: email.trim() || undefined,
         licenseNumber: licenseNumber.trim() || undefined,
         licenseExpiry: licenseExpiry || undefined,
@@ -191,18 +212,45 @@ export function FleetDriverManager({
       setSuccess(
         'Driver onboarding draft created. The driver uses the Driver app after activation.',
       );
+      setCreationFeedback({
+        variant: 'success',
+        title: 'Registration successful',
+        message:
+          'Driver onboarding draft created successfully. You can create another driver now or continue with vehicle assignment.',
+      });
       setFullName('');
-      setPhone('');
+      setCountryOptionCode(DEFAULT_COUNTRY_ISO_CODE);
+      setPhoneNumber('');
       setEmail('');
       setLicenseNumber('');
       setLicenseExpiry('');
       await loadDrivers();
       await onChange?.();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Unable to onboard driver.');
+      const message = caught instanceof ApiError ? caught.message : 'Unable to onboard driver.';
+      setError(message);
+      setCreationFeedback({
+        variant: 'danger',
+        title: 'Registration failed',
+        message,
+      });
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleCreateAnother() {
+    setCreationFeedback(null);
+    setTemporaryPassword(null);
+    setFullName('');
+    setCountryOptionCode(DEFAULT_COUNTRY_ISO_CODE);
+    setPhoneNumber('');
+    setEmail('');
+    setLicenseNumber('');
+    setLicenseExpiry('');
+    window.requestAnimationFrame(() => {
+      fullNameRef.current?.focus();
+    });
   }
 
   async function handleAssignmentChange(driver: DriverRow, nextVehicleId: string) {
@@ -296,17 +344,21 @@ export function FleetDriverManager({
           <Input
             label="Full name"
             tone={tone === 'light' ? 'light' : 'dark'}
+            ref={fullNameRef}
             value={fullName}
             onChange={(event) => setFullName(event.target.value)}
             required
           />
-          <Input
-            label="Phone"
-            tone={tone === 'light' ? 'light' : 'dark'}
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            required
-          />
+          <div className="md:col-span-2 xl:col-span-2">
+            <PhoneContactField
+              required
+              tone={tone === 'light' ? 'light' : 'dark'}
+              countryOptionCode={countryOptionCode}
+              phoneNumber={phoneNumber}
+              onCountryChange={setCountryOptionCode}
+              onPhoneChange={(value) => setPhoneNumber(normalizePhoneNumber(value))}
+            />
+          </div>
           <Input
             label="Email"
             tone={tone === 'light' ? 'light' : 'dark'}
@@ -327,10 +379,23 @@ export function FleetDriverManager({
             value={licenseExpiry}
             onChange={(event) => setLicenseExpiry(event.target.value)}
           />
-          <div className="flex items-end md:col-span-2 xl:col-span-2">
-            <Button className="w-full" disabled={saving} type="submit">
-              {saving ? 'Saving driver...' : 'Create driver'}
-            </Button>
+          <div className="space-y-3 md:col-span-2 xl:col-span-2">
+            {creationFeedback ? (
+              <Alert title={creationFeedback.title} variant={creationFeedback.variant}>
+                {creationFeedback.message}
+                {temporaryPassword ? ` Temporary password: ${temporaryPassword}` : ''}
+              </Alert>
+            ) : null}
+            <div className="flex flex-wrap items-end gap-3">
+              <Button className="w-full sm:w-auto" disabled={saving} type="submit">
+                {saving ? 'Saving driver...' : 'Create driver'}
+              </Button>
+              {creationFeedback?.variant === 'success' ? (
+                <Button type="button" variant="ghost" onClick={handleCreateAnother}>
+                  Create another
+                </Button>
+              ) : null}
+            </div>
           </div>
         </form>
       </section>

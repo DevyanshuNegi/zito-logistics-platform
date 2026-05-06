@@ -22,6 +22,7 @@ type CountryCodeSelectProps = {
   error?: string;
   disabled?: boolean;
   compact?: boolean;
+  tone?: 'dark' | 'light';
 };
 
 export function CountryCodeSelect({
@@ -32,6 +33,7 @@ export function CountryCodeSelect({
   error,
   disabled = false,
   compact = false,
+  tone = 'dark',
 }: CountryCodeSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -88,7 +90,10 @@ export function CountryCodeSelect({
   }
 
   const triggerClassName = [
-    'flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-700/70 bg-slate-950/60 text-left text-sm text-slate-100 transition focus:border-cyan-400/80 focus:outline-none focus:ring-1 focus:ring-violet-500/40',
+    'flex w-full items-center justify-between gap-3 rounded-2xl border text-left text-sm transition focus:outline-none',
+    tone === 'light'
+      ? 'border-slate-200 bg-white text-slate-900 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'
+      : 'border-slate-700/70 bg-slate-950/60 text-slate-100 focus:border-cyan-400/80 focus:ring-1 focus:ring-violet-500/40',
     compact ? 'h-[50px] px-4 py-0' : 'px-4 py-3',
     disabled ? 'cursor-not-allowed opacity-60' : 'hover:border-slate-600/80',
   ].join(' ');
@@ -96,7 +101,9 @@ export function CountryCodeSelect({
   return (
     <div ref={containerRef} className="relative">
       <label className="block space-y-2">
-        <span className="text-sm font-medium text-slate-200">{label}</span>
+        <span className={tone === 'light' ? 'text-sm font-medium text-slate-700' : 'text-sm font-medium text-slate-200'}>
+          {label}
+        </span>
         <button
           type="button"
           className={triggerClassName}
@@ -107,7 +114,12 @@ export function CountryCodeSelect({
           onKeyDown={handleTriggerKeyDown}
         >
           {compact ? (
-            <span className="min-w-0 truncate font-semibold text-slate-50">
+            <span
+              className={[
+                'min-w-0 truncate font-semibold',
+                tone === 'light' ? 'text-slate-900' : 'text-slate-50',
+              ].join(' ')}
+            >
               {selectedOption ? selectedOption.dialCode : 'Code'}
             </span>
           ) : (
@@ -124,7 +136,11 @@ export function CountryCodeSelect({
           )}
           <span
             aria-hidden="true"
-            className={['shrink-0 text-slate-500 transition', open ? 'rotate-180' : ''].join(' ')}
+            className={[
+              'shrink-0 transition',
+              tone === 'light' ? 'text-slate-500' : 'text-slate-500',
+              open ? 'rotate-180' : '',
+            ].join(' ')}
           >
             <svg
               className="h-4 w-4"
@@ -142,19 +158,37 @@ export function CountryCodeSelect({
             </svg>
           </span>
         </button>
-        {error ? <span className="text-xs text-rose-300">{error}</span> : null}
-        {!error && help ? <span className="text-xs text-slate-400">{help}</span> : null}
+        {error ? (
+          <span className={tone === 'light' ? 'text-xs text-rose-600' : 'text-xs text-rose-300'}>
+            {error}
+          </span>
+        ) : null}
+        {!error && help ? (
+          <span className={tone === 'light' ? 'text-xs text-slate-500' : 'text-xs text-slate-400'}>
+            {help}
+          </span>
+        ) : null}
       </label>
 
       {open ? (
         <div
           id={listId}
-          className="absolute z-30 mt-2 w-full overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-950/95 shadow-2xl shadow-slate-950/60 backdrop-blur"
+          className={[
+            'absolute z-30 mt-2 w-full overflow-hidden rounded-3xl border shadow-2xl backdrop-blur',
+            tone === 'light'
+              ? 'border-slate-200 bg-white shadow-slate-200/70'
+              : 'border-slate-700/80 bg-slate-950/95 shadow-slate-950/60',
+          ].join(' ')}
         >
-          <div className="border-b border-slate-800/90 p-3">
+          <div className={['border-b p-3', tone === 'light' ? 'border-slate-200' : 'border-slate-800/90'].join(' ')}>
             <input
               ref={searchInputRef}
-              className="w-full rounded-2xl border border-slate-700/70 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400/80 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+              className={[
+                'w-full rounded-2xl border px-4 py-3 text-sm focus:outline-none',
+                tone === 'light'
+                  ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100'
+                  : 'border-slate-700/70 bg-slate-900/90 text-slate-100 placeholder:text-slate-500 focus:border-cyan-400/80 focus:ring-1 focus:ring-violet-500/40',
+              ].join(' ')}
               placeholder="Search country, ISO, or dial code"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -172,24 +206,38 @@ export function CountryCodeSelect({
                       'flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left text-sm transition',
                       isSelected
                         ? 'bg-cyan-500/12 text-cyan-100'
-                        : 'text-slate-200 hover:bg-slate-900/90',
+                        : tone === 'light'
+                          ? 'text-slate-800 hover:bg-slate-100'
+                          : 'text-slate-200 hover:bg-slate-900/90',
                     ].join(' ')}
                     onClick={() => selectOption(option)}
                   >
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{option.name}</span>
-                      <span className="block truncate text-xs text-slate-400">
+                      <span
+                        className={
+                          tone === 'light'
+                            ? 'block truncate text-xs text-slate-500'
+                            : 'block truncate text-xs text-slate-400'
+                        }
+                      >
                         {option.isoCode}
                       </span>
                     </span>
-                    <span className="shrink-0 text-sm font-semibold text-slate-200">
+                    <span
+                      className={
+                        tone === 'light'
+                          ? 'shrink-0 text-sm font-semibold text-slate-700'
+                          : 'shrink-0 text-sm font-semibold text-slate-200'
+                      }
+                    >
                       {option.dialCode}
                     </span>
                   </button>
                 );
               })
             ) : (
-              <p className="px-3 py-4 text-sm text-slate-400">
+              <p className={tone === 'light' ? 'px-3 py-4 text-sm text-slate-500' : 'px-3 py-4 text-sm text-slate-400'}>
                 No countries matched that search.
               </p>
             )}

@@ -1,14 +1,20 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PhoneContactField } from '@/components/ui/PhoneContactField';
 import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
 import { ApiError, api } from '@/lib/api';
+import { buildPhoneContact, normalizePhoneNumber } from '@/lib/auth-login';
+import {
+  DEFAULT_COUNTRY_ISO_CODE,
+  findCountryCodeOptionByIsoCode,
+} from '@/lib/country-codes';
 import { formatDateTime, formatStatus } from '@/lib/format';
 
 type DriverRow = {
@@ -35,7 +41,8 @@ type OnboardDriverResponse = {
 export default function AgentDriversPage() {
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [countryOptionCode, setCountryOptionCode] = useState(DEFAULT_COUNTRY_ISO_CODE);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [licenseExpiry, setLicenseExpiry] = useState('');
@@ -44,6 +51,16 @@ export default function AgentDriversPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [creationFeedback, setCreationFeedback] = useState<{
+    variant: 'success' | 'danger';
+    title: string;
+    message: string;
+  } | null>(null);
+  const fullNameRef = useRef<HTMLInputElement | null>(null);
+  const selectedCountryOption = useMemo(
+    () => findCountryCodeOptionByIsoCode(countryOptionCode),
+    [countryOptionCode],
+  );
 
   async function loadDrivers() {
     setLoading(true);
@@ -69,11 +86,15 @@ export default function AgentDriversPage() {
     setError(null);
     setSuccess(null);
     setTemporaryPassword(null);
+    setCreationFeedback(null);
 
     try {
       const response = await api.post<OnboardDriverResponse>('/drivers/onboard', {
         fullName,
-        phone,
+        phone: buildPhoneContact(
+          selectedCountryOption?.dialCode ?? '+254',
+          phoneNumber,
+        ),
         email: email.trim() || undefined,
         licenseNumber: licenseNumber.trim() || undefined,
         licenseExpiry: licenseExpiry || undefined,
@@ -81,17 +102,44 @@ export default function AgentDriversPage() {
 
       setTemporaryPassword(response.data.temporaryPassword ?? null);
       setSuccess('Driver onboarding draft created. Admin activation can follow later.');
+      setCreationFeedback({
+        variant: 'success',
+        title: 'Registration successful',
+        message:
+          'Driver onboarding draft created successfully. You can create another driver now or review the roster below.',
+      });
       setFullName('');
-      setPhone('');
+      setCountryOptionCode(DEFAULT_COUNTRY_ISO_CODE);
+      setPhoneNumber('');
       setEmail('');
       setLicenseNumber('');
       setLicenseExpiry('');
       await loadDrivers();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Unable to onboard driver.');
+      const message = caught instanceof ApiError ? caught.message : 'Unable to onboard driver.';
+      setError(message);
+      setCreationFeedback({
+        variant: 'danger',
+        title: 'Registration failed',
+        message,
+      });
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleCreateAnother() {
+    setCreationFeedback(null);
+    setTemporaryPassword(null);
+    setFullName('');
+    setCountryOptionCode(DEFAULT_COUNTRY_ISO_CODE);
+    setPhoneNumber('');
+    setEmail('');
+    setLicenseNumber('');
+    setLicenseExpiry('');
+    window.requestAnimationFrame(() => {
+      fullNameRef.current?.focus();
+    });
   }
 
   const pendingDrivers = drivers.filter((driver) => driver.user?.status === 'PENDING').length;
@@ -118,15 +166,36 @@ export default function AgentDriversPage() {
 
       <SurfaceCard title="Onboard driver" description="Create a managed driver account under the agent network. The driver record starts pending activation and can be assigned to vehicles immediately.">
         <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleSubmit}>
-          <Input label="Full name" value={fullName} onChange={(event) => setFullName(event.target.value)} required />
-          <Input label="Phone" value={phone} onChange={(event) => setPhone(event.target.value)} required />
+          <Input label="Full name" ref={fullNameRef} value={fullName} onChange={(event) => setFullName(event.target.value)} required />
+          <div className="md:col-span-2 xl:col-span-2">
+            <PhoneContactField
+              required
+              countryOptionCode={countryOptionCode}
+              phoneNumber={phoneNumber}
+              onCountryChange={setCountryOptionCode}
+              onPhoneChange={(value) => setPhoneNumber(normalizePhoneNumber(value))}
+            />
+          </div>
           <Input label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
           <Input label="License number" value={licenseNumber} onChange={(event) => setLicenseNumber(event.target.value)} />
           <Input label="License expiry" type="date" value={licenseExpiry} onChange={(event) => setLicenseExpiry(event.target.value)} />
-          <div className="md:col-span-2 xl:col-span-4">
-            <Button disabled={saving} type="submit">
-              {saving ? 'Saving driver...' : 'Create driver'}
-            </Button>
+          <div className="space-y-3 md:col-span-2 xl:col-span-4">
+            {creationFeedback ? (
+              <Alert title={creationFeedback.title} variant={creationFeedback.variant}>
+                {creationFeedback.message}
+                {temporaryPassword ? ` Temporary password: ${temporaryPassword}` : ''}
+              </Alert>
+            ) : null}
+            <div className="flex flex-wrap gap-3">
+              <Button disabled={saving} type="submit">
+                {saving ? 'Saving driver...' : 'Create driver'}
+              </Button>
+              {creationFeedback?.variant === 'success' ? (
+                <Button type="button" variant="ghost" onClick={handleCreateAnother}>
+                  Create another
+                </Button>
+              ) : null}
+            </div>
           </div>
         </form>
       </SurfaceCard>

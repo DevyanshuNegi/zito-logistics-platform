@@ -1,15 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PhoneContactField } from '@/components/ui/PhoneContactField';
 import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
 import { ApiError, api } from '@/lib/api';
+import {
+  buildPhoneContact,
+  normalizePhoneNumber,
+} from '@/lib/auth-login';
+import {
+  DEFAULT_COUNTRY_ISO_CODE,
+  findCountryCodeOptionByIsoCode,
+} from '@/lib/country-codes';
 import { compactId, formatDateTime, formatStatus } from '@/lib/format';
 
 type StaffUser = {
@@ -48,7 +57,8 @@ const STAFF_SCOPE_OPTIONS = ['HEAD_OFFICE', 'AGENCY'] as const;
 const EMPTY_STAFF_FORM = {
   fullName: '',
   email: '',
-  phone: '',
+  countryOptionCode: DEFAULT_COUNTRY_ISO_CODE,
+  phoneNumber: '',
   password: '',
   staffRole: 'OPERATIONS',
   staffScope: 'HEAD_OFFICE',
@@ -64,6 +74,17 @@ export default function AdminWorkforcePage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [staffForm, setStaffForm] = useState(EMPTY_STAFF_FORM);
+  const [creationFeedback, setCreationFeedback] = useState<{
+    variant: 'success' | 'danger';
+    title: string;
+    message: string;
+  } | null>(null);
+  const fullNameRef = useRef<HTMLInputElement | null>(null);
+
+  const selectedCountryOption = useMemo(
+    () => findCountryCodeOptionByIsoCode(staffForm.countryOptionCode),
+    [staffForm.countryOptionCode],
+  );
 
   async function loadWorkforce() {
     setLoading(true);
@@ -118,12 +139,16 @@ export default function AdminWorkforcePage() {
     setSaving(true);
     setError(null);
     setSuccess(null);
+    setCreationFeedback(null);
 
     try {
       await api.post('/users/internal', {
         fullName: staffForm.fullName,
         email: staffForm.email || undefined,
-        phone: staffForm.phone,
+        phone: buildPhoneContact(
+          selectedCountryOption?.dialCode ?? '+254',
+          staffForm.phoneNumber,
+        ),
         password: staffForm.password,
         role: 'AGENCY_STAFF',
         staffRole: staffForm.staffRole,
@@ -132,18 +157,39 @@ export default function AdminWorkforcePage() {
           staffForm.staffScope === 'AGENCY' ? staffForm.agencyId || undefined : undefined,
       });
 
-      setStaffForm(EMPTY_STAFF_FORM);
+      setStaffForm({ ...EMPTY_STAFF_FORM });
       setSuccess('Workforce user created successfully.');
+      setCreationFeedback({
+        variant: 'success',
+        title: 'Registration successful',
+        message:
+          'The workforce user was created successfully. You can create another user now or review the updated directory below.',
+      });
       await loadWorkforce();
     } catch (caught) {
-      setError(
+      const message =
         caught instanceof ApiError
           ? caught.message
-          : 'Unable to create workforce user.',
+          : 'Unable to create workforce user.';
+      setError(
+        message,
       );
+      setCreationFeedback({
+        variant: 'danger',
+        title: 'Registration failed',
+        message,
+      });
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleCreateAnother() {
+    setCreationFeedback(null);
+    setStaffForm({ ...EMPTY_STAFF_FORM });
+    window.requestAnimationFrame(() => {
+      fullNameRef.current?.focus();
+    });
   }
 
   async function handleStatusChange(userId: string, action: 'activate' | 'suspend') {
@@ -242,6 +288,7 @@ export default function AdminWorkforcePage() {
               <Input
                 label="Full name"
                 required
+                ref={fullNameRef}
                 value={staffForm.fullName}
                 onChange={(event) =>
                   setStaffForm((current) => ({
@@ -261,14 +308,20 @@ export default function AdminWorkforcePage() {
                   }))
                 }
               />
-              <Input
-                label="Phone"
+              <PhoneContactField
                 required
-                value={staffForm.phone}
-                onChange={(event) =>
+                countryOptionCode={staffForm.countryOptionCode}
+                phoneNumber={staffForm.phoneNumber}
+                onCountryChange={(countryOptionCode) =>
                   setStaffForm((current) => ({
                     ...current,
-                    phone: event.target.value,
+                    countryOptionCode,
+                  }))
+                }
+                onPhoneChange={(phoneNumber) =>
+                  setStaffForm((current) => ({
+                    ...current,
+                    phoneNumber: normalizePhoneNumber(phoneNumber),
                   }))
                 }
               />
@@ -348,9 +401,21 @@ export default function AdminWorkforcePage() {
                   ))}
                 </select>
               </label>
-              <Button disabled={saving} type="submit">
-                {saving ? 'Creating staff user...' : 'Create staff user'}
-              </Button>
+              {creationFeedback ? (
+                <Alert title={creationFeedback.title} variant={creationFeedback.variant}>
+                  {creationFeedback.message}
+                </Alert>
+              ) : null}
+              <div className="flex flex-wrap gap-3">
+                <Button disabled={saving} type="submit">
+                  {saving ? 'Creating staff user...' : 'Create staff user'}
+                </Button>
+                {creationFeedback?.variant === 'success' ? (
+                  <Button type="button" variant="ghost" onClick={handleCreateAnother}>
+                    Create another
+                  </Button>
+                ) : null}
+              </div>
             </form>
           </SurfaceCard>
 

@@ -1,15 +1,21 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PhoneContactField } from '@/components/ui/PhoneContactField';
 import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api';
+import { buildPhoneContact, normalizePhoneNumber } from '@/lib/auth-login';
+import {
+  DEFAULT_COUNTRY_ISO_CODE,
+  findCountryCodeOptionByIsoCode,
+} from '@/lib/country-codes';
 import { compactId, formatDateTime, formatStatus } from '@/lib/format';
 
 type ManagedUser = {
@@ -77,7 +83,8 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState({
     fullName: '',
     email: '',
-    phone: '',
+    countryOptionCode: DEFAULT_COUNTRY_ISO_CODE,
+    phoneNumber: '',
     password: '',
     role: 'AGENCY_STAFF',
     companyName: '',
@@ -85,6 +92,12 @@ export default function AdminUsersPage() {
     staffRole: 'OPERATIONS',
     staffScope: 'HEAD_OFFICE',
   });
+  const [creationFeedback, setCreationFeedback] = useState<{
+    variant: 'success' | 'danger';
+    title: string;
+    message: string;
+  } | null>(null);
+  const fullNameRef = useRef<HTMLInputElement | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -115,6 +128,10 @@ export default function AdminUsersPage() {
   }, [filterRole, filterStatus]);
 
   const activeAgencyId = useMemo(() => user?.agencyId ?? null, [user?.agencyId]);
+  const selectedCountryOption = useMemo(
+    () => findCountryCodeOptionByIsoCode(form.countryOptionCode),
+    [form.countryOptionCode],
+  );
   const selectedAgencyId =
     form.role === 'AGENCY_STAFF' && form.staffScope === 'AGENCY'
       ? form.agencyId || activeAgencyId || ''
@@ -133,12 +150,16 @@ export default function AdminUsersPage() {
     setSaving(true);
     setError(null);
     setSuccess(null);
+    setCreationFeedback(null);
 
     try {
       await api.post('/users/internal', {
         fullName: form.fullName,
         email: form.email || undefined,
-        phone: form.phone,
+        phone: buildPhoneContact(
+          selectedCountryOption?.dialCode ?? '+254',
+          form.phoneNumber,
+        ),
         password: form.password,
         role: form.role,
         companyName: organizationRoleOptions.has(form.role) ? form.companyName || undefined : undefined,
@@ -148,10 +169,17 @@ export default function AdminUsersPage() {
       });
 
       setSuccess('User created successfully.');
+      setCreationFeedback({
+        variant: 'success',
+        title: 'Registration successful',
+        message:
+          'The user account was created successfully. You can create another account now or continue with the directory below.',
+      });
       setForm({
         fullName: '',
         email: '',
-        phone: '',
+        countryOptionCode: DEFAULT_COUNTRY_ISO_CODE,
+        phoneNumber: '',
         password: '',
         role: 'AGENCY_STAFF',
         companyName: '',
@@ -161,10 +189,35 @@ export default function AdminUsersPage() {
       });
       await loadData();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Unable to create user.');
+      const message = caught instanceof ApiError ? caught.message : 'Unable to create user.';
+      setError(message);
+      setCreationFeedback({
+        variant: 'danger',
+        title: 'Registration failed',
+        message,
+      });
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleCreateAnother() {
+    setCreationFeedback(null);
+    setForm({
+      fullName: '',
+      email: '',
+      countryOptionCode: DEFAULT_COUNTRY_ISO_CODE,
+      phoneNumber: '',
+      password: '',
+      role: 'AGENCY_STAFF',
+      companyName: '',
+      agencyId: activeAgencyId ?? '',
+      staffRole: 'OPERATIONS',
+      staffScope: 'HEAD_OFFICE',
+    });
+    window.requestAnimationFrame(() => {
+      fullNameRef.current?.focus();
+    });
   }
 
   async function handleStatusChange(targetUser: ManagedUser, nextAction: 'activate' | 'suspend') {
@@ -215,6 +268,7 @@ export default function AdminUsersPage() {
           <Input
             label="Full name"
             required
+            ref={fullNameRef}
             value={form.fullName}
             onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
           />
@@ -224,12 +278,22 @@ export default function AdminUsersPage() {
             value={form.email}
             onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
           />
-          <Input
-            label="Phone"
-            required
-            value={form.phone}
-            onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-          />
+          <div className="md:col-span-2 xl:col-span-3">
+            <PhoneContactField
+              required
+              countryOptionCode={form.countryOptionCode}
+              phoneNumber={form.phoneNumber}
+              onCountryChange={(countryOptionCode) =>
+                setForm((current) => ({ ...current, countryOptionCode }))
+              }
+              onPhoneChange={(phoneNumber) =>
+                setForm((current) => ({
+                  ...current,
+                  phoneNumber: normalizePhoneNumber(phoneNumber),
+                }))
+              }
+            />
+          </div>
           <Input
             label="Password"
             required
@@ -335,10 +399,22 @@ export default function AdminUsersPage() {
             </>
           ) : null}
 
-          <div className="md:col-span-2 xl:col-span-3">
-            <Button disabled={saving} type="submit">
-              {saving ? 'Creating user...' : 'Create user'}
-            </Button>
+          <div className="md:col-span-2 xl:col-span-3 space-y-3">
+            {creationFeedback ? (
+              <Alert title={creationFeedback.title} variant={creationFeedback.variant}>
+                {creationFeedback.message}
+              </Alert>
+            ) : null}
+            <div className="flex flex-wrap gap-3">
+              <Button disabled={saving} type="submit">
+                {saving ? 'Creating user...' : 'Create user'}
+              </Button>
+              {creationFeedback?.variant === 'success' ? (
+                <Button type="button" variant="ghost" onClick={handleCreateAnother}>
+                  Create another
+                </Button>
+              ) : null}
+            </div>
           </div>
         </form>
       </SurfaceCard>

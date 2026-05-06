@@ -1,15 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PhoneContactField } from '@/components/ui/PhoneContactField';
 import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
 import { ApiError, api } from '@/lib/api';
+import { buildPhoneContact, normalizePhoneNumber } from '@/lib/auth-login';
+import {
+  DEFAULT_COUNTRY_ISO_CODE,
+  findCountryCodeOptionByIsoCode,
+} from '@/lib/country-codes';
 import {
   compactId,
   formatDateTime,
@@ -148,7 +154,8 @@ const EMPTY_ACCOUNT_FORM = {
   fullName: '',
   companyName: '',
   email: '',
-  phone: '',
+  countryOptionCode: DEFAULT_COUNTRY_ISO_CODE,
+  phoneNumber: '',
   password: '',
 };
 
@@ -200,7 +207,13 @@ export function PartnerControlDesk({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [accountForm, setAccountForm] = useState(EMPTY_ACCOUNT_FORM);
+  const [accountCreationFeedback, setAccountCreationFeedback] = useState<{
+    variant: 'success' | 'danger';
+    title: string;
+    message: string;
+  } | null>(null);
   const [onboardingForm, setOnboardingForm] = useState(EMPTY_ONBOARDING_FORM);
+  const contactRef = useRef<HTMLInputElement | null>(null);
 
   async function loadDesk() {
     setLoading(true);
@@ -258,6 +271,10 @@ export function PartnerControlDesk({
   const activeAccounts = useMemo(
     () => users.filter((user) => user.status === 'ACTIVE'),
     [users],
+  );
+  const selectedCountryOption = useMemo(
+    () => findCountryCodeOptionByIsoCode(accountForm.countryOptionCode),
+    [accountForm.countryOptionCode],
   );
 
   const onboardingAssets = useMemo(() => {
@@ -364,29 +381,53 @@ export function PartnerControlDesk({
     setSavingAccount(true);
     setError(null);
     setSuccess(null);
+    setAccountCreationFeedback(null);
 
     try {
       await api.post('/users/internal', {
         fullName: accountForm.fullName,
         companyName: accountForm.companyName,
         email: accountForm.email || undefined,
-        phone: accountForm.phone,
+        phone: buildPhoneContact(
+          selectedCountryOption?.dialCode ?? '+254',
+          accountForm.phoneNumber,
+        ),
         password: accountForm.password,
         role: accountRole,
       });
 
-      setAccountForm(EMPTY_ACCOUNT_FORM);
+      setAccountForm({ ...EMPTY_ACCOUNT_FORM });
       setSuccess(`${accountLabel} account created successfully.`);
+      setAccountCreationFeedback({
+        variant: 'success',
+        title: 'Registration successful',
+        message: `${accountLabel} account was created successfully. You can create another account now or continue with onboarding below.`,
+      });
       await loadDesk();
     } catch (caught) {
-      setError(
+      const message =
         caught instanceof ApiError
           ? caught.message
-          : `Unable to create ${accountLabel.toLowerCase()} account.`,
+          : `Unable to create ${accountLabel.toLowerCase()} account.`;
+      setError(
+        message,
       );
+      setAccountCreationFeedback({
+        variant: 'danger',
+        title: 'Registration failed',
+        message,
+      });
     } finally {
       setSavingAccount(false);
     }
+  }
+
+  function handleCreateAnotherAccount() {
+    setAccountCreationFeedback(null);
+    setAccountForm({ ...EMPTY_ACCOUNT_FORM });
+    window.requestAnimationFrame(() => {
+      contactRef.current?.focus();
+    });
   }
 
   async function handleOnboardPartner(event: FormEvent<HTMLFormElement>) {
@@ -581,6 +622,7 @@ export function PartnerControlDesk({
               <Input
                 label="Authorized contact"
                 required
+                ref={contactRef}
                 value={accountForm.fullName}
                 onChange={(event) =>
                   setAccountForm((current) => ({
@@ -611,14 +653,20 @@ export function PartnerControlDesk({
                   }))
                 }
               />
-              <Input
-                label="Phone"
+              <PhoneContactField
                 required
-                value={accountForm.phone}
-                onChange={(event) =>
+                countryOptionCode={accountForm.countryOptionCode}
+                phoneNumber={accountForm.phoneNumber}
+                onCountryChange={(countryOptionCode) =>
                   setAccountForm((current) => ({
                     ...current,
-                    phone: event.target.value,
+                    countryOptionCode,
+                  }))
+                }
+                onPhoneChange={(phoneNumber) =>
+                  setAccountForm((current) => ({
+                    ...current,
+                    phoneNumber: normalizePhoneNumber(phoneNumber),
                   }))
                 }
               />
@@ -634,9 +682,28 @@ export function PartnerControlDesk({
                   }))
                 }
               />
-              <Button disabled={savingAccount} type="submit">
-                {savingAccount ? 'Creating account...' : 'Create account'}
-              </Button>
+              {accountCreationFeedback ? (
+                <Alert
+                  title={accountCreationFeedback.title}
+                  variant={accountCreationFeedback.variant}
+                >
+                  {accountCreationFeedback.message}
+                </Alert>
+              ) : null}
+              <div className="flex flex-wrap gap-3">
+                <Button disabled={savingAccount} type="submit">
+                  {savingAccount ? 'Creating account...' : 'Create account'}
+                </Button>
+                {accountCreationFeedback?.variant === 'success' ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleCreateAnotherAccount}
+                  >
+                    Create another
+                  </Button>
+                ) : null}
+              </div>
             </form>
           </SurfaceCard>
 

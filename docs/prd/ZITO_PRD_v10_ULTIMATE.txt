@@ -2370,3 +2370,8 @@ Mobile QA hardening rules:
 - the internal mobile workspace must expose a QA diagnostics screen showing the active API host, runtime environment label, token presence, user-role routing context, and live backend health response
 - mobile API clients must use a bounded request timeout and return actionable errors when the runtime cannot reach the deployed backend
 - mobile documentation and environment templates must reflect the active deployment strategy and must not reference obsolete infrastructure defaults
+Registration and account-provisioning UX rules:
+- any registration, account-creation, staff-provisioning, partner-provisioning, or driver-onboarding form that captures a phone number must capture country code and local number as separate visible inputs; hidden or assumed country code behavior is not acceptable
+- phone entry defaults may be preselected per market, but the country code must remain user-editable in every registration and provisioning flow
+- create-user, create-staff, create-partner-account, and create-driver actions must show inline success or failure feedback at the same point as the submit action, not only in distant page-level alerts
+- successful provisioning flows must offer an immediate "Create another" continuation action so back-office teams can onboard multiple users without manual form reconstruction
