@@ -146,16 +146,10 @@ export default function TrackScreen() {
               <View style={s.addrRow}><Text style={s.addrIcon}>📍</Text><Text style={s.addrText} numberOfLines={2}>{selected.pickup_address}</Text></View>
               <View style={s.addrRow}><Text style={s.addrIcon}>🏁</Text><Text style={s.addrText} numberOfLines={2}>{selected.delivery_address}</Text></View>
               {selected.assignedDriver?.user && (
-                <View style={s.driverRow}>
-                  <View style={s.driverAvatar}>
-                    <Text style={s.driverAvatarText}>{(selected.assignedDriver.user.full_name || 'D')[0]}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.driverName}>{selected.assignedDriver.user.full_name}</Text>
-                    <Text style={s.driverPhone}>📞 {selected.assignedDriver.user.phone}</Text>
-                  </View>
-                  <Text style={s.driverRating}>⭐ {Number(selected.assignedDriver.avg_rating || 0).toFixed(1)}</Text>
-                </View>
+                <DriverPhotoCard
+                  driver={selected.assignedDriver.user}
+                  rating={Number(selected.assignedDriver.avg_rating || 0)}
+                />
               )}
 
               {/* Emergency SOS Button */}

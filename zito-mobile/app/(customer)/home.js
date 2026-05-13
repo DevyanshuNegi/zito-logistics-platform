@@ -16,6 +16,8 @@ import { colors } from '../../src/constants/theme';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { KPICard } from '../../src/components/KPICard';
 import { SOSButton } from '../../src/components/SOSButton';
+import { QuickReorderCard } from '../../src/components/QuickReorderCard';
+import { SkeletonDashboard } from '../../src/components/SkeletonLoader';
 import BrandLockup from '../../src/components/BrandLockup';
 
 export default function HomeScreen() {
@@ -66,9 +68,17 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <View style={s.center}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
+      <SafeAreaView style={s.root}>
+        <ScrollView contentContainerStyle={s.content}>
+          <View style={s.greetRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.greeting}>Loading...</Text>
+            </View>
+            <BrandLockup mode="compact" showDescriptor={false} showCompany={false} />
+          </View>
+          <SkeletonDashboard count={3} />
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
@@ -193,6 +203,39 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* FEATURE #3: QUICK REORDER */}
+        {(() => {
+          const completed = bookings
+            .filter(b => b.status === 'completed')
+            .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))
+            .slice(0, 5);
+          
+          const handleReorder = (booking) => {
+            router.push({
+              pathname: '/(customer)/book',
+              params: {
+                prefilledPickup: booking.pickup_address,
+                prefilledDelivery: booking.delivery_address,
+                prefilledService: booking.service_type,
+              },
+            });
+          };
+
+          return completed.length > 0 ? (
+            <>
+              <Text style={s.sectionTitle}>⭐ Quick Reorder</Text>
+              <Text style={s.quickReorderHint}>Tap to quickly rebook your recent deliveries</Text>
+              {completed.map((booking) => (
+                <QuickReorderCard
+                  key={booking.id}
+                  booking={booking}
+                  onReorder={handleReorder}
+                />
+              ))}
+            </>
+          ) : null;
+        })()}
+
         <Text style={s.sectionTitle}>Overview</Text>
         <View style={s.statsRow}>
           {[
@@ -279,5 +322,11 @@ const s = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  quickReorderHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: 12,
+    marginHorizontal: 0,
   },
 });
