@@ -18,6 +18,79 @@ Containerized trucking — explicit 20ft and 40ft container movement
 Rail / SGR corridor logistics — container rail movement such as Mombasa port to inland rail-linked nodes
 Fleet & transporter management — vehicle lifecycle and driver coordination
 Multi-country logistics — Africa-ready, offline-capable operations
+
+1.A PLATFORM POSITIONING (Critical for Launch - May 13 Update)
+
+ZITO is a LOGISTICS PLATFORM, not a logistics operator:
+✓ ZITO = Infrastructure that connects supply + demand
+✓ ZITO owns NO trucks, NO warehouses, NO drivers
+✓ ZITO enables transporters, drivers, warehouses, couriers to work together efficiently
+✓ ZITO takes commission on coordination value created (not freight value)
+
+What ZITO is NOT:
+✗ NOT competing with DHL/FedEx/Aramex (they could be partners)
+✗ NOT a delivery company
+✗ NOT an operator
+✗ NOT copying competitor business models
+
+Business Model (90% B2B):
+- 90% Revenue from B2B clients: Transporters, Courier Companies, Warehouses, Corporate Shippers
+- 10% Revenue from B2C: Individual/small senders using platform
+- Revenue streams: Platform commissions (5-10% per booking) + B2B subscriptions + services
+- Profit margin: 70-90% (software economics, not logistics operator model)
+- Unit economics: Scale without capital (no trucks/warehouses to buy)
+
+Platform Economics:
+- Transporters benefit: Better load matching, reduced downtime, automated dispatch
+- Drivers benefit: Jobs pushed via app, earnings tracking, daily payouts
+- Shippers benefit: One platform for all services (FTL, PTL, Courier, Warehouse)
+- ZITO benefits: Commission on every transaction, growing network = growing value
+
+Network Effects (Competitive Moat):
+- More transporters → Better coverage → Faster matching → More shippers attracted
+- More shippers → More demand → More transporters attracted
+- Result: Winner-take-most market dynamics (first to scale dominates)
+
+1.B DESIGN PRINCIPLES (Modern App Standard - May 13 Update)
+
+ZITO mobile apps MUST have best-in-class design and modern features:
+
+Design Goals:
+✓ MAP-FIRST: Real-time tracking dominates UI (live GPS updates 2-5 sec)
+✓ MODERN: Clean, minimal, professional interface (2024+ standards)
+✓ INTUITIVE: Users know what to do (no confusion, clear CTAs)
+✓ SMOOTH: Animated transitions, no jank (60fps target)
+✓ ACCESSIBLE: WCAG AA compliance (large buttons, contrast, keyboard nav)
+✓ PERFORMANT: Fast load times, works offline where possible
+
+Design System:
+- Colors: Brand (Blue/Orange/Purple) + Status (Green/Red/Amber)
+- Typography: Inter font family, consistent scales
+- Spacing: 8px base unit, standard padding 16px
+- Components: Buttons (48px), inputs, cards, badges (reusable, documented)
+- Navigation: Bottom tabs (mobile-first), clear hierarchy
+
+Core Features:
+- Real-time map with smooth GPS updates
+- Live route visualization + ETA calculation
+- Status tracking (picked up, in transit, delivered)
+- Push notifications (rich + actionable)
+- Dark mode support
+- Responsive design (mobile-first, tablet, desktop)
+- Proof of delivery (photos, signatures, GPS)
+- Ratings & reviews (social proof)
+- Receipt generation
+
+NOT Copying Competitors:
+✗ NOT copying their business model
+✗ NOT copying their exact features
+✗ NOT copying their branding
+YES Adopting Best Design Patterns:
+✓ Learning from Google Maps (map UX)
+✓ Learning from Uber (card design, ratings)
+✓ Learning from Grab (multi-service structure)
+✓ Learning from WhatsApp (real-time updates)
+
 2. 👤 User & Role System
 ZITO supports multiple user types within a single unified identity. One account may hold multiple roles simultaneously, governed by the RBAC system.
 User Roles
@@ -1468,28 +1541,249 @@ Application hosting and Redis must remain provider-agnostic and must not be coup
 Reliability Targets:
 High availability (99.9%+)
 Disaster recovery readiness
-48. REVENUE MODEL
-Revenue Streams:
-Commission per booking (FTL/PTL/Courier)
-Warehouse storage fees
-B2B subscription plans
-Transaction/service fees
-Premium partner listings
-Additional:
-Value-added services (insurance, priority delivery)
-49. GO-TO-MARKET STRATEGY
-Launch Strategy:
-Initial launch in Nairobi
-Expand to Mombasa, Eldoret, Kampala
-Growth Channels:
-Existing 400+ customer base
-Agent network activation
-Transporter onboarding
-Warehouse partnerships
-Focus:
-B2B logistics clients
-High-frequency users
-50. PARTNER ONBOARDING & GROWTH SYSTEM
+48. REVENUE MODEL (Updated May 13 - Platform Economics)
+
+ZITO Revenue is Commission-Based (NOT Operator-Based):
+
+Primary Revenue Streams:
+1. Commission per booking
+   - FTL bookings: 5-10% of booking value
+   - PTL/LCL bookings: 8-12% of booking value
+   - Courier/last-mile: 10-15% of booking value
+   - Warehouse services: 5-8% of storage/handling fees
+   - Rail/container: 5-10% of shipment value
+   
+2. B2B Subscription Plans (Tier-Based)
+   - Starter: KES 10K/month (100 monthly bookings)
+   - Professional: KES 25K/month (500 monthly bookings)
+   - Enterprise: KES 100K+/month (unlimited bookings)
+   - Features: Driver management, analytics, API access, dedicated support
+   
+3. Platform Services (Value-Add)
+   - Document verification: KES 2-5K per review
+   - Premium analytics dashboard: KES 5K-10K/month
+   - API access for integrations: KES 20K+/month
+   - White-label options: Custom pricing
+
+Revenue Model Economics:
+- Margin: 70-90% (software-based, minimal COGS)
+- Scalability: No capital required (no trucks/warehouses)
+- Network effect: More volume = higher margins (economies of scale)
+- Customer LTV: High (transporters stay on platform)
+
+Profit Example:
+- FTL booking: KES 500,000 shipper pays
+- ZITO commission: 8% = KES 40,000
+- ZITO margin: 90% = KES 36,000 profit
+- Volume: 100 FTL/month = KES 3.6M profit
+
+vs Logistics Operator Model:
+- Operator receives: KES 500,000 delivery fee
+- Operator cost: Truck, driver, fuel, insurance = KES 400,000+
+- Operator margin: 20% = KES 100,000 profit
+- Volume: 100 deliveries/month = KES 10M profit BUT requires capital
+
+ZITO ADVANTAGE: Higher margin, capital-light, scalable
+
+49. GO-TO-MARKET STRATEGY (Updated May 13 - B2B First)
+
+Launch Strategy (June 4, 2026):
+Initial focus: 90% B2B (transporters, courier companies, warehouses, corporate shippers)
+Secondary: 10% B2C (individual senders)
+
+Phase 0: Launch (June 4)
+- Target: 50-100 transporters onboarded
+- Target: 500-1K drivers recruited
+- Target: 100-200 corporate shippers signed
+- Channels: Direct outreach, WhatsApp groups, SMS campaigns
+- Value prop: "Earn more with less work. Get jobs pushed to you."
+- KPI: KES 2-5M revenue
+
+Phase 1: Growth (June-July)
+- Target: 200-400 transporters
+- Target: 3-5K drivers
+- Target: 500-1K corporate shippers
+- Channels: Referral program, B2B partnerships, e-commerce integration
+- Value prop: "One platform for all services. 30% cost savings."
+- KPI: KES 10-20M revenue, 30-40% market share
+
+Phase 2: Domination (Aug-Sept)
+- Target: 500+ transporters
+- Target: 10K+ drivers
+- Target: 2K+ corporate shippers
+- Channels: API integrations, bulk contracts, exclusive partnerships
+- Value prop: "Africa's largest logistics platform. Best rates, best service."
+- KPI: KES 50M+ revenue, market leader position
+
+GO-TO-MARKET Channels:
+
+For Transporters (Supply Side):
+1. WhatsApp Groups (transport associations, truck owner networks)
+2. LinkedIn Outreach (fleet managers, logistics company heads)
+3. SMS Campaigns (registered transporters in target markets)
+4. In-person recruitment (truck stands, transport hubs)
+5. Referral Program (KES 10K per quality transporter)
+
+For Drivers (Through Transporters):
+1. Transporter recruitment (get KES 500/driver bonus)
+2. ZITO referral program (KES 200/driver friend)
+3. WhatsApp jobs groups
+4. Field recruitment at transport hubs
+
+For Corporate Shippers (Demand Side):
+1. Direct sales team outreach
+2. E-commerce integrations (Shopify, WooCommerce plugins)
+3. B2B partnerships (e-commerce platforms, warehouses)
+4. LinkedIn B2B targeting
+5. Industry events, logistics forums
+
+Marketing Message by Audience:
+
+For Transporters:
+"Stop chasing loads. Get jobs pushed to you through ZITO.
+ Earn 30% more by being on a coordinated platform.
+ Build reputation. Get priority jobs. Reduce downtime."
+
+For Drivers:
+"Accept jobs, earn daily, build your rating.
+ No middleman politics. Direct payment in 24 hours.
+ The smarter way to earn in logistics."
+
+For Corporate Shippers:
+"One platform for all your transport needs: FTL, PTL, Courier, Warehouse.
+ Save 30% vs managing 5 vendors separately.
+ Full visibility, automated billing, compliance handled."
+
+Success Metrics (90% B2B Focus):
+- Jun 30: 50-100 transporters, KES 2-5M revenue
+- Jul 31: 200-400 transporters, KES 10-20M revenue
+- Aug 31: 500+ transporters, KES 50M+ revenue, market leader
+
+Network Effects Timeline:
+- Month 1-3: Build supply side (transporters + drivers)
+- Month 4-6: Attract demand (shippers, corporate clients)
+- Month 7+: Self-sustaining growth (referrals + organic)
+
+50. APP DESIGN SYSTEM & MODERN FEATURES (May 13 Update)
+
+ZITO apps MUST have best-in-class design and modern features that exceed user expectations.
+Design goal: Users choose ZITO because it's the best-designed, most intuitive app in the market.
+
+Design Principles (Non-Negotiable):
+✓ MAP-FIRST: Real-time GPS tracking is central to UI (update 2-5 seconds)
+✓ MODERN: Clean, minimal interface with 2024+ design standards
+✓ INTUITIVE: Clear workflows, obvious CTAs, no confusion
+✓ SMOOTH: 60fps animations, no jank, delightful interactions
+✓ ACCESSIBLE: WCAG AA compliance (44px buttons, 4.5:1 contrast, keyboard nav)
+✓ PERFORMANT: <2sec map load, <1sec page transitions, works offline
+
+Design System Components:
+
+Colors:
+- Brand: ZITO Logistics Blue (#0066FF), Zito Partners Orange (#FF9500), Zito Operations Purple (#9C27B0)
+- Status: Success Green (#4CAF50), Alert Red (#F44336), Warning Amber (#FFC107), Info Teal (#00BCD4)
+- Background: Light (#FAFAFA), Card White (#FFFFFF), Input (#F5F5F5)
+- Dark mode: #121212 background, #1E1E1E cards, white text
+
+Typography:
+- Headlines: 32px (H1), 24px (H2), 20px (H3) - Bold weight
+- Body: 16px (Primary), 14px (Secondary), 12px (Helper)
+- Font: Inter or system fonts (-apple-system)
+- Line height: 1.4-1.6 for readability
+
+Spacing:
+- Base unit: 8px (all spacing multiples)
+- Standard padding: 16px
+- Section gaps: 24px (heading + content)
+- Page margins: 32-48px
+
+Components:
+- Buttons: 48px height (easy mobile tap), brand colors, rounded corners (8px)
+- Inputs: 44px height, light grey background, blue focus state
+- Cards: White background, 12px border radius, subtle shadow
+- Status badges: 24px diameter + label text
+- Bottom tabs: 5 max, text + icon, active highlight
+
+Core Features:
+
+Real-Time Tracking:
+- GPS update every 2-5 seconds
+- Route visualization (line from pickup to destination)
+- Live ETA calculation + countdown
+- Driver location + direction arrow
+- Pickup/delivery markers (distinct colors)
+- Tap marker → Driver details (name, rating, vehicle, phone)
+- Dark mode map support
+
+Status & Notifications:
+- Real-time push notifications (rich format)
+- In-app toasts (success/error)
+- Notification center (swipe down)
+- SMS fallback (for critical alerts)
+- Status timeline (✓ picked up, ▶ in transit, ⏳ delivery)
+
+Proof of Delivery:
+- Photo capture (GPS + timestamp embedded)
+- Signature pad (driver + recipient)
+- OTP verification (double-check)
+- Receipt generation + email/export
+- Customer photo view
+
+Ratings & Reviews:
+- Post-delivery rating prompt (1-5 stars)
+- Optional comment box
+- Show sample reviews (newest first)
+- Driver rating displayed prominently (⭐4.9 - 234 reviews)
+- Tap to see detailed review history
+
+User Experience:
+
+For Customers (Booking):
+1. Pickup location (map picker - mandatory)
+2. Delivery location (map picker - mandatory)
+3. Parcel details (type, size, description)
+4. Service type (same-day, 2-3 days, scheduled)
+5. Price display (transparent, no surprises)
+6. Confirm booking (one-tap)
+
+For Drivers (Job Assignment):
+1. Available jobs on map (red markers)
+2. Card-based job list (distance, pay, rating)
+3. One-tap accept (minimal friction)
+4. Navigation integration (Google Maps)
+5. Real-time tracking (show customer your location)
+6. Proof of delivery + earnings confirmation
+
+For Admin (Operations):
+1. Real-time dashboard (all active jobs on map)
+2. Job density heatmap (demand visualization)
+3. Driver performance metrics (color coded)
+4. Manual assignment controls (drag + drop)
+5. System health monitoring (uptime, latency)
+
+Performance Targets:
+- First Paint: <1 second
+- Maps Load: <2 seconds
+- Tracking Update: <5 seconds latency
+- Page Transition: 300ms smooth
+- Target FPS: 60fps (no jank)
+
+Accessibility Standards:
+- Button/link size: Minimum 44x44px
+- Color contrast: 4.5:1 for text
+- Font minimum: 14px (12px only for helpers)
+- Keyboard navigation: Full support
+- Screen reader: VoiceOver/TalkBack compatible
+- No flashing content (WCAG compliance)
+
+Dark Mode:
+- Toggle in Settings
+- Default: Follow system preference
+- Smooth transition when switching
+- All components support both themes
+- Same contrast ratios in both modes
+
+51. PARTNER ONBOARDING & GROWTH SYSTEM
 To scale supply (drivers, transporters, warehouses), the platform must include structured onboarding pipelines.
 Driver Onboarding:
 - Assisted onboarding via agents
@@ -1508,7 +1802,7 @@ Growth Features:
 - Agent-based acquisition model
 Tracking:
 - Onboarding funnel analytics (registered → verified → active)
-51. Release Phasing & MVP Definition
+52. Release Phasing & MVP Definition
 Phase 0 - Platform Foundation
 Authentication, RBAC, agency master data, audit logging, configuration controls, observability, and infrastructure readiness
 Phase 1 - Core Transport Launch
