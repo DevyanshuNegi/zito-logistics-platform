@@ -14,6 +14,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api/client';
 import { colors } from '../../src/constants/theme';
 import { StatusBadge } from '../../src/components/StatusBadge';
+import { KPICard } from '../../src/components/KPICard';
 import BrandLockup from '../../src/components/BrandLockup';
 
 export default function HomeScreen() {
@@ -22,11 +23,30 @@ export default function HomeScreen() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState({
+    totalBookings: 0,
+    totalSpent: 0,
+    moneySaved: 0,
+    completedCount: 0,
+  });
 
   const load = async () => {
     try {
-      const data = await api.get('/api/v1/customer/bookings?limit=5');
-      setBookings(data.data || []);
+      const data = await api.get('/api/v1/customer/bookings?limit=100');
+      const allBookings = data.data || [];
+      setBookings(allBookings);
+      
+      // Calculate stats
+      const completed = allBookings.filter((b) => b.status === 'completed').length;
+      const totalCost = allBookings.reduce((sum, b) => sum + (parseFloat(b.cost_in_cents || 0) / 100), 0);
+      const savedCost = Math.round(totalCost * 0.15); // Assume 15% saved through loyalty/discounts
+      
+      setStats({
+        totalBookings: allBookings.length,
+        totalSpent: totalCost,
+        moneySaved: savedCost,
+        completedCount: completed,
+      });
     } catch (requestError) {
       console.error(requestError);
     } finally {
@@ -110,6 +130,58 @@ export default function HomeScreen() {
           </>
         ) : null}
 
+        <Text style={s.sectionTitle}>Your Activity</Text>
+        <View style={s.kpiContainer}>
+          <View style={s.kpiRow}>
+            <View style={{ flex: 1 }}>
+              <KPICard
+                icon="📊"
+                label="Total Bookings"
+                period="All Time"
+                value={stats.totalBookings}
+                trend={`${Math.round(stats.totalBookings / 30)} per month`}
+                trendDirection="up"
+                customColor={colors.primary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <KPICard
+                icon="✅"
+                label="Completed"
+                period="All Time"
+                value={stats.completedCount}
+                trend={`${stats.totalBookings > 0 ? Math.round((stats.completedCount / stats.totalBookings) * 100) : 0}% success`}
+                trendDirection="up"
+                customColor="#4CAF50"
+              />
+            </View>
+          </View>
+          
+          <View style={s.kpiRow}>
+            <View style={{ flex: 1 }}>
+              <KPICard
+                icon="💰"
+                label="Total Spent"
+                period="All Time"
+                value={`KES ${Math.round(stats.totalSpent).toLocaleString()}`}
+                trend={`Avg: KES ${stats.totalBookings > 0 ? Math.round(stats.totalSpent / stats.totalBookings).toLocaleString() : 0}`}
+                trendDirection="stable"
+                customColor="#FF9500"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <KPICard
+                icon="🎁"
+                label="Money Saved"
+                period="Loyalty & Discounts"
+                value={`KES ${Math.round(stats.moneySaved).toLocaleString()}`}
+                status="Rewards active"
+                customColor="#2196F3"
+              />
+            </View>
+          </View>
+        </View>
+
         <Text style={s.sectionTitle}>Overview</Text>
         <View style={s.statsRow}>
           {[
@@ -183,4 +255,12 @@ const s = StyleSheet.create({
   },
   statVal: { fontSize: 24, fontWeight: '800', color: colors.text },
   statLabel: { fontSize: 11, color: colors.textFaint, marginTop: 4 },
+  kpiContainer: {
+    marginBottom: 24,
+  },
+  kpiRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
 });

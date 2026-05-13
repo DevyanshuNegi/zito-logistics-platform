@@ -81,6 +81,16 @@ Core Features:
 - Ratings & reviews (social proof)
 - Receipt generation
 
+Dashboard Features (Customer App):
+- Active booking card (top, large, prominent)
+- KPI cards showing metrics: Total Bookings, Completed, Total Spent, Money Saved
+- Trend indicators (up/down/stable arrows with % change)
+- Loyalty rewards tracking (money saved through discounts)
+- Quick action button (New Shipment)
+- Recent booking history (last 5 bookings)
+- Real-time activity metrics (updated on refresh)
+- Account status indicator
+
 NOT Copying Competitors:
 ✗ NOT copying their business model
 ✗ NOT copying their exact features
