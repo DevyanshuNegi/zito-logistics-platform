@@ -377,7 +377,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
           ? String((payload as { message?: string }).message ?? 'Request failed')
           : 'Request failed';
 
-      if (response.status === 401 && token) {
+      if (response.status === 401) {
         handleUnauthorizedSession(message);
       }
 

@@ -32,7 +32,7 @@
         "READ_MEDIA_IMAGES"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#FFF3E0",
+        "backgroundColor": "#050914",
         "foregroundImage": "./assets/images/android-icon-partner-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"

@@ -77,7 +77,7 @@ export default function AgentDashboardScreen() {
               Source marketplace supply, monitor approvals, and pick up fresh partner opportunities from mobile.
             </Text>
           </View>
-          <BrandLockup mode="compact" showDescriptor={false} />
+          <BrandLockup mode="compact" showDescriptor={false} showCompany={false} />
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -76,7 +76,7 @@ export default function WarehouseDashboardScreen() {
               Track managed facilities, inventory posture, and operational readiness from the warehouse mobile desk.
             </Text>
           </View>
-          <BrandLockup mode="compact" showDescriptor={false} />
+          <BrandLockup mode="compact" showDescriptor={false} showCompany={false} />
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

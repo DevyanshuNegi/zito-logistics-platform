@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -16,6 +16,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { RoutePreviewMap } from '@/components/maps/RoutePreviewMap';
+import { RouteLocationPicker } from '@/components/maps/RouteLocationPicker';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -23,8 +24,8 @@ import { ApiError, api } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 import {
   estimateDistanceKm,
-  geocodeAddress,
   parseCoordinate,
+  reverseGeocodeCoordinates,
   type GeocodeLookup,
 } from '@/lib/geo';
 import {
@@ -311,9 +312,10 @@ export default function NewBookingPage() {
   const [quote, setQuote] = useState<RateQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const [resolvingPickup, setResolvingPickup] = useState(false);
-  const [resolvingDrop, setResolvingDrop] = useState(false);
+  const [activeStopSelection, setActiveStopSelection] = useState<StopKind>('pickup');
+  const [resolvingMapStop, setResolvingMapStop] = useState<StopKind | null>(null);
   const usingPickupDetectedScope = pricingScopeMode === 'auto' && detectedPricingScope != null;
+  const routePickerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -365,6 +367,8 @@ export default function NewBookingPage() {
   const isContainerWorkflow =
     serviceType === 'RAIL' || vehicleType === 'CONTAINER_20FT' || vehicleType === 'CONTAINER_40FT';
   const requiresTradeDocuments = isContainerWorkflow && tradeMode !== 'LOCAL';
+  const pickupPinned = parseCoordinate(pickupLat) != null && parseCoordinate(pickupLng) != null;
+  const dropPinned = parseCoordinate(dropLat) != null && parseCoordinate(dropLng) != null;
 
   useEffect(() => {
     if (!(availableVehicleTypes as readonly string[]).includes(vehicleType)) {
@@ -477,45 +481,63 @@ export default function NewBookingPage() {
     setDropLng(result.longitude);
   }
 
-  async function resolveStopCoordinates(kind: StopKind, silent = false) {
-    const address = kind === 'pickup' ? pickupAddress : dropAddress;
-    const setBusy = kind === 'pickup' ? setResolvingPickup : setResolvingDrop;
+  function focusRouteMap(kind: StopKind) {
+    setStep(1);
+    setActiveStopSelection(kind);
+    routePickerRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }
 
-    if (!address.trim()) {
-      if (!silent) {
-        setError(`Add the ${kind} address before using the free map lookup.`);
-      }
-      return false;
-    }
+  async function handleMapPinSelection(kind: StopKind, latitude: number, longitude: number) {
+    setError(null);
+    setResolvingMapStop(kind);
 
-    setBusy(true);
-    if (!silent) {
-      setError(null);
+    const latText = latitude.toFixed(6);
+    const lngText = longitude.toFixed(6);
+
+    if (kind === 'pickup') {
+      setPickupLat(latText);
+      setPickupLng(lngText);
+    } else {
+      setDropLat(latText);
+      setDropLng(lngText);
     }
 
     try {
-      const result = await geocodeAddress(address);
+      const result = await reverseGeocodeCoordinates(latitude, longitude);
       applyGeocode(kind, result);
-      return true;
     } catch (caught) {
-      if (!silent) {
-        setError(caught instanceof Error ? caught.message : 'Free map lookup failed.');
+      if (kind === 'pickup') {
+        setPickupAddress((current) => current.trim() || `${latText}, ${lngText}`);
+      } else {
+        setDropAddress((current) => current.trim() || `${latText}, ${lngText}`);
       }
-      return false;
+
+      setError(
+        caught instanceof Error
+          ? `${caught.message} The pin was still saved, so refine the address manually below.`
+          : 'The map pin was saved, but the address lookup failed. Refine the address manually below.',
+      );
     } finally {
-      setBusy(false);
+      setResolvingMapStop((current) => (current === kind ? null : current));
     }
+
+    if (kind === 'pickup') {
+      setActiveStopSelection('drop');
+      return;
+    }
+
+    setActiveStopSelection('pickup');
   }
 
   async function ensureRouteCoordinates() {
     const hasPickup = parseCoordinate(pickupLat) != null && parseCoordinate(pickupLng) != null;
     const hasDrop = parseCoordinate(dropLat) != null && parseCoordinate(dropLng) != null;
 
-    const pickupReady = hasPickup ? true : await resolveStopCoordinates('pickup', true);
-    const dropReady = hasDrop ? true : await resolveStopCoordinates('drop', true);
-
-    if (!pickupReady || !dropReady) {
-      setError('Use the free map lookup for both addresses, or enter route pins manually before continuing.');
+    if (!hasPickup || !hasDrop) {
+      setError('Drop both pickup and drop pins on the map before continuing.');
       return false;
     }
 
@@ -563,19 +585,22 @@ export default function NewBookingPage() {
 
     if (step === 1) {
       if (
-        !pickupAddress.trim() ||
         !pickupContactName.trim() ||
         !pickupContactPhone.trim() ||
-        !dropAddress.trim() ||
         !dropContactName.trim() ||
         !dropContactPhone.trim()
       ) {
-        setError('Add both stop addresses and both contact blocks before continuing.');
+        setError('Add both contact blocks before continuing to vehicle selection.');
         return;
       }
 
       const routeReady = await ensureRouteCoordinates();
       if (!routeReady) {
+        return;
+      }
+
+      if (!pickupAddress.trim() || !dropAddress.trim()) {
+        setError('Refine both stop addresses after placing the map pins before continuing.');
         return;
       }
     }
@@ -761,22 +786,40 @@ export default function NewBookingPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-[16px] bg-[#f1f5fb] px-3 py-3">
+            <button
+              type="button"
+              className={[
+                'rounded-[16px] px-3 py-3 text-left transition',
+                activeStopSelection === 'pickup'
+                  ? 'bg-[#dbeafe] ring-2 ring-[#60a5fa]'
+                  : 'bg-[#f1f5fb] hover:bg-[#e8f1ff]',
+              ].join(' ')}
+              onClick={() => focusRouteMap('pickup')}
+            >
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
                 Pickup
               </p>
               <p className="mt-1 line-clamp-2 text-sm font-semibold text-[#1a1a2e]">
                 {pickupAddress || 'Add pickup stop'}
               </p>
-            </div>
-            <div className="rounded-[16px] bg-[#f1f5fb] px-3 py-3">
+            </button>
+            <button
+              type="button"
+              className={[
+                'rounded-[16px] px-3 py-3 text-left transition',
+                activeStopSelection === 'drop'
+                  ? 'bg-[#ede9fe] ring-2 ring-[#a78bfa]'
+                  : 'bg-[#f1f5fb] hover:bg-[#f4efff]',
+              ].join(' ')}
+              onClick={() => focusRouteMap('drop')}
+            >
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
                 Drop
               </p>
               <p className="mt-1 line-clamp-2 text-sm font-semibold text-[#1a1a2e]">
                 {dropAddress || 'Add drop stop'}
               </p>
-            </div>
+            </button>
           </div>
 
           <div className="mt-4 rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] p-3">
@@ -889,125 +932,213 @@ export default function NewBookingPage() {
             </p>
             <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Add both stops cleanly</h2>
             <p className="mt-1 text-sm leading-6 text-[#64748b]">
-              Use address lookup first. Free-map pinning will resolve the route without exposing technical fields.
+              Tap the map for pickup first, then drop. The address fills from the pin and only
+              then becomes editable for manual refinement.
             </p>
           </div>
 
-          <div className="space-y-4">
-            <div className="rounded-[18px] bg-[#f8faff] p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#dbeafe] text-[#2563eb]">
-                    <ArrowUpCircle className="h-4.5 w-4.5" />
-                  </div>
-                  <div className="mt-2 h-14 w-px bg-[#cbd5e1]" />
-                </div>
-                <div className="min-w-0 flex-1 space-y-3">
-                  <Input
-                    label="Pickup address"
-                    tone="light"
-                    value={pickupAddress}
-                    onChange={(event) => setPickupAddress(event.target.value)}
-                    placeholder="Building, street, area, city"
-                    required
-                  />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Input
-                      label="Contact name"
-                      tone="light"
-                      value={pickupContactName}
-                      onChange={(event) => setPickupContactName(event.target.value)}
-                      placeholder="Pickup contact"
-                      required
-                    />
-                    <Input
-                      label="Phone"
-                      tone="light"
-                      value={pickupContactPhone}
-                      onChange={(event) => setPickupContactPhone(event.target.value)}
-                      placeholder="+91..."
-                      required
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      className="rounded-[12px] px-3 py-2 text-xs"
-                      onClick={() => {
-                        void resolveStopCoordinates('pickup');
-                      }}
-                      disabled={resolvingPickup}
-                    >
-                      {resolvingPickup ? 'Finding pickup...' : pickupLat && pickupLng ? 'Refresh free map pin' : 'Find on free map'}
-                    </Button>
-                    <span
-                      className={[
-                        'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
-                        pickupLat && pickupLng
-                          ? 'bg-[#dbeafe] text-[#1d4ed8]'
-                          : 'bg-[#eef2f7] text-[#64748b]',
-                      ].join(' ')}
-                    >
-                      {pickupLat && pickupLng ? 'Free-map pin ready' : 'Waiting for map pin'}
-                    </span>
-                  </div>
-                </div>
+          <div className="grid gap-4 xl:grid-cols-[1.15fr,0.85fr]">
+            <div className="space-y-4" ref={routePickerRef}>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={[
+                    'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition',
+                    activeStopSelection === 'pickup'
+                      ? 'border-transparent bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white shadow-[0_10px_24px_rgba(59,130,246,0.18)]'
+                      : 'border-[#cbd5e1] bg-white text-[#1b3f72] hover:bg-[#eef4ff]',
+                  ].join(' ')}
+                  onClick={() => focusRouteMap('pickup')}
+                >
+                  <ArrowUpCircle className="h-4 w-4" />
+                  Pickup pin
+                </button>
+                <button
+                  type="button"
+                  className={[
+                    'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition',
+                    activeStopSelection === 'drop'
+                      ? 'border-transparent bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white shadow-[0_10px_24px_rgba(59,130,246,0.18)]'
+                      : 'border-[#cbd5e1] bg-white text-[#1b3f72] hover:bg-[#eef4ff]',
+                  ].join(' ')}
+                  onClick={() => focusRouteMap('drop')}
+                >
+                  <ArrowDownCircle className="h-4 w-4" />
+                  Drop pin
+                </button>
+              </div>
+
+              <RouteLocationPicker
+                activeStopKind={activeStopSelection}
+                pickup={{
+                  lat: parseCoordinate(pickupLat),
+                  lng: parseCoordinate(pickupLng),
+                }}
+                drop={{
+                  lat: parseCoordinate(dropLat),
+                  lng: parseCoordinate(dropLng),
+                }}
+                onSelect={(kind, latitude, longitude) => {
+                  void handleMapPinSelection(kind, latitude, longitude);
+                }}
+              />
+
+              <div className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                  Pin-first rule
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[#475569]">
+                  The route begins from the map. After each pin drops, the stop address fills
+                  automatically and you can refine the wording manually if the landmark needs
+                  cleanup.
+                </p>
               </div>
             </div>
 
-            <div className="rounded-[18px] bg-[#f8faff] p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ede9fe] text-[#7c3aed]">
-                  <ArrowDownCircle className="h-4.5 w-4.5" />
-                </div>
-                <div className="min-w-0 flex-1 space-y-3">
-                  <Input
-                    label="Drop-off address"
-                    tone="light"
-                    value={dropAddress}
-                    onChange={(event) => setDropAddress(event.target.value)}
-                    placeholder="Building, street, area, city"
-                    required
-                  />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Input
-                      label="Receiver name"
-                      tone="light"
-                      value={dropContactName}
-                      onChange={(event) => setDropContactName(event.target.value)}
-                      placeholder="Receiver contact"
-                      required
-                    />
-                    <Input
-                      label="Receiver phone"
-                      tone="light"
-                      value={dropContactPhone}
-                      onChange={(event) => setDropContactPhone(event.target.value)}
-                      placeholder="+91..."
-                      required
-                    />
+            <div className="space-y-4">
+              <div className="rounded-[18px] bg-[#f8faff] p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#dbeafe] text-[#2563eb]">
+                      <ArrowUpCircle className="h-4.5 w-4.5" />
+                    </div>
+                    <div className="mt-2 h-14 w-px bg-[#cbd5e1]" />
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      className="rounded-[12px] px-3 py-2 text-xs"
-                      onClick={() => {
-                        void resolveStopCoordinates('drop');
-                      }}
-                      disabled={resolvingDrop}
-                    >
-                      {resolvingDrop ? 'Finding drop...' : dropLat && dropLng ? 'Refresh free map pin' : 'Find on free map'}
-                    </Button>
-                    <span
-                      className={[
-                        'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
-                        dropLat && dropLng
-                          ? 'bg-[#ede9fe] text-[#7c3aed]'
-                          : 'bg-[#eef2f7] text-[#64748b]',
-                      ].join(' ')}
-                    >
-                      {dropLat && dropLng ? 'Free-map pin ready' : 'Waiting for map pin'}
-                    </span>
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={[
+                          'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
+                          pickupPinned ? 'bg-[#dbeafe] text-[#1d4ed8]' : 'bg-[#eef2f7] text-[#64748b]',
+                        ].join(' ')}
+                      >
+                        {pickupPinned ? 'Pickup pin ready' : 'Pin required'}
+                      </span>
+                      {resolvingMapStop === 'pickup' ? (
+                        <span className="inline-flex rounded-full bg-[#fff7ed] px-2.5 py-1 text-[10px] font-semibold text-[#c2410c]">
+                          Resolving address...
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <Input
+                      label="Pickup address"
+                      tone="light"
+                      value={pickupAddress}
+                      onChange={(event) => setPickupAddress(event.target.value)}
+                      placeholder="Drop the pickup pin first, then refine the address"
+                      help={
+                        pickupPinned
+                          ? 'Auto-filled from the pickup pin. Refine the landmark or building text if needed.'
+                          : 'Tap Pickup pin, then tap the map to unlock the address.'
+                      }
+                      disabled={!pickupPinned}
+                      required
+                    />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Input
+                        label="Contact name"
+                        tone="light"
+                        value={pickupContactName}
+                        onChange={(event) => setPickupContactName(event.target.value)}
+                        placeholder="Pickup contact"
+                        required
+                      />
+                      <Input
+                        label="Phone"
+                        tone="light"
+                        value={pickupContactPhone}
+                        onChange={(event) => setPickupContactPhone(event.target.value)}
+                        placeholder="+254..."
+                        required
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        className="rounded-[12px] px-3 py-2 text-xs"
+                        onClick={() => focusRouteMap('pickup')}
+                      >
+                        {pickupPinned ? 'Move pickup pin' : 'Select pickup on map'}
+                      </Button>
+                      {pickupPinned ? (
+                        <span className="text-xs text-[#64748b]">
+                          {pickupLat}, {pickupLng}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[18px] bg-[#f8faff] p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ede9fe] text-[#7c3aed]">
+                    <ArrowDownCircle className="h-4.5 w-4.5" />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={[
+                          'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
+                          dropPinned ? 'bg-[#ede9fe] text-[#7c3aed]' : 'bg-[#eef2f7] text-[#64748b]',
+                        ].join(' ')}
+                      >
+                        {dropPinned ? 'Drop pin ready' : 'Pin required'}
+                      </span>
+                      {resolvingMapStop === 'drop' ? (
+                        <span className="inline-flex rounded-full bg-[#fff7ed] px-2.5 py-1 text-[10px] font-semibold text-[#c2410c]">
+                          Resolving address...
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <Input
+                      label="Drop-off address"
+                      tone="light"
+                      value={dropAddress}
+                      onChange={(event) => setDropAddress(event.target.value)}
+                      placeholder="Drop the drop pin first, then refine the address"
+                      help={
+                        dropPinned
+                          ? 'Auto-filled from the drop pin. Refine the landmark or building text if needed.'
+                          : 'Tap Drop pin, then tap the map to unlock the address.'
+                      }
+                      disabled={!dropPinned}
+                      required
+                    />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Input
+                        label="Receiver name"
+                        tone="light"
+                        value={dropContactName}
+                        onChange={(event) => setDropContactName(event.target.value)}
+                        placeholder="Receiver contact"
+                        required
+                      />
+                      <Input
+                        label="Receiver phone"
+                        tone="light"
+                        value={dropContactPhone}
+                        onChange={(event) => setDropContactPhone(event.target.value)}
+                        placeholder="+254..."
+                        required
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        className="rounded-[12px] px-3 py-2 text-xs"
+                        onClick={() => focusRouteMap('drop')}
+                      >
+                        {dropPinned ? 'Move drop pin' : 'Select drop on map'}
+                      </Button>
+                      {dropPinned ? (
+                        <span className="text-xs text-[#64748b]">
+                          {dropLat}, {dropLng}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -8,9 +8,39 @@ export const metadata: Metadata = {
   title: BRAND.appName,
   description: BRAND.appDescription,
   icons: {
-    icon: '/zito-app-icon.png',
-    shortcut: '/zito-app-icon.png',
-    apple: '/zito-app-icon.png',
+    // Primary favicon for browser tabs
+    icon: [
+      {
+        url: '/favicon-48.png',
+        sizes: '48x48',
+        type: 'image/png',
+      },
+      {
+        url: '/favicon-96.png',
+        sizes: '96x96',
+        type: 'image/png',
+      },
+      {
+        url: '/favicon-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+      },
+      {
+        url: '/zito-app-icon.png',
+        sizes: 'any',
+        type: 'image/png',
+      },
+    ],
+    // Apple device icon
+    apple: [
+      {
+        url: '/favicon-96.png',
+        sizes: '96x96',
+        type: 'image/png',
+      },
+    ],
+    // Shortcut icon for bookmarks
+    shortcut: '/favicon-48.png',
   },
 };
 

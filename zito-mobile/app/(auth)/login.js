@@ -16,6 +16,8 @@ import BrandLockup from '../../src/components/BrandLockup';
 
 export default function LoginScreen() {
   const [step, setStep] = useState(1);
+  const [contactType, setContactType] = useState('phone'); // 'phone' or 'email'
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -44,18 +46,30 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setError('Email and password are required.');
-      return;
+    if (contactType === 'phone') {
+      if (!phone.trim()) {
+        setError('Phone number is required.');
+        return;
+      }
+    } else {
+      if (!email.trim() || !password.trim()) {
+        setError('Email and password are required.');
+        return;
+      }
     }
 
     setLoading(true);
     setError('');
     try {
+      const contact = contactType === 'phone' ? phone.trim() : email.trim();
       const response = await fetch(`${API_URL}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify(
+          contactType === 'phone'
+            ? { phone: contact }
+            : { email: contact, password }
+        ),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -77,10 +91,15 @@ export default function LoginScreen() {
     setOtpSending(true);
     setError('');
     try {
+      const contact = contactType === 'phone' ? phone.trim() : email.trim();
       await fetch(`${API_URL}/api/v1/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify(
+          contactType === 'phone'
+            ? { phone: contact }
+            : { email: contact }
+        ),
       });
       setOtp(['', '', '', '', '', '']);
       startTimer();
@@ -101,10 +120,15 @@ export default function LoginScreen() {
     setLoading(true);
     setError('');
     try {
+      const contact = contactType === 'phone' ? phone.trim() : email.trim();
       const response = await fetch(`${API_URL}/api/v1/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), otp: code }),
+        body: JSON.stringify(
+          contactType === 'phone'
+            ? { phone: contact, otp: code }
+            : { email: contact, otp: code }
+        ),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -123,7 +147,7 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
-  }, [login, otp, email]);
+  }, [login, otp, phone, email, contactType]);
 
   const handleOtpChange = (value, index) => {
     const digitsOnly = value.replace(/\D/g, '');
@@ -184,7 +208,7 @@ export default function LoginScreen() {
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
         <View style={s.brandWrap}>
-          <BrandLockup mode="hero" />
+          <BrandLockup mode="hero" showCompany={false} />
         </View>
 
         <View style={s.stepRow}>
@@ -209,46 +233,98 @@ export default function LoginScreen() {
         {step === 1 ? (
           <View>
             <Text style={s.stepTitle}>Sign in to Zito</Text>
-            <Text style={s.label}>Email Address</Text>
-            <TextInput
-              style={s.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="you@example.com"
-              placeholderTextColor={colors.textFaint}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-            />
-
-            <Text style={s.label}>Password</Text>
-            <View style={s.pwRow}>
-              <TextInput
-                style={[s.input, { flex: 1 }]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Enter your password"
-                placeholderTextColor={colors.textFaint}
-                secureTextEntry={!showPw}
-              />
-              <TouchableOpacity style={s.showBtn} onPress={() => setShowPw((current) => !current)}>
-                <Text style={s.showBtnText}>{showPw ? 'Hide' : 'Show'}</Text>
+            
+            {/* Contact type tabs */}
+            <View style={s.tabRow}>
+              <TouchableOpacity
+                style={[s.tab, contactType === 'phone' && s.tabActive]}
+                onPress={() => {
+                  setContactType('phone');
+                  setEmail('');
+                  setPassword('');
+                  setError('');
+                }}>
+                <Text style={[s.tabText, contactType === 'phone' && s.tabTextActive]}>
+                  Phone Number
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.tab, contactType === 'email' && s.tabActive]}
+                onPress={() => {
+                  setContactType('email');
+                  setPhone('');
+                  setError('');
+                }}>
+                <Text style={[s.tabText, contactType === 'email' && s.tabTextActive]}>
+                  Email
+                </Text>
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={[s.btn, loading && s.btnDim]} onPress={handleLogin} disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color={colors.bg} />
-              ) : (
-                <Text style={s.btnText}>Continue</Text>
-              )}
-            </TouchableOpacity>
+            {contactType === 'phone' ? (
+              <>
+                <Text style={s.label}>Phone Number</Text>
+                <TextInput
+                  style={s.input}
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="+1 (555) 000-0000"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity style={[s.btn, loading && s.btnDim]} onPress={handleLogin} disabled={loading}>
+                  {loading ? (
+                    <ActivityIndicator color={colors.bg} />
+                  ) : (
+                    <Text style={s.btnText}>Continue</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={s.label}>Email Address</Text>
+                <TextInput
+                  style={s.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                />
+
+                <Text style={s.label}>Password</Text>
+                <View style={s.pwRow}>
+                  <TextInput
+                    style={[s.input, { flex: 1 }]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Enter your password"
+                    placeholderTextColor={colors.textFaint}
+                    secureTextEntry={!showPw}
+                  />
+                  <TouchableOpacity style={s.showBtn} onPress={() => setShowPw((current) => !current)}>
+                    <Text style={s.showBtnText}>{showPw ? 'Hide' : 'Show'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity style={[s.btn, loading && s.btnDim]} onPress={handleLogin} disabled={loading}>
+                  {loading ? (
+                    <ActivityIndicator color={colors.bg} />
+                  ) : (
+                    <Text style={s.btnText}>Continue</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         ) : (
           <View>
             <Text style={s.stepTitle}>Verify your OTP</Text>
             <Text style={s.hint}>
-              We sent a six-digit code to <Text style={s.hintStrong}>{email}</Text>
+              We sent a six-digit code to <Text style={s.hintStrong}>{contactType === 'phone' ? phone : email}</Text>
             </Text>
 
             <View style={s.otpRow}>
@@ -350,6 +426,20 @@ const s = StyleSheet.create({
     marginBottom: 16,
   },
   errText: { color: colors.danger, fontSize: 13 },
+  tabRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: colors.bgInput,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tabText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  tabTextActive: { color: colors.bg },
   label: { fontSize: 12, color: colors.textMuted, marginBottom: 6, marginTop: 14 },
   input: {
     backgroundColor: colors.bgInput,

@@ -66,6 +66,13 @@ type NominatimAddress = Partial<
   >
 >;
 
+type NominatimLookupResult = {
+  display_name?: string;
+  lat?: string;
+  lon?: string;
+  address?: NominatimAddress;
+};
+
 function normalizeLookupValue(value: string) {
   return value
     .toLowerCase()
@@ -124,6 +131,28 @@ function inferLocalityType(address: NominatimAddress): 'ANY' | 'TOWN' | 'RURAL' 
   return 'ANY';
 }
 
+function buildGeocodeLookup(
+  match: NominatimLookupResult,
+  fallbackAddress: string,
+): GeocodeLookup {
+  if (!match.lat || !match.lon) {
+    throw new Error('No map result found for that location yet. Try another point on the map.');
+  }
+
+  const countryCode = match.address?.country_code?.trim().toUpperCase() || null;
+  const localityType = inferLocalityType(match.address ?? {});
+
+  return {
+    address: match.display_name?.trim() || fallbackAddress,
+    latitude: match.lat,
+    longitude: match.lon,
+    countryCode,
+    countryName: match.address?.country?.trim() || null,
+    county: countryCode === 'KE' ? findKenyaCounty(match.address ?? {}) : null,
+    localityType,
+  };
+}
+
 export async function geocodeAddress(address: string): Promise<GeocodeLookup> {
   const query = address.trim();
   if (!query) {
@@ -143,28 +172,39 @@ export async function geocodeAddress(address: string): Promise<GeocodeLookup> {
     throw new Error('Free map lookup is unavailable right now. Please try again.');
   }
 
-  const matches = (await response.json()) as Array<{
-    display_name?: string;
-    lat?: string;
-    lon?: string;
-    address?: NominatimAddress;
-  }>;
+  const matches = (await response.json()) as NominatimLookupResult[];
 
   const match = matches[0];
-  if (!match?.lat || !match?.lon) {
+  if (!match) {
     throw new Error('No map result found for that address yet. Try a clearer area or landmark.');
   }
 
-  const countryCode = match.address?.country_code?.trim().toUpperCase() || null;
-  const localityType = inferLocalityType(match.address ?? {});
+  return buildGeocodeLookup(match, query);
+}
 
-  return {
-    address: match.display_name?.trim() || query,
-    latitude: match.lat,
-    longitude: match.lon,
-    countryCode,
-    countryName: match.address?.country?.trim() || null,
-    county: countryCode === 'KE' ? findKenyaCounty(match.address ?? {}) : null,
-    localityType,
-  };
+export async function reverseGeocodeCoordinates(
+  latitude: number,
+  longitude: number,
+): Promise<GeocodeLookup> {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new Error('A valid map pin is required before reverse lookup can run.');
+  }
+
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&lat=${encodeURIComponent(
+      latitude,
+    )}&lon=${encodeURIComponent(longitude)}`,
+    {
+      headers: {
+        Accept: 'application/json',
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error('Map address lookup is unavailable right now. Please try again.');
+  }
+
+  const match = (await response.json()) as NominatimLookupResult;
+  return buildGeocodeLookup(match, `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
 }

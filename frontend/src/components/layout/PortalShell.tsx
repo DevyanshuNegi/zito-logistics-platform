@@ -10,7 +10,11 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { useAuth } from '@/hooks/useAuth';
-import { getGuidePathForRole } from '@/lib/auth-portals';
+import {
+  getGuidePathForRole,
+  getPortalConfig,
+  type PortalKind,
+} from '@/lib/auth-portals';
 import { getRoleHomePath, hasAnyRole } from '@/lib/roles';
 
 type NavItem = {
@@ -54,15 +58,37 @@ export function PortalShell({
   const t = useTranslations('Shell');
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, logout } = useAuth();
+  const { user, accessToken, loading, logout } = useAuth();
   const isOperationsTheme = theme === 'operations';
+  const expectedPortalKind: PortalKind =
+    allowedRoles.length === 1 &&
+    allowedRoles[0] === 'AGENCY_STAFF' &&
+    allowedStaffScopes?.map((scope) => scope.trim().toUpperCase()).includes('AGENCY')
+      ? 'agency'
+      : allowedRoles.every((role) =>
+            ['CUSTOMER', 'CORPORATE'].includes(role.trim().toUpperCase()),
+          )
+        ? 'service'
+        : allowedRoles.every((role) =>
+              [
+                'DRIVER',
+                'AGENT',
+                'TRANSPORTER',
+                'COURIER_COMPANY',
+                'WAREHOUSE_PARTNER',
+              ].includes(role.trim().toUpperCase()),
+            )
+          ? 'partners'
+          : 'internal';
+  const loginPath = getPortalConfig(expectedPortalKind).loginPath;
   const normalizedScope = (user?.staffScope ?? '').trim().toUpperCase();
   const scopeAllowed =
     !allowedStaffScopes ||
     !user ||
     user.role !== 'AGENCY_STAFF' ||
     allowedStaffScopes.map((scope) => scope.trim().toUpperCase()).includes(normalizedScope);
-  const canAccess = !!user && hasAnyRole(user.role, allowedRoles) && scopeAllowed;
+  const hasSession = !!user && !!accessToken;
+  const canAccess = hasSession && hasAnyRole(user.role, allowedRoles) && scopeAllowed;
   const workspaceHome = navItems[0]?.href ?? getRoleHomePath(user?.role, user?.staffScope);
   const currentNavItem =
     navItems
@@ -84,11 +110,11 @@ export function PortalShell({
 
     let fallbackTimer: number | undefined;
 
-    if (!user) {
-      router.replace('/login');
+    if (!user || !accessToken) {
+      router.replace(loginPath);
       fallbackTimer = window.setTimeout(() => {
-        if (window.location.pathname !== '/login') {
-          window.location.replace('/login');
+        if (window.location.pathname !== loginPath) {
+          window.location.replace(loginPath);
         }
       }, 120);
       return () => {
@@ -117,7 +143,7 @@ export function PortalShell({
         window.clearTimeout(fallbackTimer);
       }
     };
-  }, [allowedRoles, allowedStaffScopes, loading, router, scopeAllowed, user]);
+  }, [accessToken, allowedRoles, allowedStaffScopes, loading, loginPath, router, scopeAllowed, user]);
 
   if (loading || !user || !canAccess) {
     return (

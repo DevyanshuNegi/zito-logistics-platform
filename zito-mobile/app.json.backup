@@ -1,0 +1,93 @@
+{
+  "expo": {
+    "name": "Zito Logistics",
+    "slug": "zito",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon-customer.png",
+    "scheme": "zito-customer",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "platforms": ["ios", "android", "web"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aurenza.zito.customer",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Zito uses your location to estimate routes, show pickup and delivery flow, and support live trip tracking.",
+        "NSCameraUsageDescription": "Zito uses your camera to capture proof of delivery, support evidence, and shipment scans.",
+        "NSPhotoLibraryUsageDescription": "Zito uses your photo library so you can upload support evidence, proof of delivery, and shipment documents.",
+        "NSPhotoLibraryAddUsageDescription": "Zito can save shipment and proof-of-delivery images when you choose to export them."
+      },
+      "config": {
+        "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+      }
+    },
+    "android": {
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-customer-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 1,
+      "package": "com.aurenza.zito.customer",
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+        }
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "zito-customer://"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/zito-app-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#050914",
+          "dark": {
+            "image": "./assets/images/zito-app-icon.png",
+            "backgroundColor": "#050914"
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9a3a10da-3cf5-4dba-bca8-07187831b78b"
+      },
+      "router": {},
+      "appFlavor": "customer"
+    },
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9a3a10da-3cf5-4dba-bca8-07187831b78b"
+    }
+  }
+}

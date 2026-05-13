@@ -70,7 +70,7 @@ export default function HomeScreen() {
             <Text style={s.greeting}>Hello, {(user?.full_name || 'there').split(' ')[0]}</Text>
             <Text style={s.greetSub}>Manage bookings, tracking, and delivery updates from one place.</Text>
           </View>
-          <BrandLockup mode="compact" showDescriptor={false} />
+          <BrandLockup mode="compact" showDescriptor={false} showCompany={false} />
         </View>
 
         <TouchableOpacity style={s.cta} onPress={() => router.push('/(customer)/book')}>

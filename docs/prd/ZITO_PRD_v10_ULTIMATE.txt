@@ -2354,6 +2354,77 @@ Customer mobile palette clarification:
 - customer mobile product surfaces should use the login-page family of deep midnight navy, cool slate, cyan-blue-violet CTA gradients, and restrained white-card layering
 - the HTML mockup is a layout and interaction reference, not a directive to replace Zito's approved login-page palette
 - the real Zito logo asset must be preserved; operational screens may scale it down, simplify its placement, or use a restrained top-bar lockup, but must not invent alternate logo styling
+66.3C Brand Asset Specification & Deployment
+Master Source Location
+All branding assets are sourced from: C:\Users\Abcom\Desktop\VG Logistics final Data\Zito data\
+Issued by: Aurenza Limited
+
+Asset Categories
+1. ZITO Z Symbol (Pure Icon)
+   - Source file: only Z.PNG
+   - Format: 1024×1024px with rounded square border
+   - Visual: Blue (#0066FF) to Purple gradient, Z letterform only, no text
+   - Purpose: Symbol-only branding for compact, icon-only applications
+   - Usage: Browser tabs, PWA home screen icons, mobile app home button, favicon library
+   - Deployment files:
+     * favicon-512.png (512×512)
+     * favicon-256.png (256×256)
+     * favicon-192.png (192×192)
+     * favicon-96.png (96×96)
+     * favicon-48.png (48×48)
+     * favicon.ico (legacy browser support)
+     * zito-app-icon.png (master 1024×1024, multi-purpose)
+   - Locations deployed:
+     * frontend/public/ - Web application icons
+     * backend/assets/branding/ - Backend asset library
+     * zito-mobile/assets/images/ - Mobile app icons
+
+2. ZITO Full Brand Lockup (Z + Text + Tagline)
+   - Source file: Zito final logo.PNG
+   - Format: Horizontal composition with Z icon, "ZITO" wordmark, tagline "SMARTER. FASTER. RELIABLE." and feature line "YOUR LOGISTICS. SIMPLIFIED."
+   - Visual: Blue-to-purple Z symbol with supporting copy, professional enterprise branding
+   - Purpose: Full brand identity display and professional presentation
+   - Usage: Login pages, authentication screens, onboarding, dashboard headers, marketing materials, email templates
+   - Deployed as: zito-logo.png (primary brand asset)
+   - Locations deployed:
+     * frontend/public/zito-logo.png - Web application branding
+     * backend/assets/branding/zito-logo.png - Backend branding asset
+     * zito-mobile/assets/images/zito-logo.png - Mobile app branding
+   - Component usage: BrandLockup React component (frontend/src/components/layout/BrandLockup.tsx)
+   - Responsive sizing: Compact (220×84px) for constrained spaces, Full (320×122px) for prominent placement
+
+3. Company Logo (Aurenza Limited)
+   - Source file: Aurenza Limited.PNG
+   - Deployed as: aurenza-limited.png
+   - Purpose: Legal entity and corporate branding
+   - Usage: Footer, legal disclaimers, corporate contexts
+   - Locations:
+     * frontend/public/aurenza-limited.png
+     * backend/assets/branding/aurenza-limited.png
+     * zito-mobile/assets/images/aurenza-limited.png
+
+Brand Application Rules
+- Favicon library: Use pure Z symbol across all sizes (symbol-first approach for app identity)
+- Authentication & Onboarding: Use full brand lockup to establish professional brand presence
+- Operational dashboards: Use compact wordmark or hidden branding (if not BrandLockup component)
+- Mobile app headers: Z symbol preferred; full brand only on splash/auth screens
+- Headers and navigation: Prefer symbol or wordmark; avoid large marketing lockup in working areas
+- Logo must never be modified, recolored, or redesigned without explicit approval
+- All brand assets are owned by Aurenza Limited and may not be distributed externally without licensing agreement
+
+Asset Configuration
+All assets configured in: frontend/src/lib/brand.ts
+- BRAND.assets.companyLogo → aurenza-limited.png
+- BRAND.assets.appLogo → zito-logo.png (full brand)
+- BRAND.assets.appIcon → zito-app-icon.png (Z symbol)
+
+Regeneration Process
+Favicon suite regenerated via: create-favicons.js
+- Input: zito-app-icon.png (1024×1024 Z symbol)
+- Output: All favicon sizes (512, 256, 192, 96, 48px + ico format)
+- Run: node create-favicons.js from project root
+- Output locations: frontend/public/ and backend/assets/branding/
+
 66.4 Typography System
 Typography must define:
 - Display / Hero
@@ -2419,6 +2490,7 @@ Rules:
 - the preferred home composition is: map first, saved location chips, single address action, service chips, recent bookings, persistent bottom navigation
 - primary customer actions should be visible within one thumb zone and one screen without needing portal-style scrolling through explanatory content
 - booking creation should begin with route intent and map context; large dark summary blocks must not push the route setup below the fold on mobile
+- route capture must be map-first: tapping pickup or drop must move the user into pin placement on the map, and manual address editing should only unlock after the pin has been dropped and reverse-filled
 - interim free-map implementation is allowed using OpenStreetMap tiles / embed plus free geocoding, provided the UI still behaves like a premium mobile service flow
 - if owned-fleet capability is enabled for the customer role, customer home or account must expose a clear Own Fleet entry so vehicle and driver management is discoverable without admin assistance
 66.8 Screen Specification - Driver App
@@ -2617,6 +2689,9 @@ Admin workflow polish rules:
 - the main admin dashboard must surface cross-desk priorities, not just isolated module links
 - compliance backlog, automation alerts, escalated support pressure, and finance-routed support pressure must all be visible from the main command surface
 - quick actions must include direct access to the verification desk and freight-control desk
+Protected workspace session rules:
+- admin, internal, partner, agency, and other protected workspaces must require a valid authenticated user and a valid access token together; stale user-only session remnants must not be treated as authorized access
+- a `401 Unauthorized` response from a protected workspace API call must clear the broken session and redirect the operator back to the correct portal login surface instead of leaving the user on a half-rendered control page with only an inline unauthorized error
 Mobile QA hardening rules:
 - the internal mobile workspace must expose a QA diagnostics screen showing the active API host, runtime environment label, token presence, user-role routing context, and live backend health response
 - mobile API clients must use a bounded request timeout and return actionable errors when the runtime cannot reach the deployed backend

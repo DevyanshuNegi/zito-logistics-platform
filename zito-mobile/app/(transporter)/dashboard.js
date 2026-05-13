@@ -79,7 +79,7 @@ export default function DashboardScreen() {
             <Text style={s.greeting}>Hello, {(user?.full_name || '').split(' ')[0]}</Text>
             <Text style={s.greetSub}>Transporter operations dashboard</Text>
           </View>
-          <BrandLockup mode="compact" showDescriptor={false} />
+          <BrandLockup mode="compact" showDescriptor={false} showCompany={false} />
         </View>
 
         <View style={s.kpiGrid}>

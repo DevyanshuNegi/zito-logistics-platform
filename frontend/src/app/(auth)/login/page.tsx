@@ -51,6 +51,8 @@ type OtpRequestResponse = {
     otpExpiresAt?: string | null;
     resendAvailableAt?: string | null;
     resendRemaining?: number;
+    debugOtp?: string | null;
+    debugDeliveryTarget?: string | null;
   };
 };
 
@@ -193,6 +195,7 @@ function LoginPageScreen() {
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [resendRemaining, setResendRemaining] = useState<number | null>(null);
+  const [debugOtp, setDebugOtp] = useState<string | null>(null);
   const otpInputRef = useRef<HTMLInputElement | null>(null);
   const autoSubmittedOtpRef = useRef('');
 
@@ -361,6 +364,7 @@ function LoginPageScreen() {
       setStep('otp');
       setOtp('');
       setPassword('');
+      setDebugOtp(response.data.debugOtp ?? null);
       setCooldownRemaining(secondsUntil(response.data.resendAvailableAt));
       setResendRemaining(
         typeof response.data.resendRemaining === 'number'
@@ -776,6 +780,18 @@ function LoginPageScreen() {
             }
             required
           />
+
+          {debugOtp ? (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-widest text-amber-200">
+                💡 Dev Mode
+              </p>
+              <p className="mt-2 text-sm text-amber-50">
+                Copy this code to test:<br />
+                <span className="font-mono text-lg font-bold text-amber-300">{debugOtp}</span>
+              </p>
+            </div>
+          ) : null}
 
           <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

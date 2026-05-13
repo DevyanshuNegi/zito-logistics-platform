@@ -1,7 +1,29 @@
+import { customerTheme } from './themes/customer';
+import { partnerTheme } from './themes/partner';
+import { adminTheme } from './themes/admin';
+
+// Get app flavor from environment variable
+const APP_FLAVOR = process.env.EXPO_PUBLIC_APP_FLAVOR || 'customer';
+
+// Get theme for current app
+const getAppTheme = () => {
+  switch (APP_FLAVOR) {
+    case 'partner':
+      return partnerTheme;
+    case 'admin':
+      return adminTheme;
+    case 'customer':
+    default:
+      return customerTheme;
+  }
+};
+
+const appTheme = getAppTheme();
+
 export const colors = {
-  primary: '#1ca8ff',
-  primaryDark: '#4f46ff',
-  primarySoft: 'rgba(28,168,255,0.14)',
+  primary: appTheme.primary,
+  primaryDark: appTheme.primaryDark,
+  primarySoft: appTheme.primarySoft,
   bg: '#050914',
   bgCard: '#0c1424',
   bgElevated: '#101b31',
