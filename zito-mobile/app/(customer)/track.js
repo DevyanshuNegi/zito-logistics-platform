@@ -9,6 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { api } from '../../src/api/client';
 import { colors } from '../../src/constants/theme';
 import { StatusBadge } from '../../src/components/StatusBadge';
+import { SOSButton } from '../../src/components/SOSButton';
 
 const TIMELINE = [
   { status: 'pending',         label: 'Booking Submitted',  icon: '📝' },
@@ -156,6 +157,19 @@ export default function TrackScreen() {
                   <Text style={s.driverRating}>⭐ {Number(selected.assignedDriver.avg_rating || 0).toFixed(1)}</Text>
                 </View>
               )}
+
+              {/* Emergency SOS Button */}
+              {!['completed', 'cancelled'].includes(selected.status) && (
+                <View style={s.emergencySection}>
+                  <SOSButton
+                    bookingId={selected.id}
+                    onSuccess={() => {
+                      // Refresh booking data after SOS
+                      refreshSelected(selected.id);
+                    }}
+                  />
+                </View>
+              )}
             </View>
 
             {/* Status Timeline */}
@@ -240,6 +254,13 @@ const s = StyleSheet.create({
   driverName:  { fontSize: 14, fontWeight: '700', color: colors.text },
   driverPhone: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   driverRating:{ fontSize: 14, color: colors.warning },
+  emergencySection: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    flexDirection: 'row',
+  },
   sectionTitle:{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 14 },
   timeline:    { marginBottom: 20 },
   tlRow:       { flexDirection: 'row', gap: 12 },

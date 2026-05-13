@@ -81,6 +81,19 @@ Core Features:
 - Ratings & reviews (social proof)
 - Receipt generation
 
+Safety & Emergency Features:
+✓ SOS Emergency Button (prominent red button)
+✓ Available on: Tracking page, home dashboard, active bookings
+✓ Alerts authorities (emergency services)
+✓ Notifies ZITO support team immediately
+✓ Driver is notified of emergency
+✓ Sends alerts to customer's emergency contact (if set)
+✓ Enables trip sharing with emergency contact for real-time location tracking
+✓ Confirmation popup prevents accidental triggers
+✓ Incident logging for safety audit trail
+✓ Works offline (queues alert when online)
+✓ Emergency contact management in profile settings
+
 Dashboard Features (Customer App):
 - Active booking card (top, large, prominent)
 - KPI cards showing metrics: Total Bookings, Completed, Total Spent, Money Saved
@@ -90,6 +103,7 @@ Dashboard Features (Customer App):
 - Recent booking history (last 5 bookings)
 - Real-time activity metrics (updated on refresh)
 - Account status indicator
+- SOS Emergency button on active bookings
 
 NOT Copying Competitors:
 ✗ NOT copying their business model

@@ -15,6 +15,7 @@ import { api } from '../../src/api/client';
 import { colors } from '../../src/constants/theme';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { KPICard } from '../../src/components/KPICard';
+import { SOSButton } from '../../src/components/SOSButton';
 import BrandLockup from '../../src/components/BrandLockup';
 
 export default function HomeScreen() {
@@ -125,6 +126,16 @@ export default function HomeScreen() {
                   Delivery: {booking.delivery_address}
                 </Text>
                 <Text style={s.hint}>Open tracking</Text>
+                
+                {/* SOS Button for Active Bookings */}
+                <View style={s.sosRowHome}>
+                  <SOSButton
+                    bookingId={booking.id}
+                    onSuccess={() => {
+                      // Booking will refresh on next poll
+                    }}
+                  />
+                </View>
               </TouchableOpacity>
             ))}
           </>
@@ -262,5 +273,11 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginBottom: 12,
+  },
+  sosRowHome: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
 });
