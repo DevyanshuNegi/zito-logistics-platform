@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Wallet,
 } from 'lucide-react';
+import { CustomerAiAssistant } from '@/components/support/CustomerAiAssistant';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -94,6 +95,25 @@ const paymentMethodMeta: Record<
     accent: 'bg-[#eef7f8] text-[#0f766e]',
   },
 };
+
+const paymentsAiQuickActions = [
+  {
+    label: 'Pay a booking',
+    message: 'Show me the correct customer payment procedure for selecting a booking and choosing a payment method.',
+  },
+  {
+    label: 'Explain this payment',
+    message: 'Help me understand the payment status, receipt, or wallet movement for my booking.',
+  },
+  {
+    label: 'Check invoice help',
+    message: 'Explain the customer invoice and receipt flow after payment or delivery.',
+  },
+  {
+    label: 'Need payment support',
+    message: 'I need human support for a payment or invoice issue and want the clearest next step.',
+  },
+] as const;
 
 function generateKey() {
   if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
@@ -421,6 +441,18 @@ export default function CustomerPaymentsPage() {
         </div>
 
         <div className="space-y-6">
+          <CustomerAiAssistant
+            compact
+            screenContext="CUSTOMER_PAYMENTS"
+            bookings={bookings.map((booking) => ({ id: booking.id, reference: booking.reference }))}
+            defaultBookingId={selectedBookingId || undefined}
+            title="Need help with payment?"
+            description="Ask about customer payment steps, receipts, invoice follow-up, wallet activity, or when a payment issue should go to support. Zito Assistant explains procedure only."
+            quickActions={paymentsAiQuickActions}
+            placeholder="Example: Why is this payment still pending, or what should I check before I pay this booking?"
+            helpText="Ask about booking payments, receipts, invoices, wallet activity, or when to contact support."
+          />
+
           <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-emerald-100 text-emerald-700">

@@ -93,10 +93,11 @@ export class BookingsService {
       cargoWeightKg: dto.cargoWeightKg,
     });
 
-    // Calculate pricing from RateCard
-    const pricing = await this.calculatePrice(dto);
+    // Calculate pricing from RateCard when available, otherwise allow a review flow
+    // for customer-facing bookings where admin or marketplace pricing may follow later.
+    const pricing = await this.resolveBookingPricing(dto, requesterRole);
 
-    if (requesterRole === 'CORPORATE') {
+    if (requesterRole === 'CORPORATE' && !pricing.pricingReviewRequired) {
       await this.contractsService.checkCredit(customerId, pricing.totalPrice);
     }
 
@@ -111,7 +112,7 @@ export class BookingsService {
           serviceType: dto.serviceType,
           capacitySource: dto.capacitySource ?? BookingCapacitySource.CFA_NETWORK,
           requiredVehicleType: dto.vehicleType,
-          status: BookingStatus.CREATED,
+          status: pricing.pricingReviewRequired ? BookingStatus.SEARCHING : BookingStatus.CREATED,
         idempotencyKey: dto.idempotencyKey,
         cargoType: dto.cargoType ?? null,
         cargoWeightKg: dto.cargoWeightKg ?? null,
@@ -182,6 +183,7 @@ export class BookingsService {
       customsStatus: booking.customsStatus,
       icmsStatus: booking.icmsStatus,
       totalPrice: booking.totalPrice,
+      pricingReviewRequired: pricing.pricingReviewRequired,
     });
 
     if (requesterRole === 'CORPORATE') {
@@ -739,6 +741,9 @@ export class BookingsService {
     });
     if (!vehicle) throw new NotFoundException('Vehicle not found');
     if (vehicle.status !== VehicleStatus.ACTIVE) throw new BadRequestException('Vehicle is not active');
+    if (String(vehicle.verificationStatus ?? '').toUpperCase() !== 'APPROVED') {
+      throw new BadRequestException('Vehicle is pending fleet approval');
+    }
 
     // Check driver has no active conflicting trip
     const activeTrip = await this.prisma.booking.findFirst({
@@ -1007,6 +1012,57 @@ export class BookingsService {
   }
 
   // ─── PRICING ENGINE ───────────────────────────────────────────────────────
+
+  private async resolveBookingPricing(dto: CreateBookingDto, requesterRole: string) {
+    try {
+      return {
+        ...(await this.calculatePrice(dto)),
+        pricingReviewRequired: false,
+      };
+    } catch (error) {
+      if (!this.canDeferPricingReview(error, requesterRole)) {
+        throw error;
+      }
+
+      return {
+        baseFare: 0,
+        distanceFare: 0,
+        stopFare: 0,
+        surgeMultiplier: 1,
+        totalPrice: 0,
+        estimatedDistKm: this.estimateStopsDistance(dto),
+        surgeBreakdown: null,
+        pricingReviewRequired: true,
+      };
+    }
+  }
+
+  private canDeferPricingReview(error: unknown, requesterRole: string) {
+    if (!(error instanceof BadRequestException)) {
+      return false;
+    }
+
+    if (!['CUSTOMER', 'CORPORATE'].includes(requesterRole)) {
+      return false;
+    }
+
+    const response = error.getResponse();
+    const message =
+      typeof response === 'string'
+        ? response
+        : Array.isArray((response as { message?: unknown }).message)
+          ? (response as { message: string[] }).message.join(' ')
+          : String((response as { message?: unknown }).message ?? '');
+
+    return message.toLowerCase().includes('no active rate card');
+  }
+
+  private estimateStopsDistance(dto: CreateBookingDto) {
+    const first = dto.stops[0];
+    const last = dto.stops[dto.stops.length - 1];
+
+    return this.haversineKm(first.latitude, first.longitude, last.latitude, last.longitude);
+  }
 
   private async calculatePrice(dto: CreateBookingDto) {
     // Look up rate card for this vehicle + service type

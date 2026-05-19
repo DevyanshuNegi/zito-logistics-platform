@@ -19,6 +19,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BulkOnboardFleetDto } from './dto/bulk-onboard.dto';
+import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { CreateFuelLogDto, FuelLogQueryDto } from './fuel/dto/fuel.dto';
 import { UploadVehiclePhotoDto } from './dto/upload-vehicle-photo.dto';
 import { ReviewVehiclePhotoDto } from './dto/review-vehicle-photo.dto';
@@ -36,19 +37,19 @@ interface MulterFile {
 export class FleetController {
   constructor(private readonly fleetService: FleetService) {}
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Post()
-  create(@Body() createVehicleDto: any, @Req() req: any) {
+  create(@Body() createVehicleDto: CreateVehicleDto, @Req() req: any) {
     return this.fleetService.create(createVehicleDto, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Post('bulk-onboard')
   bulkOnboard(@Body() dto: BulkOnboardFleetDto, @Req() req: any) {
     return this.fleetService.bulkOnboard(dto.vehicles, req.user.id);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Get()
   findAll(
     @Req() req: any,
@@ -58,7 +59,7 @@ export class FleetController {
     return this.fleetService.findAll({ status, driverId }, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Post(':id/verification-photos')
   @UseInterceptors(FileInterceptor('file'))
   uploadVerificationPhoto(
@@ -91,7 +92,7 @@ export class FleetController {
     return this.fleetService.reviewVehicleVerification(id, dto, req.user.id);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'AGENT', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
   @Get('breakdowns')
   listBreakdowns(
     @Query('status') status?: string,
@@ -109,13 +110,13 @@ export class FleetController {
     });
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'AGENT', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
   @Get('breakdowns/:breakdownId')
   getBreakdown(@Param('breakdownId', ParseUUIDPipe) breakdownId: string) {
     return this.fleetService.getBreakdown(breakdownId);
   }
 
-  @Roles('DRIVER', 'ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER')
+  @Roles('DRIVER', 'ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
   @Post('fuel/logs')
   createFuelLog(@Body() body: CreateFuelLogDto, @Req() req: any) {
     return this.fleetService.createFuelLog(
@@ -130,7 +131,7 @@ export class FleetController {
     );
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'AGENT', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
   @Get('fuel/logs')
   listFuelLogs(@Query() query: FuelLogQueryDto) {
     return this.fleetService.listFuelLogs({
@@ -142,31 +143,31 @@ export class FleetController {
     });
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'AGENT', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'TRANSPORTER')
   @Get('fuel/logs/:logId')
   getFuelLog(@Param('logId', ParseUUIDPipe) logId: string) {
     return this.fleetService.getFuelLog(logId);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'TRANSPORTER')
   @Post('fuel/logs/:logId/detect-theft')
   detectFuelTheft(@Param('logId', ParseUUIDPipe) logId: string) {
     return this.fleetService.detectFuelTheft(logId);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     return this.fleetService.findOne(id, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any, @Req() req: any) {
     return this.fleetService.update(id, dto, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Patch(':id/assign-driver')
   assignDriver(
     @Param('id', ParseUUIDPipe) id: string,
@@ -176,7 +177,7 @@ export class FleetController {
     return this.fleetService.assignDriver(id, driverId, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Patch(':id/retire')
   retire(
     @Param('id', ParseUUIDPipe) id: string,
@@ -186,7 +187,7 @@ export class FleetController {
     return this.fleetService.retire(id, note, req.user);
   }
 
-  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF')
   @Patch(':id/gps')
   updateGps(
     @Param('id', ParseUUIDPipe) id: string,

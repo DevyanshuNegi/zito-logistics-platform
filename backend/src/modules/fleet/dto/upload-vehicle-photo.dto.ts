@@ -2,11 +2,13 @@ import { IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export const VEHICLE_PHOTO_CATEGORIES = [
-  'DASHBOARD',
+  'NUMBER_PLATE',
   'FRONT',
   'RIGHT',
   'LEFT',
   'BACK',
+  'CHASSIS',
+  'INSURANCE',
 ] as const;
 
 export type VehiclePhotoCategory = (typeof VEHICLE_PHOTO_CATEGORIES)[number];

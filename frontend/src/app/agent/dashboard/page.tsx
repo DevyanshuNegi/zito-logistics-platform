@@ -16,16 +16,6 @@ type Vehicle = {
   status: string;
 };
 
-type Driver = {
-  id: string;
-  isAvailable?: boolean;
-  isOnline?: boolean;
-  user?: {
-    fullName?: string | null;
-    status?: string | null;
-  } | null;
-};
-
 type MarketplaceProfile = {
   verificationStatus: string;
   linkedVehicles: Vehicle[];
@@ -53,8 +43,6 @@ type OpportunityResponse = {
 };
 
 export default function AgentDashboardPage() {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [profile, setProfile] = useState<MarketplaceProfile | null>(null);
   const [opportunities, setOpportunities] = useState<MarketplaceOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,14 +56,6 @@ export default function AgentDashboardPage() {
       setNotice(null);
 
       try {
-        const [vehicleResponse, driverResponse] = await Promise.all([
-          api.get<Vehicle[]>('/fleet'),
-          api.get<Driver[]>('/drivers'),
-        ]);
-
-        setVehicles(vehicleResponse);
-        setDrivers(driverResponse);
-
         try {
           const profileResponse = await api.get<MarketplaceProfile>(
             '/marketplace/partner/profile',
@@ -85,7 +65,7 @@ export default function AgentDashboardPage() {
           if (caught instanceof ApiError && caught.status === 404) {
             setProfile(null);
             setNotice(
-              'Complete your marketplace onboarding to expose vehicles and loads through the agent network.',
+              'Complete your marketplace onboarding to expose sourced capacity and trip opportunities through the agent network.',
             );
           } else {
             throw caught;
@@ -123,11 +103,10 @@ export default function AgentDashboardPage() {
     return <Spinner />;
   }
 
-  const availableDrivers = drivers.filter((driver) => driver.isAvailable).length;
-  const pendingDrivers = drivers.filter((driver) => driver.user?.status === 'PENDING').length;
   const activeOpportunities = opportunities.filter(
     (opportunity) => opportunity.status === 'OPEN',
   ).length;
+  const sourcedCapacity = profile?.linkedVehicles.length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -140,14 +119,14 @@ export default function AgentDashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Vehicles"
-          value={String(vehicles.length)}
-          helper="Vehicles registered under the agent network."
+          label="Sourced capacity"
+          value={String(sourcedCapacity)}
+          helper="Capacity references visible through the marketplace profile."
         />
         <StatCard
-          label="Drivers"
-          value={String(drivers.length)}
-          helper={`${availableDrivers} available right now.`}
+          label="Agent rule"
+          value="No fleet ownership"
+          helper="Drivers and vehicles belong to fleet owners, not agents."
           tone="success"
         />
         <StatCard
@@ -159,7 +138,7 @@ export default function AgentDashboardPage() {
         <StatCard
           label="Marketplace status"
           value={formatStatus(profile?.verificationStatus ?? 'PENDING_REVIEW')}
-          helper={`Pending driver invites: ${pendingDrivers}`}
+          helper="Trip proposals unlock after marketplace approval."
           tone="warning"
         />
       </div>
@@ -169,14 +148,14 @@ export default function AgentDashboardPage() {
         description="Use the agent workspace to grow supply, prepare capacity, and respond to marketplace demand."
         actions={
           <div className="flex flex-wrap gap-3">
-            <Link href="/agent/drivers">
-              <Button>Onboard driver</Button>
+            <Link href="/agent/marketplace">
+              <Button>Open marketplace</Button>
             </Link>
             <Link href="/agent/fleet">
-              <Button variant="secondary">Add vehicle</Button>
+              <Button variant="secondary">View fleet policy</Button>
             </Link>
-            <Link href="/agent/marketplace">
-              <Button variant="secondary">Open marketplace</Button>
+            <Link href="/agent/drivers">
+              <Button variant="secondary">View driver policy</Button>
             </Link>
           </div>
         }
@@ -190,7 +169,7 @@ export default function AgentDashboardPage() {
               {formatStatus(profile?.verificationStatus ?? 'PENDING_REVIEW')}
             </p>
             <p className="text-sm text-slate-300">
-              Marketplace approval status for agent operations.
+              Marketplace approval status for agent operations and trip proposals.
             </p>
           </div>
           <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
@@ -212,7 +191,7 @@ export default function AgentDashboardPage() {
               {profile?.performance?.awardedTransactions ?? 0}
             </p>
             <p className="text-sm text-slate-300">
-              Marketplace jobs awarded to this agent network.
+              Marketplace jobs awarded through the agent network.
             </p>
           </div>
         </div>
@@ -220,7 +199,7 @@ export default function AgentDashboardPage() {
 
       <SurfaceCard
         title="Recent demand"
-        description="Recent marketplace openings that can be matched with your agent vehicles and drivers."
+        description="Recent marketplace openings that can be matched with sourced capacity from approved fleet owners."
       >
         <div className="space-y-3">
           {opportunities.length === 0 ? (

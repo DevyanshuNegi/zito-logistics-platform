@@ -64,12 +64,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/zito-app-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/images/zito-splash-icon.png",
+          "imageWidth": 184,
           "resizeMode": "contain",
           "backgroundColor": "#050914",
           "dark": {
-            "image": "./assets/images/zito-app-icon.png",
+            "image": "./assets/images/zito-splash-icon.png",
             "backgroundColor": "#050914"
           }
         }

@@ -493,7 +493,7 @@ Zito Internal Ops = Super Admin + Admin + Head Office Staff
 Zito Agency Desk = Agency Staff
 Customers and partners must not see internal-role registration or internal login entry points in their public apps.
 Internal roles must use a separate private login path and separate internal web/app experience.
-Agent is an external supply-side partner role, separate from Agency / Agency Staff. Agents source vehicles and loads for commission, onboard drivers, manage supply capacity, and operate through Zito Partners.
+Agent is an external supply-side partner role, separate from Agency / Agency Staff. Agents source loads and capacity for commission, propose trips through the marketplace, and operate through Zito Partners. Agents do not own vehicles inside Zito fleet management and do not create driver accounts.
 Agency / Agency Staff remains an internal operating structure and must not be exposed in the public partner login or registration flow.
 Internal teams must use separate private internal routes and must not be mixed into customer or partner login entry points.
 Internal staff who handle support, operations, finance, and accounting must authenticate into an internal workspace, even when they are not platform admins.
@@ -517,6 +517,7 @@ The sign-in experience must be Zito-only. Do not show legal-entity branding, cus
 Company/legal names belong in contracts, invoices, approval records, and formal documents, not on the public sign-in interface.
 The auth screen must feel utility-first and professional, not like a marketing landing page.
 Only one Zito identity should be presented per viewport section; avoid repeated or conflicting logo and wordmark combinations in the same auth surface.
+The mobile startup splash must use a centered Zito mark asset with the full rounded-square frame visible; do not use a pre-cropped logo that clips the Z or border inside the splash viewport.
 OTP-first flow must remain on a single screen: contact step â†’ OTP step â†’ role-based redirect after successful verification.
 UI must support phone-first sign-in with separate country-code and local-number fields, plus email sign-in as the secondary path.
 The OTP step must show a masked verification target, change-contact action, resend countdown, and attempts-remaining messaging when the account is not yet locked.
@@ -733,20 +734,23 @@ Fleet Verification & Physical Evidence:
 - every fleet asset used for live logistics must support a physical verification workflow in addition to document verification
 - trucks and commercial goods vehicles must not become dispatch-eligible, marketplace-eligible, or billable until the verification pack is approved
 - compulsory truck verification photos:
-  - dashboard / interior cockpit view
+  - number plate close-up
   - front view
   - right-side view
   - left-side view
   - rear / backside view
-- all 5 truck photos are mandatory; missing any required view blocks approval
+  - chassis / VIN evidence view
+  - insurance evidence photo
+- all 7 truck inspection photos are mandatory; missing any required view blocks approval
 - each compulsory truck photo must carry its own review status:
   - approved
   - rejected
   - resubmission_required
 - replacing any previously reviewed truck photo must return that photo and the overall vehicle verification status to pending_review until the new image is reviewed
 - photos should be current and captured as near to verification time as operationally possible; where device capability permits, capture timestamp and location metadata
+- customer, transporter, courier-company, corporate, and agent fleet onboarding should prefer fresh camera capture over gallery reuse; operational review must treat the packet as the latest physical condition evidence for the asset
 - rejected vehicle photos must produce a resubmission_required state with explicit reviewer notes describing what is missing, unclear, or inconsistent
-- smaller vehicles may use a policy-defined reduced image package, but truck verification always requires the 5 compulsory views above
+- smaller vehicles may use a policy-defined reduced image package, but truck verification always requires the 7 compulsory views above
 10. Warehouse System
 Structure
 Warehouse → Zone → Rack → Bin
@@ -994,7 +998,8 @@ All changes must be versioned and auditable
 - inside Kenya, the pricing engine must be able to choose a county-specific rate card before applying surge
 - inside Kenya, the pricing engine must allow separate town / urban and rural pricing for the same service and vehicle combination
 - where pickup geocoding succeeds, the booking flow must auto-derive the default pricing country, Kenya county, and town/rural class from the resolved map result instead of forcing the user to select all three manually
-- users and internal operators may still override the auto-derived pricing scope before quote confirmation, but the UI must clearly show when a manual override has replaced the pickup-detected scope
+- customer-facing booking flows must never expose pricing-scope selectors such as country, county, or area type; those controls belong to admin / internal pricing and audit surfaces only
+- only authorized internal roles may override the auto-derived pricing scope before quote confirmation, and any such override must be versioned and auditable
 - when a county-specific pricing rule is absent, the engine must fall back to the broader country-level card according to a defined precedence order
 - rate cards must also support service + asset combinations such as FTL + 20ft container truck, FTL + 40ft container truck, Rail / SGR + 20ft container slot, and Rail / SGR + 40ft container slot
 19.1 Kenya Rail Booking Model
@@ -1926,6 +1931,25 @@ For Customers (Booking):
 4. Service type (same-day, 2-3 days, scheduled)
 5. Price display (transparent, no surprises)
 6. Confirm booking (one-tap)
+Modern Pickup / Drop UX Structure (Mandatory):
+- The booking journey must begin with only 2 dominant route inputs: Pickup location and Drop-off location.
+- Route capture must be search-first and map-supported, not form-first.
+- Tapping Pickup or Drop-off must open a full-screen location selector or bottom-sheet search surface, not a small embedded form workflow.
+- The location selector must support all of the following:
+  - place search by text
+  - current location
+  - recent places
+  - saved places when available
+  - suggested pickup points where map confidence is high
+  - move pin / drop pin fallback on the map
+- Pickup must default to current or detected location when available, with a clear option to move the pin.
+- Drop-off must support both place search and map pin selection; users must not be forced into map-only entry.
+- Manual address text refinement is allowed only after a location is chosen by search result or map pin.
+- The map must become the main visual canvas after either stop is chosen, with live route preview as soon as both stops are known.
+- Contact name, phone, landmark notes, pricing scope, and other operational details must appear only after the route is confidently captured; they must not compete with the first pickup/drop decision.
+- Multi-stop or extra-stop behavior must extend from the Drop-off step, not clutter the initial route capture.
+- Vehicle selection, ETA, and quote must appear only after pickup and drop-off are defined.
+- The booking route step must feel equivalent to modern consumer apps such as Uber, Porter, and Lalamove: fast, obvious, map-led, and low-friction.
 
 For Drivers (Job Assignment):
 1. Available jobs on map (red markers)
@@ -2082,7 +2106,7 @@ Africa-Scale Ready  •  Investor-Ready  •  Production-Ready
 58. Courier Company & Owned Fleet Expansion Addendum
 Objective: Extend Zito beyond standard customer and transporter usage by enabling customer-owned fleets, dedicated courier-company operations, and CFA-managed county-to-county supply-chain orchestration through the Zito portal.
 Role Model: Add a dedicated COURIER_COMPANY role with separate login and portal routing. Courier companies operate inside the Zito CFA portal, where they create and manage PTL, courier, and FTL movement plans, manage their own fleet when available, and work through the Zito network when shared execution support is required.
-Owned Fleet Scope: Customer, Corporate, Courier Company, Agent, and Transporter accounts may register and manage vehicles they own under their own account scope, with ownership-based access control enforced across fleet workflows.
+Owned Fleet Scope: Customer, Corporate, Courier Company, Driver, and Transporter accounts may register and manage vehicles they own under their own account scope, with ownership-based access control enforced across fleet workflows. Agent is excluded from owned-fleet management and operates through marketplace and trip-proposal workflows instead.
 Commercial Model: The platform must support platform-fee charging per owned vehicle, per managed fleet, or per transaction depending on commercial agreement. Fee policy may be contract-driven, subscription-driven, or usage-driven.
 Courier Supply Chain Mode: Courier companies use the Zito portal as their operations workspace for county-to-county supply-chain execution. Each movement plan must store whether execution is owned-fleet, CFA-network, or blended, while preserving one booking, tracking, scan, and handoff chain across the journey.
 Multi-Load / Multi-Unload Rules: Courier-company requests must support multiple loading points and multiple unloading points. Booking validation must require at least one load or pickup stop and at least one unload or delivery stop, while preserving ordered stop sequencing for routing, scanning, and handoff visibility.
@@ -2104,7 +2128,7 @@ The following launch-critical specification gaps are now formally closed in this
 62.1 V10.2 Source Harmonization Note
 The standalone V10.2 addendum document has been reviewed again and its warehouse, own-fleet, and commercial controls have been harmonized into this master PRD.
 Where the archived addendum is narrower than later approved master decisions, this master PRD supersedes it.
-Example: the archived addendum limited own-fleet eligibility more tightly, while the approved master PRD now supports policy-enabled customer-owned fleets and customer-managed drivers in addition to the classic partner fleet roles.
+Example: the archived addendum limited own-fleet eligibility more tightly, while the approved master PRD now supports policy-enabled customer-owned fleets and linked driver accounts in addition to the classic partner fleet roles.
 63. Full Warehouse Management & Booking System
 Objective
 The warehouse module is not just storage. It is a full operational system covering customer warehouse booking, inbound appointment scheduling, receiving, inventory control, picking, packing, dispatch, cold chain, value-added services, reporting, and billing.
@@ -2402,9 +2426,9 @@ Fleet-capable roles:
 - Corporate: may add vehicles and employed drivers for internal use; no external marketplace listing by default.
 - Courier Company: may add vehicles, drivers, and operate in owned-fleet or blended CFA mode.
 - Transporter: may add vehicles and drivers, assign those drivers onto owned vehicles, and expose capacity to marketplace.
-- Agent: may add managed vehicles and sourced drivers and participate in marketplace supply.
-- Individual Customer: customer-owned fleet is a controlled capability. When enabled for the account, plan, or rollout policy, the customer may add a small internal-use fleet, including customer-managed drivers linked to that fleet.
-- Driver: may operate a self-owned vehicle in solo-driver mode where product policy permits; the driver owns the vehicle record and uses the Driver app as the execution surface.
+- Agent: participates in marketplace supply and trip proposals only. Agent does not add vehicles or create driver accounts inside fleet management.
+- Individual Customer: customer-owned fleet is a controlled capability. When enabled for the account, plan, or rollout policy, the customer may add a small internal-use fleet and link existing driver accounts that already registered through the Zito Partners driver app.
+- Driver: may operate a self-owned vehicle or a small driver-owned fleet where product policy permits; the driver owns the vehicle record inside the same fleet-management structure, still uses the Driver app as the execution surface, and every driver-owned vehicle remains pending until internal approval and GPS activation.
 Rules:
 - fleet visibility is ownership-scoped
 - a role may only access vehicles, drivers, and assignments under its permitted scope
@@ -2428,6 +2452,7 @@ Minimum registration steps also include:
 64.3 Vehicle Data Fields
 Vehicle master record must support:
 - registration number
+- chassis / VIN number
 - make / model / year
 - vehicle class and body type
 - payload capacity
@@ -2443,6 +2468,9 @@ Vehicle profile must additionally support:
 - ownership type
 - special features such as refrigerated body, tail-lift, crane, tarpaulin, or side-open configuration
 - platform listing mode
+- insurance company name
+- insurance policy number
+- insurance expiry date
 64.4 Vehicle Compliance Documents
 Tracked documents include:
 - vehicle registration certificate
@@ -2457,6 +2485,9 @@ Rules:
 - each tracked document must support expiry date
 - each tracked document must support document number or external reference where applicable
 - each tracked document must support issuing authority and reviewer notes
+- a vehicle may be saved under the owner account in pending state, but it must not appear as onboarded, dispatch-ready, assignable, or marketplace-ready until admin or authorized operations staff approve the vehicle
+- approval requires both the structured vehicle profile and the compulsory truck inspection packet; insurance company, policy number, insurance expiry, and chassis/VIN detail are part of the mandatory profile for truck onboarding
+- GPS device mapping or approved fallback-tracking configuration must be completed by authorized internal operations staff before final activation
 - document reminders must trigger before expiry
 - expired required compliance suspends the vehicle automatically
 - reactivation requires updated document and approval
@@ -2491,16 +2522,17 @@ Fleet dashboard must additionally expose:
 - driver performance summary where owner has permission
 64.6 Driver Management Under Own Fleet
 Fleet owner capabilities:
-- invite and onboard driver to fleet roster
+- link an existing driver account to fleet roster after the driver self-registers in the Zito Partners driver app
 - assign / unassign vehicle
 - mark primary or backup driver
 - review license and compliance status
 - review trip history, performance, and role-relevant earnings data
-- customer, transporter, courier-company, and corporate fleet owners may onboard drivers under their own fleet scope when the role has owned-fleet capability enabled
-- transporter operations must be able to manage both the vehicle roster and the driver roster from the transporter workspace
-- customer-owned fleet management must expose both vehicle and driver controls from the service app account/fleet area rather than hiding driver ownership in back-office tools
+- customer, transporter, courier-company, and corporate fleet owners may link existing driver accounts under their own fleet scope when the role has owned-fleet capability enabled
+- transporter operations must be able to manage both the vehicle roster and the linked-driver roster from the transporter workspace
+- customer-owned fleet management must expose both vehicle controls and linked-driver assignment controls from the service app account/fleet area rather than hiding the workflow in back-office tools
 - every fleet-managed driver still signs in through the dedicated Driver app; fleet ownership changes the driver's roster and assignment scope, not the app they use
 - fleet owner must be able to place an owned driver onto an owned vehicle from the same managed fleet context
+- driver-owned fleet management must follow the same approval path: structured profile, compulsory photo packet, pending admin review, GPS configuration, then activation
 Rules:
 - a driver can only be linked to one active fleet owner at a time unless future multi-tenancy explicitly allows otherwise
 - driver personal financial controls remain protected from fleet owner view except approved operational earnings summaries
@@ -2778,11 +2810,23 @@ Objective
 The product experience must be defined as rigorously as the operations engine. Zito must feel like a modern logistics product, not a data-entry portal. The UI model is map-first, card-native, action-forward, and mobile-credible, with standards strong enough to outperform industrial benchmarks such as Porter-style booking flows while remaining Africa-ready and offline-aware.
 66.1 The Core Design Problem - Forms vs Cards vs Map
 The booking experience must not default to long forms. The map is the interface; cards and bottom sheets are the primary interaction surfaces.
+- The first customer booking interaction must be route intent, not operational detail. The first 2 actions must read like:
+  - Where from?
+  - Where to?
+- Pickup and Drop-off must behave like modern consumer apps: a search-led location selector with map fallback, not a technical split panel with too many early fields.
+- The customer must be able to search and select a place for both pickup and drop-off before using move-pin refinement.
+- Once either stop is active, the map must be visually dominant; small boxed map widgets are insufficient for the primary route-capture experience.
+- Contacts, notes, pricing controls, and other secondary fields must wait until after route confidence is established.
 Required design shifts:
 - pickup and drop are map pin or search-overlay actions, not plain text form blocks on the first screen
 - vehicle selection is visual card-based with live pricing, not a dropdown
-- live pricing must show the location scope being applied when county, town, or rural pricing rules materially affect the quote
-- when map/geocode data is available, pricing scope should default from the pickup pin automatically and surface a clear restore action if the user manually overrides it
+- customer-visible pricing must show quote outcome, not internal pricing scope logic; county/town/rural classification and pricing-engine decisions remain hidden from the customer surface
+- customer booking must support 2 customer-safe pricing outcomes:
+  - instant quote available: show the customer-safe quote before confirmation
+  - instant quote unavailable: show a neutral rate-under-review state and still allow booking request submission for admin, contract, or marketplace follow-up
+- raw pricing-engine failures such as "no active rate card" are forbidden on customer surfaces; internal rate, county, contract, and engine diagnostics belong only to admin/internal workflows
+- where instant pricing is unavailable, admin must be able to confirm the final rate from contract terms, negotiated pricing, or marketplace proposals from transporters, drivers, and partners before customer confirmation is finalized
+- when map/geocode data is available, pricing scope must default automatically from the selected pickup and route context; any override belongs to admin/internal desks only
 - cargo details are progressive and mostly optional unless operationally mandatory
 - booking confirmation is a concise summary card or bottom sheet, not a separate paperwork-style page
 - booking history is card feed first; table views are secondary and report-oriented
@@ -2944,10 +2988,20 @@ Rules:
 Customer app mandatory screens:
 - Home (/): full-screen or dominant map, quick address action, service chips, recent bookings, no heavy portal header
 - Address Search: overlay-first search experience with recent and saved locations
-- Pickup Pin: drag-pin or map selection workflow with minimal bottom-sheet confirmation
-- Delivery Pin: same model with route preview and multi-stop extension path
+- Address Search must support:
+  - current location
+  - recent places
+  - saved places
+  - suggested pickup points where confidence exists
+- typed place search
+- current-location shortcut and recent-place recall must be available inside the pickup / drop-off search sheet so repeat bookings feel fast and mobile-native
+- saved places such as Home, Office, and Warehouse must be supported for customer booking repeat flows, with one-tap recall inside the pickup / drop-off search sheet
+- Pickup Pin: search-first plus move-pin workflow with minimal bottom-sheet confirmation
+- Delivery Pin: search-first plus move-pin workflow with route preview and multi-stop extension path
 - Route Preview: distance, duration, and clear CTA into vehicle selection
-- Vehicle Selection: vertical or highly legible card list with instant fare update
+- Review / Confirm: premium trust-first summary with route recap, selected vehicle recap, edit-route and change-vehicle actions, stop-contact confirmation, and customer-safe quote presentation before final booking creation
+- Stop contact details must not block the initial route step. Pickup contact and drop-off / receiver contact fields belong after route capture and route confirmation so the first customer decision stays focused on where from and where to.
+- Vehicle Selection: premium visual cards with strong hierarchy, dispatch-speed cue, best-use summary, recommended badge where appropriate, and instant fare update on the review path
 - Booking Detail: progressive optional cargo details, not mandatory long form
 - Service and vehicle choice must explicitly expose container logistics options such as 20ft and 40ft container trucks, plus a Rail / SGR lane for Mombasa-linked container movement where that service is enabled
 - when Rail / SGR or container logistics is selected, the booking flow must switch into a corridor-aware and document-aware journey with node selection such as port, ICD, warehouse, or final-delivery handoff rather than behaving like a normal same-day city courier form
@@ -2955,8 +3009,27 @@ Customer app mandatory screens:
 - Booking Confirmed: success state with reference, assignment wait state, and redirect to live tracking
 - Live Tracking: map-first tracking, ETA overlay, driver card, progress trail, call / SOS actions
 - Booking History: filter chips + card feed, not tables
+- Booking History must open with a route-led hero, active-trip continuation card, recent activity feed, one-tap service shortcuts, and visible own-fleet entry where the customer role supports self-managed capacity
 - Booking Detail: route preview, status trail, documents, support, re-book
+- Booking Detail must foreground route preview, trip status, next customer action, payment visibility, support access, and contextual customer AI help instead of raw operational tables
 - Account: profile card plus grid of settings, saved items, wallet, support, own-fleet entry, and logout
+- Customer AI Support: procedure-first assistant for booking, tracking, payments, invoices, support, customer-owned fleet help, and linked-driver help; it must be able to hand off into the human support ticket flow without making the user repeat the issue.
+- Customer AI Support entry points must be available on both web and mobile customer surfaces. Minimum required entry points are: customer support screens, booking procedure screens, live tracking screens, payment screens, customer-owned fleet screens, customer home/dashboard quick-help entry, and customer booking/tracking/fleet mobile screens so users can get help at the exact procedural step where confusion happens.
+- Customer AI Support must stay procedure-visible and economics-hidden: it can explain booking, tracking, payment, invoice, owned-fleet, and driver-management procedures, but it must not expose hidden pricing logic, margin logic, county-rate logic, surge formulas, platform-fee configuration, or admin-only commercial controls.
+Customer product scope is locked to the following pillars:
+- Book shipment / trip
+- Track shipment / trip
+- Manage bookings and booking history
+- Pay and view invoices
+- Get support and message support inside ticket threads
+- Manage owned fleet and linked driver accounts when own-fleet capability is enabled
+- Manage profile / preferences / logout
+The following must not appear as customer-facing feature controls:
+- pricing scope selectors
+- county / town / rural pricing logic
+- surge or margin controls
+- admin / dispatch terminology
+- platform fee configuration logic
 Rules:
 - keyboard should not appear on home by default
 - raw latitude/longitude fields must never be exposed to ordinary customer flows
@@ -2965,7 +3038,13 @@ Rules:
 - the preferred home composition is: map first, saved location chips, single address action, service chips, recent bookings, persistent bottom navigation
 - primary customer actions should be visible within one thumb zone and one screen without needing portal-style scrolling through explanatory content
 - booking creation should begin with route intent and map context; large dark summary blocks must not push the route setup below the fold on mobile
-- route capture must be map-first: tapping pickup or drop must move the user into pin placement on the map, and manual address editing should only unlock after the pin has been dropped and reverse-filled
+- route capture must be search-first and map-supported: tapping pickup or drop must first open a modern search overlay / sheet, selecting a result must auto-center the map and auto-place the relevant pin, and the user must then confirm pickup pin and drop-off pin before continuing
+- move-pin remains a refinement tool, not the first customer action; manual address editing should only unlock after a searched or pinned location has been resolved and shown back to the user
+- customer booking must never display internal pricing controls before trip confirmation; the customer sees route, ETA, service choice, and quote only
+- customer booking review/confirm must avoid tutorial blocks, internal-policy notes, and economic explanations; it should show only the route recap, selected vehicle or service, stop contacts, customer-visible quote, edit actions, and final confirm CTA
+- if an instant quote is not available, customer booking review/confirm must show a rate-under-review state instead of a pricing failure; the customer can still submit the booking request while admin and marketplace supply confirm the final rate behind the scenes
+- customer-facing Storage / Warehouse entry must never open the normal transport booking form; it must open a warehouse-options and discovery flow with storage type, inbound timing, goods profile, and eligible warehouse choices first
+- customer AI support must never expose hidden pricing logic, margin logic, county-rate logic, surge formulas, or admin-only commercial controls; it explains procedure and surfaces live customer-safe facts only
 - interim free-map implementation is allowed using OpenStreetMap tiles / embed plus free geocoding, provided the UI still behaves like a premium mobile service flow
 - if owned-fleet capability is enabled for the customer role, customer home or account must expose a clear Own Fleet entry so vehicle and driver management is discoverable without admin assistance
 66.8 Screen Specification - Driver App

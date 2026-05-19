@@ -81,7 +81,10 @@ export function estimatePrice(vehicleKey, weightKg = 0, distanceKm = 20) {
   return Math.round(price);
 }
 
+// Backend API URL - can be overridden via EXPO_PUBLIC_API_URL env variable
+// For local development: http://192.168.x.x:5000/api/v1 (use your machine's local IP)
+// For production: https://api.zito.app/api/v1
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'https://zito-backend.vercel.app';
+  process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
 
 export const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV || 'development';

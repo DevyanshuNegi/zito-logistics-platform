@@ -450,6 +450,7 @@ export class CapacityPlanningService {
         plateNumber: true,
         type: true,
         status: true,
+        verificationStatus: true,
         capacityKg: true,
         driverId: true,
         lastGpsAt: true,
@@ -489,6 +490,7 @@ export class CapacityPlanningService {
       const hasAssignedDriver = Boolean(vehicle.driverId);
       const availableNow =
         vehicle.status === VehicleStatus.ACTIVE &&
+        String(vehicle.verificationStatus ?? '').toUpperCase() === 'APPROVED' &&
         activeTripCount === 0 &&
         openBreakdownCount === 0;
       const dispatchReady =

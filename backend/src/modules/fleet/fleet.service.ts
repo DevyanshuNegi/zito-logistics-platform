@@ -77,6 +77,28 @@ export class FleetService {
     createVehicleDto: any,
     actor?: { id: string; role?: string; activeRole?: string },
   ) {
+    const missingStructuredFields = [
+      !String(createVehicleDto.plateNumber ?? '').trim() ? 'plate number' : null,
+      !String(createVehicleDto.chassisNumber ?? '').trim() ? 'chassis number' : null,
+      !String(createVehicleDto.make ?? '').trim() ? 'make' : null,
+      !String(createVehicleDto.model ?? '').trim() ? 'model' : null,
+      !createVehicleDto.year ? 'year' : null,
+      !createVehicleDto.type ? 'vehicle type' : null,
+      !createVehicleDto.capacityKg ? 'capacity kg' : null,
+      !createVehicleDto.capacityM3 ? 'capacity m3' : null,
+      !String(createVehicleDto.insuranceCompany ?? '').trim() ? 'insurance company' : null,
+      !String(createVehicleDto.insurancePolicyNumber ?? '').trim()
+        ? 'insurance policy number'
+        : null,
+      !createVehicleDto.insuranceExpiry ? 'insurance expiry date' : null,
+    ].filter(Boolean);
+
+    if (missingStructuredFields.length > 0) {
+      throw new BadRequestException(
+        `Vehicle onboarding requires these fields first: ${missingStructuredFields.join(', ')}`,
+      );
+    }
+
     const existing = await this.prisma.vehicle.findUnique({
       where: { plateNumber: createVehicleDto.plateNumber },
       select: { id: true },
@@ -91,10 +113,21 @@ export class FleetService {
 
     return this.prisma.vehicle.create({
       data: {
-        ...createVehicleDto,
+        plateNumber: String(createVehicleDto.plateNumber).trim().toUpperCase(),
+        chassisNumber: String(createVehicleDto.chassisNumber).trim().toUpperCase(),
+        make: createVehicleDto.make?.trim() || undefined,
+        model: createVehicleDto.model?.trim() || undefined,
+        year: createVehicleDto.year ?? undefined,
+        type: createVehicleDto.type,
+        capacityKg: createVehicleDto.capacityKg,
+        capacityM3: createVehicleDto.capacityM3,
+        driverId: createVehicleDto.driverId ?? undefined,
         ownerUserId: this.resolveOwnerUserId(createVehicleDto.ownerUserId, actor),
-        status: createVehicleDto.status ?? VehicleStatus.ACTIVE,
-        verificationStatus: createVehicleDto.verificationStatus ?? 'PENDING_REVIEW',
+        status: VehicleStatus.INACTIVE,
+        verificationStatus: 'PENDING_REVIEW',
+        insuranceCompany: createVehicleDto.insuranceCompany?.trim() || undefined,
+        insurancePolicyNumber:
+          createVehicleDto.insurancePolicyNumber?.trim().toUpperCase() || undefined,
         insuranceExpiry: createVehicleDto.insuranceExpiry
           ? new Date(createVehicleDto.insuranceExpiry)
           : undefined,
@@ -167,9 +200,26 @@ export class FleetService {
     return this.prisma.vehicle.update({
       where: { id },
       data: {
-        ...dto,
-        ownerUserId: this.resolveOwnerUserId(dto.ownerUserId, actor),
+        plateNumber: dto.plateNumber
+          ? String(dto.plateNumber).trim().toUpperCase()
+          : undefined,
+        chassisNumber: dto.chassisNumber
+          ? String(dto.chassisNumber).trim().toUpperCase()
+          : undefined,
+        make: dto.make?.trim() || undefined,
+        model: dto.model?.trim() || undefined,
+        year: dto.year ?? undefined,
+        type: dto.type ?? undefined,
+        capacityKg: dto.capacityKg ?? undefined,
+        capacityM3: dto.capacityM3 ?? undefined,
+        driverId: Object.prototype.hasOwnProperty.call(dto, 'driverId')
+          ? dto.driverId
+          : undefined,
         insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
+        insuranceCompany: dto.insuranceCompany?.trim() || undefined,
+        insurancePolicyNumber: dto.insurancePolicyNumber
+          ? String(dto.insurancePolicyNumber).trim().toUpperCase()
+          : undefined,
         permitExpiry: dto.permitExpiry ? new Date(dto.permitExpiry) : undefined,
       },
       include: this.vehicleInclude,
@@ -278,6 +328,7 @@ export class FleetService {
     await this.prisma.vehicle.update({
       where: { id: vehicleId },
       data: {
+        status: VehicleStatus.INACTIVE,
         verificationStatus: 'PENDING_REVIEW',
         verificationReviewedAt: null,
         verificationReviewedBy: null,
@@ -323,6 +374,7 @@ export class FleetService {
       await this.prisma.vehicle.update({
         where: { id: vehicleId },
         data: {
+          status: VehicleStatus.INACTIVE,
           verificationStatus: dto.status,
           verificationReviewedAt: new Date(),
           verificationReviewedBy: reviewerId,
@@ -352,6 +404,19 @@ export class FleetService {
     }
 
     if (dto.status === 'APPROVED') {
+      const missingStructuredFields = [
+        !vehicle.chassisNumber ? 'chassis number' : null,
+        !vehicle.insuranceCompany ? 'insurance company' : null,
+        !vehicle.insurancePolicyNumber ? 'insurance policy number' : null,
+        !vehicle.insuranceExpiry ? 'insurance expiry date' : null,
+      ].filter(Boolean);
+
+      if (missingStructuredFields.length > 0) {
+        throw new BadRequestException(
+          `Vehicle approval requires these onboarding details first: ${missingStructuredFields.join(', ')}`,
+        );
+      }
+
       const requiredCategories = this.getRequiredPhotoCategories(vehicle.type);
       const photosByCategory = new Map(
         vehicle.verificationPhotos.map((photo) => [photo.category, photo]),
@@ -380,6 +445,7 @@ export class FleetService {
     return this.prisma.vehicle.update({
       where: { id: vehicleId },
       data: {
+        status: dto.status === 'APPROVED' ? VehicleStatus.ACTIVE : VehicleStatus.INACTIVE,
         verificationStatus: dto.status,
         verificationReviewedAt: new Date(),
         verificationReviewedBy: reviewerId,
@@ -591,11 +657,11 @@ export class FleetService {
   }
 
   private isOwnedFleetRole(role: string) {
-    return ['CUSTOMER', 'AGENT', 'TRANSPORTER', 'CORPORATE', 'COURIER_COMPANY'].includes(role);
+    return ['DRIVER', 'CUSTOMER', 'TRANSPORTER', 'CORPORATE', 'COURIER_COMPANY'].includes(role);
   }
 
   private isOwnedDriverRole(role: string) {
-    return ['AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY'].includes(role);
+    return ['DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY'].includes(role);
   }
 
   private buildOwnershipScope(actor?: { id: string; role?: string; activeRole?: string }) {

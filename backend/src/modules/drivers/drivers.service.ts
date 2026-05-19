@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateDriverStatusDto } from './dto/update-driver-status.dto';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { OnboardPartnerDriverDto } from './dto/onboard-partner-driver.dto';
+import { LinkExistingDriverDto } from './dto/link-existing-driver.dto';
 
 @Injectable()
 export class DriversService {
@@ -49,6 +50,11 @@ export class DriversService {
     actor?: { id: string; role?: string; activeRole?: string },
   ) {
     const role = this.normalizeRole(actor);
+    if (!this.isPrivilegedDriverRole(role)) {
+      throw new ForbiddenException(
+        'Drivers must register through the Zito Partners driver app. Fleet owners should link an existing driver account instead of creating one here.',
+      );
+    }
     const ownerUserId =
       this.isOwnedDriverRole(role)
         ? actor?.id ?? null
@@ -117,6 +123,83 @@ export class DriversService {
         temporaryPassword: dto.password ? null : temporaryPassword,
         driver: created.driverProfile,
       },
+    };
+  }
+
+  async linkExistingDriver(
+    dto: LinkExistingDriverDto,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    const role = this.normalizeRole(actor);
+    const ownerUserId = this.resolveDriverOwnerUserId(dto.ownerUserId, actor);
+    const normalizedEmail = dto.email?.trim().toLowerCase() || null;
+    const normalizedPhone = dto.phone.trim();
+
+    const driver = await this.prisma.driver.findFirst({
+      where: {
+        user: {
+          role: UserRole.DRIVER,
+          OR: [
+            { phone: normalizedPhone },
+            ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+          ],
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            email: true,
+            status: true,
+          },
+        },
+        vehicle: { select: { id: true, plateNumber: true, type: true, status: true } },
+      },
+    });
+
+    if (!driver) {
+      throw new NotFoundException(
+        'Driver account not found. Ask the driver to register in the Zito Partners driver app first.',
+      );
+    }
+
+    if (driver.ownerUserId && driver.ownerUserId !== ownerUserId) {
+      throw new ConflictException(
+        'This driver is already linked to another fleet owner and cannot be reassigned from here.',
+      );
+    }
+
+    if (driver.ownerUserId === ownerUserId) {
+      return {
+        message:
+          'Driver account is already linked to this fleet owner. You can now assign the driver to an approved vehicle.',
+        data: driver,
+      };
+    }
+
+    const linkedDriver = await this.prisma.driver.update({
+      where: { id: driver.id },
+      data: { ownerUserId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            email: true,
+            status: true,
+          },
+        },
+        vehicle: { select: { id: true, plateNumber: true, type: true, status: true } },
+      },
+    });
+
+    return {
+      message:
+        'Driver account linked successfully. The driver still signs in through the Zito Partners driver app.',
+      data: linkedDriver,
     };
   }
 
@@ -250,8 +333,31 @@ export class DriversService {
 
   private isOwnedDriverRole(role?: string | UserRole | null) {
     const normalized = String(role ?? '').trim().toUpperCase();
-    return ['AGENT', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY'].includes(
+    return ['DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY'].includes(
       normalized,
+    );
+  }
+
+  private isPrivilegedDriverRole(role?: string | UserRole | null) {
+    const normalized = String(role ?? '').trim().toUpperCase();
+    return ['ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF'].includes(normalized);
+  }
+
+  private resolveDriverOwnerUserId(
+    ownerUserId: string | undefined,
+    actor?: { id: string; role?: string; activeRole?: string },
+  ) {
+    const role = this.normalizeRole(actor);
+    if (actor?.id && this.isOwnedDriverRole(role)) {
+      return actor.id;
+    }
+
+    if (this.isPrivilegedDriverRole(role) && ownerUserId) {
+      return ownerUserId;
+    }
+
+    throw new ForbiddenException(
+      'Fleet owners can only link drivers to their own fleet account. Internal teams must specify the target owner account explicitly.',
     );
   }
 

@@ -36,11 +36,12 @@ import { AlertsModule } from './modules/alerts/alerts.module';
 import { SystemHealthModule } from './modules/system-health/system-health.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { UssdModule } from './modules/ussd/ussd.module';
+import { AiSupportModule } from './modules/ai-support/ai-support.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 @Module({
   imports: [
-    PrismaModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule, RateCardsModule, InvoicesModule, BillingModule, ContractsModule, AuditModule, SlaModule, ReconciliationModule, StaffPerformanceModule, RetentionModule, AnalyticsModule, FraudModule, SurgePricingModule, RouteOptimizationModule, HeatmapModule, CapacityPlanningModule, AlertsModule, SystemHealthModule, MarketplaceModule, UssdModule
+    PrismaModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule, RateCardsModule, InvoicesModule, BillingModule, ContractsModule, AuditModule, SlaModule, ReconciliationModule, StaffPerformanceModule, RetentionModule, AnalyticsModule, FraudModule, SurgePricingModule, RouteOptimizationModule, HeatmapModule, CapacityPlanningModule, AlertsModule, SystemHealthModule, MarketplaceModule, UssdModule, AiSupportModule
   ],
   providers: [GlobalExceptionFilter],
 })

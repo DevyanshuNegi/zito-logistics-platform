@@ -38,6 +38,14 @@ type BookingResponse = {
   total: number;
 };
 
+type SavedPlace = {
+  address: string;
+  id: string;
+  label: string;
+};
+
+const SAVED_PLACES_STORAGE_KEY = 'zito_customer_saved_places_v1';
+
 const serviceShortcuts = [
   {
     href: '/customer/bookings/new?service=FTL',
@@ -61,7 +69,7 @@ const serviceShortcuts = [
     accent: 'from-cyan-400/16 via-sky-500/12 to-blue-500/12 text-[#155e75]',
   },
   {
-    href: '/customer/bookings/new?service=WAREHOUSE',
+    href: '/customer/warehouse',
     label: 'Storage',
     title: 'Warehouse',
     icon: Warehouse,
@@ -69,11 +77,11 @@ const serviceShortcuts = [
   },
 ] as const;
 
-const savedPlaces = [
-  { label: 'Home', icon: Home },
-  { label: 'Office', icon: ClipboardList },
-  { label: 'Warehouse', icon: Warehouse },
-] as const;
+const savedPlaceIcons = {
+  Home,
+  Office: ClipboardList,
+  Warehouse,
+} as const;
 
 function statusClassName(status: string) {
   const normalized = status.toUpperCase();
@@ -97,8 +105,13 @@ function BookingPill({ status }: { status: string }) {
   );
 }
 
+function formatCustomerBookingAmount(totalPrice: number) {
+  return totalPrice > 0 ? formatMoney(totalPrice) : 'Rate under review';
+}
+
 export default function CustomerBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +133,26 @@ export default function CustomerBookingsPage() {
 
   useEffect(() => {
     void loadBookings();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SAVED_PLACES_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as SavedPlace[];
+      if (Array.isArray(parsed)) {
+        setSavedPlaces(parsed);
+      }
+    } catch {
+      window.localStorage.removeItem(SAVED_PLACES_STORAGE_KEY);
+    }
   }, []);
 
   async function cancelBooking(id: string) {
@@ -145,6 +178,10 @@ export default function CustomerBookingsPage() {
   const leadTrip = activeBookings[0];
   const recentFeed = bookings.slice(0, 2);
   const heroPickup = leadTrip?.stops?.[0]?.address ?? 'Where to deliver?';
+  const totalSpend = useMemo(
+    () => bookings.reduce((sum, booking) => sum + Number(booking.totalPrice || 0), 0),
+    [bookings],
+  );
 
   return (
     <div className="space-y-4">
@@ -189,20 +226,38 @@ export default function CustomerBookingsPage() {
             <ChevronRight className="h-4 w-4 text-[#64748b]" />
           </Link>
 
-          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-            {savedPlaces.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.label}
-                  type="button"
-                  className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-[#d1dcf0] bg-[#f7faff] px-3 py-2 text-[11px] font-semibold text-[#1b3f72]"
-                >
-                  <Icon className="h-3.5 w-3.5" />
+          {savedPlaces.length ? (
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+              {savedPlaces.map((item) => {
+                const Icon = savedPlaceIcons[item.label as keyof typeof savedPlaceIcons] ?? MapPinned;
+                return (
+                  <Link
+                    key={item.id}
+                    href={`/customer/bookings/new?pickup=${encodeURIComponent(item.address)}`}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-[12px] border border-[#d1dcf0] bg-[#f7faff] px-3 py-2 text-[11px] font-semibold text-[#1b3f72] transition hover:bg-[#eef4ff]"
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <div className="mb-3 grid grid-cols-3 gap-2">
+            {[
+              { label: 'Active', value: activeBookings.length, helper: 'Trips moving now' },
+              { label: 'Completed', value: completedBookings.length, helper: 'Delivered recently' },
+              { label: 'Spent', value: formatMoney(totalSpend), helper: 'Customer-visible total' },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[14px] bg-[#f8fbff] px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">
                   {item.label}
-                </button>
-              );
-            })}
+                </p>
+                <p className="mt-1 text-base font-semibold text-[#1a1a2e]">{item.value}</p>
+                <p className="mt-1 text-[11px] text-[#64748b]">{item.helper}</p>
+              </div>
+            ))}
           </div>
 
           <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
@@ -260,7 +315,7 @@ export default function CustomerBookingsPage() {
                     </p>
                   </div>
                   <div className="text-right text-xs font-bold text-[#1b3f72]">
-                    {formatMoney(booking.totalPrice)}
+                    {formatCustomerBookingAmount(booking.totalPrice)}
                   </div>
                 </Link>
               ))
@@ -319,7 +374,7 @@ export default function CustomerBookingsPage() {
               <div>
                 <p className="text-sm font-semibold text-[#1a1a2e]">Own fleet</p>
                 <p className="mt-1 text-[11px] leading-5 text-[#64748b]">
-                  Add your own vehicles, onboard drivers, and keep those drivers on the dedicated driver app.
+                  Add your own vehicles, link drivers who already registered in Zito Partners, and keep those drivers on the dedicated driver app.
                 </p>
               </div>
             </div>
@@ -356,6 +411,38 @@ export default function CustomerBookingsPage() {
           </div>
         ) : (
           <div className="space-y-3">
+            {leadTrip ? (
+              <div className="rounded-[20px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Continue active trip
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{leadTrip.reference}</p>
+                    <p className="mt-1 text-xs leading-5 text-[#64748b]">
+                      {leadTrip.stops?.[0]?.address ?? 'Pickup pending'} / {leadTrip.stops?.[1]?.address ?? 'Drop pending'}
+                    </p>
+                  </div>
+                  <BookingPill status={leadTrip.status} />
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                  <Link
+                    href={`/customer/tracking/${leadTrip.id}`}
+                    className="flex-1 rounded-[12px] bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 px-3 py-2 text-center text-sm font-semibold text-white shadow-[0_10px_20px_rgba(59,130,246,0.2)]"
+                  >
+                    Track live
+                  </Link>
+                  <Link
+                    href={`/customer/bookings/${leadTrip.id}`}
+                    className="flex-1 rounded-[12px] bg-white px-3 py-2 text-center text-sm font-semibold text-[#1b3f72] ring-1 ring-[#d7e0ec]"
+                  >
+                    Open detail
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+
             {activeBookings.map((booking) => (
               <div
                 key={booking.id}
@@ -380,7 +467,7 @@ export default function CustomerBookingsPage() {
                     </div>
                   </div>
                   <p className="text-sm font-extrabold text-[#1b3f72]">
-                    {formatMoney(booking.totalPrice)}
+                    {formatCustomerBookingAmount(booking.totalPrice)}
                   </p>
                 </div>
 
@@ -439,7 +526,7 @@ export default function CustomerBookingsPage() {
               <Link
                 key={booking.id}
                 href={`/customer/bookings/${booking.id}`}
-                className="flex items-center gap-3 rounded-[14px] bg-[#f8fbff] px-3 py-3 transition hover:bg-[#eef4ff]"
+                className="flex items-center gap-3 rounded-[16px] border border-[#e4ebf5] bg-[#f8fbff] px-3 py-3 transition hover:border-[#c7d7ef] hover:bg-[#eef4ff]"
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-white text-[#1b3f72] shadow-sm">
                   <Package className="h-4 w-4" />
@@ -453,7 +540,7 @@ export default function CustomerBookingsPage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-[#1b3f72]">{formatMoney(booking.totalPrice)}</p>
+                  <p className="text-sm font-bold text-[#1b3f72]">{formatCustomerBookingAmount(booking.totalPrice)}</p>
                 </div>
               </Link>
             ))}

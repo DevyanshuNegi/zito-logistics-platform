@@ -7,7 +7,15 @@ import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
 
-const REQUIRED_TRUCK_PHOTOS = ['DASHBOARD', 'FRONT', 'RIGHT', 'LEFT', 'BACK'] as const;
+const REQUIRED_TRUCK_PHOTOS = [
+  'NUMBER_PLATE',
+  'FRONT',
+  'RIGHT',
+  'LEFT',
+  'BACK',
+  'CHASSIS',
+  'INSURANCE',
+] as const;
 const TRUCK_TYPES = new Set([
   'TRUCK_3T',
   'TRUCK_7T',
@@ -82,6 +90,7 @@ export function VehicleVerificationPanel({
 
     const formData = new FormData();
     formData.append('category', category);
+    formData.append('capturedAt', new Date().toISOString());
     formData.append('file', file);
 
     setUploadingKey(key);
@@ -119,7 +128,7 @@ export function VehicleVerificationPanel({
       {verifiableVehicles.length === 0 ? (
         <p className={tone === 'light' ? 'text-sm text-slate-600' : 'text-sm text-slate-300'}>
           Truck and container verification is enabled, but this fleet does not yet have a vehicle
-          type that requires the compulsory five-photo package.
+          type that requires the compulsory inspection photo package.
         </p>
       ) : (
         <div className="space-y-4">
@@ -153,7 +162,7 @@ export function VehicleVerificationPanel({
                     </p>
                   </div>
                   <p className={tone === 'light' ? 'text-xs text-slate-500' : 'text-xs text-slate-400'}>
-                    {approvedCount}/{requiredCategories.length} compulsory truck photos approved
+                    {approvedCount}/{requiredCategories.length} compulsory inspection photos approved
                   </p>
                 </div>
 
@@ -195,7 +204,8 @@ export function VehicleVerificationPanel({
 
                         <div className="mt-3 space-y-3">
                           <input
-                            accept="image/jpeg,image/png"
+                            accept="image/*"
+                            capture="environment"
                             className={
                               tone === 'light'
                                 ? 'block w-full text-xs text-slate-600 file:mr-3 file:rounded-full file:border-0 file:bg-[#1b3f72] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white'
@@ -204,6 +214,9 @@ export function VehicleVerificationPanel({
                             type="file"
                             onChange={(event) => handleFileChange(vehicle.id, category, event)}
                           />
+                          <p className={tone === 'light' ? 'text-[11px] text-slate-500' : 'text-[11px] text-slate-400'}>
+                            Capture a fresh camera photo of the latest vehicle condition. Reused gallery photos are not acceptable for approval.
+                          </p>
                           <Button
                             className="w-full"
                             disabled={uploadingKey === key || !selectedFiles[key]}

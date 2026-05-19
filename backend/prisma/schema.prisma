@@ -410,11 +410,12 @@ model DriverPenalty {
 model Vehicle {
   id                String        @id @default(uuid())
   plateNumber       String        @unique
+  chassisNumber     String?
   make              String?
   model             String?
   year              Int?
   type              VehicleType
-  status            VehicleStatus @default(ACTIVE)
+  status            VehicleStatus @default(INACTIVE)
 
   capacityKg        Float
   capacityM3        Float?
@@ -423,6 +424,8 @@ model Vehicle {
   deviceGpsLng      Float?
   lastGpsAt         DateTime?
 
+  insuranceCompany  String?
+  insurancePolicyNumber String?
   insuranceExpiry   DateTime?
   insuranceVerified Boolean       @default(false)
   permitExpiry      DateTime?

@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -27,15 +29,26 @@ const VEHICLE_OPTIONS = [
 
 const INITIAL_FORM = {
   plateNumber: '',
+  chassisNumber: '',
   make: '',
   model: '',
   year: '',
   type: 'VAN',
   capacityKg: '',
   capacityM3: '',
+  insuranceCompany: '',
+  insurancePolicyNumber: '',
+  insuranceExpiry: '',
 };
 
-export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
+function isVehicleApproved(vehicle) {
+  return (
+    vehicle?.status === 'ACTIVE' &&
+    String(vehicle?.verificationStatus || '').toUpperCase() === 'APPROVED'
+  );
+}
+
+export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText, children }) {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -61,8 +74,19 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
   }, []);
 
   const handleAdd = async () => {
-    if (!form.plateNumber || !form.capacityKg) {
-      Alert.alert('Required', 'Plate number and capacity are required.');
+    if (
+      !form.plateNumber ||
+      !form.chassisNumber ||
+      !form.make ||
+      !form.model ||
+      !form.year ||
+      !form.capacityKg ||
+      !form.capacityM3 ||
+      !form.insuranceCompany ||
+      !form.insurancePolicyNumber ||
+      !form.insuranceExpiry
+    ) {
+      Alert.alert('Required', 'Complete the full fleet profile and insurance details first.');
       return;
     }
 
@@ -70,17 +94,21 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
     try {
       await api.post('/api/v1/fleet', {
         plateNumber: form.plateNumber.trim().toUpperCase(),
-        make: form.make || undefined,
-        model: form.model || undefined,
-        year: form.year ? Number(form.year) : undefined,
+        chassisNumber: form.chassisNumber.trim().toUpperCase(),
+        make: form.make.trim(),
+        model: form.model.trim(),
+        year: Number(form.year),
         type: form.type,
         capacityKg: Number(form.capacityKg),
-        capacityM3: form.capacityM3 ? Number(form.capacityM3) : undefined,
+        capacityM3: Number(form.capacityM3),
+        insuranceCompany: form.insuranceCompany.trim(),
+        insurancePolicyNumber: form.insurancePolicyNumber.trim().toUpperCase(),
+        insuranceExpiry: form.insuranceExpiry,
       });
       setShowAdd(false);
       setForm(INITIAL_FORM);
       load();
-      Alert.alert('Saved', 'Vehicle added to your owned fleet.');
+      Alert.alert('Saved', 'Vehicle added and sent for admin approval.');
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
@@ -122,6 +150,8 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
         <Text style={s.noteText}>{feeNote}</Text>
       </View>
 
+      {children ? <View style={s.extra}>{children}</View> : null}
+
       <ScrollView
         contentContainerStyle={s.list}
         refreshControl={
@@ -140,25 +170,54 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
         {vehicles.map((vehicle) => (
           <View key={vehicle.id} style={s.card}>
             <View style={s.cardTop}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={s.plate}>{vehicle.plateNumber}</Text>
                 <Text style={s.meta}>
-                  {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ') || 'Vehicle profile pending'}
+                  {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ') ||
+                    'Vehicle profile pending'}
                 </Text>
+                <Text style={s.meta}>Chassis: {vehicle.chassisNumber || 'Pending'}</Text>
               </View>
-              <View style={[s.pill, { backgroundColor: vehicle.status === 'ACTIVE' ? colors.success + '20' : colors.warning + '20' }]}>
-                <Text style={[s.pillText, { color: vehicle.status === 'ACTIVE' ? colors.success : colors.warning }]}>
-                  {vehicle.status}
+              <View
+                style={[
+                  s.pill,
+                  {
+                    backgroundColor: isVehicleApproved(vehicle)
+                      ? `${colors.success}20`
+                      : `${colors.warning}20`,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    s.pillText,
+                    { color: isVehicleApproved(vehicle) ? colors.success : colors.warning },
+                  ]}
+                >
+                  {isVehicleApproved(vehicle) ? 'APPROVED' : 'PENDING'}
                 </Text>
               </View>
             </View>
             <Text style={s.type}>
-              {vehicle.type} · {vehicle.capacityKg} kg{vehicle.capacityM3 ? ` · ${vehicle.capacityM3} m3` : ''}
+              {vehicle.type} · {vehicle.capacityKg} kg
+              {vehicle.capacityM3 ? ` · ${vehicle.capacityM3} m3` : ''}
+            </Text>
+            <Text style={s.meta}>
+              Insurance: {vehicle.insuranceCompany || 'Pending'}
+              {vehicle.insuranceExpiry ? ` · expires ${vehicle.insuranceExpiry.slice(0, 10)}` : ''}
+            </Text>
+            <Text style={s.meta}>
+              Verification: {vehicle.verificationStatus || 'PENDING_REVIEW'}
             </Text>
             <Text style={s.meta}>
               Bookings: {vehicle._count?.bookings || 0} · Breakdowns: {vehicle._count?.breakdowns || 0}
             </Text>
-            {vehicle.status === 'ACTIVE' ? (
+            {!isVehicleApproved(vehicle) ? (
+              <Text style={s.pendingNote}>
+                Pending admin approval. Fresh camera photos, insurance evidence, and GPS setup must be completed first.
+              </Text>
+            ) : null}
+            {isVehicleApproved(vehicle) ? (
               <TouchableOpacity style={s.retireBtn} onPress={() => handleRetire(vehicle.id)}>
                 <Text style={s.retireBtnText}>Retire vehicle</Text>
               </TouchableOpacity>
@@ -167,7 +226,12 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
         ))}
       </ScrollView>
 
-      <Modal visible={showAdd} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAdd(false)}>
+      <Modal
+        visible={showAdd}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAdd(false)}
+      >
         <SafeAreaView style={s.modal}>
           <View style={s.modalHead}>
             <TouchableOpacity onPress={() => setShowAdd(false)}>
@@ -179,22 +243,46 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
           <ScrollView style={s.modalBody}>
             {[
               { key: 'plateNumber', label: 'Plate Number *', placeholder: 'KDA 123A' },
-              { key: 'make', label: 'Make', placeholder: 'Toyota' },
-              { key: 'model', label: 'Model', placeholder: 'Hiace' },
-              { key: 'year', label: 'Year', placeholder: '2024', numeric: true },
+              { key: 'chassisNumber', label: 'Chassis Number *', placeholder: 'CHS-00123' },
+              { key: 'make', label: 'Make *', placeholder: 'Toyota' },
+              { key: 'model', label: 'Model *', placeholder: 'Hiace' },
+              { key: 'year', label: 'Year *', placeholder: '2024', numeric: true },
               { key: 'capacityKg', label: 'Capacity (kg) *', placeholder: '1500', numeric: true },
-              { key: 'capacityM3', label: 'Capacity (m3)', placeholder: '12', numeric: true },
+              { key: 'capacityM3', label: 'Capacity (m3) *', placeholder: '12', numeric: true },
+              {
+                key: 'insuranceCompany',
+                label: 'Insurance Company *',
+                placeholder: 'Jubilee Insurance',
+              },
+              {
+                key: 'insurancePolicyNumber',
+                label: 'Policy Number *',
+                placeholder: 'POL-90876',
+              },
+              {
+                key: 'insuranceExpiry',
+                label: 'Insurance Expiry *',
+                placeholder: '2026-12-31',
+              },
             ].map((field) => (
               <View key={field.key}>
                 <Text style={s.label}>{field.label}</Text>
                 <TextInput
                   style={s.input}
                   value={form[field.key]}
-                  onChangeText={(value) => setForm((current) => ({ ...current, [field.key]: value }))}
+                  onChangeText={(value) =>
+                    setForm((current) => ({ ...current, [field.key]: value }))
+                  }
                   placeholder={field.placeholder}
                   placeholderTextColor={colors.textFaint}
                   keyboardType={field.numeric ? 'numeric' : 'default'}
-                  autoCapitalize={field.key === 'plateNumber' ? 'characters' : 'words'}
+                  autoCapitalize={
+                    field.key === 'plateNumber' ||
+                    field.key === 'chassisNumber' ||
+                    field.key === 'insurancePolicyNumber'
+                      ? 'characters'
+                      : 'words'
+                  }
                 />
               </View>
             ))}
@@ -208,7 +296,12 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
                     style={[s.typeChip, form.type === option.key && s.typeChipActive]}
                     onPress={() => setForm((current) => ({ ...current, type: option.key }))}
                   >
-                    <Text style={[s.typeChipText, form.type === option.key && { color: colors.primary }]}>
+                    <Text
+                      style={[
+                        s.typeChipText,
+                        form.type === option.key && { color: colors.primary },
+                      ]}
+                    >
                       {option.label}
                     </Text>
                   </TouchableOpacity>
@@ -216,8 +309,20 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
               </View>
             </ScrollView>
 
-            <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} disabled={saving} onPress={handleAdd}>
-              {saving ? <ActivityIndicator color={colors.bg} /> : <Text style={s.saveBtnText}>Save Vehicle</Text>}
+            <Text style={s.cameraNote}>
+              Verification photos must be captured fresh from the camera during the inspection stage: number plate, front, right, left, back, chassis, and insurance evidence.
+            </Text>
+
+            <TouchableOpacity
+              style={[s.saveBtn, saving && { opacity: 0.6 }]}
+              disabled={saving}
+              onPress={handleAdd}
+            >
+              {saving ? (
+                <ActivityIndicator color={colors.bg} />
+              ) : (
+                <Text style={s.saveBtnText}>Save Vehicle</Text>
+              )}
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
@@ -229,35 +334,105 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText }) {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: 20, paddingBottom: 8, gap: 12 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: 20,
+    paddingBottom: 8,
+    gap: 12,
+  },
   title: { fontSize: 22, fontWeight: '800', color: colors.text },
   subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 20 },
-  addBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  addBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
   addBtnText: { color: colors.bg, fontWeight: '800', fontSize: 13 },
-  note: { marginHorizontal: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.primarySoft, borderRadius: 12, padding: 12 },
+  note: {
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 12,
+    padding: 12,
+  },
   noteText: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
+  extra: { paddingHorizontal: 16, paddingTop: 12 },
   list: { padding: 16, gap: 12, paddingBottom: 32 },
-  empty: { textAlign: 'center', color: colors.textFaint, marginTop: 40, fontSize: 14, lineHeight: 22 },
-  card: { backgroundColor: colors.bgCard, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border },
+  empty: {
+    textAlign: 'center',
+    color: colors.textFaint,
+    marginTop: 40,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   plate: { fontSize: 17, fontWeight: '800', color: colors.text },
   type: { fontSize: 13, color: colors.text, marginTop: 10 },
-  meta: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
+  meta: { fontSize: 12, color: colors.textMuted, marginTop: 4, lineHeight: 18 },
   pill: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   pillText: { fontSize: 10, fontWeight: '700' },
-  retireBtn: { marginTop: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.danger, paddingVertical: 10, alignItems: 'center' },
+  pendingNote: { marginTop: 10, fontSize: 12, lineHeight: 18, color: colors.warning },
+  retireBtn: {
+    marginTop: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
   retireBtnText: { color: colors.danger, fontWeight: '700' },
   modal: { flex: 1, backgroundColor: colors.bg },
-  modalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border },
+  modalHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   close: { color: colors.textMuted, fontSize: 24 },
   modalTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
   modalBody: { padding: 20 },
   label: { fontSize: 12, color: colors.textMuted, marginBottom: 6, marginTop: 14 },
-  input: { backgroundColor: colors.bgInput, borderWidth: 1, borderColor: colors.border, borderRadius: 10, color: colors.text, padding: 14, fontSize: 14 },
+  input: {
+    backgroundColor: colors.bgInput,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    color: colors.text,
+    padding: 14,
+    fontSize: 14,
+  },
   typeRow: { flexDirection: 'row', gap: 8 },
-  typeChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
+  typeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   typeChipActive: { borderColor: colors.primary },
   typeChipText: { color: colors.textMuted, fontWeight: '600' },
-  saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 24, marginBottom: 20 },
+  cameraNote: { marginTop: 18, fontSize: 12, lineHeight: 18, color: colors.textMuted },
+  saveBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 20,
+  },
   saveBtnText: { color: colors.bg, fontWeight: '800', fontSize: 15 },
 });

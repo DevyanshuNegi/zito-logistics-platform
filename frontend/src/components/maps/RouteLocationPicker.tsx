@@ -101,8 +101,8 @@ function buildMapSource({
     </style>
   </head>
   <body>
-    <div class="map-banner">${activeStopKind === 'pickup' ? 'Pickup pin mode' : 'Drop pin mode'}</div>
-    <div class="map-hint">Tap anywhere on the map to place the ${activeStopKind} pin. The address will auto-fill after the pin drops.</div>
+    <div class="map-banner">${activeStopKind === 'pickup' ? 'Pickup map refine' : 'Drop-off map refine'}</div>
+    <div class="map-hint">Search first, then use the map only if the exact ${activeStopKind === 'pickup' ? 'pickup spot' : 'drop-off point'} needs adjustment.</div>
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
@@ -211,21 +211,21 @@ export function RouteLocationPicker({ activeStopKind, pickup, drop, onSelect }: 
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/70">
-              Route map
+              Live route map
             </p>
             <p className="text-sm font-semibold">
-              {activeStopKind === 'pickup' ? 'Pickup pin selected' : 'Drop pin selected'}
+              {activeStopKind === 'pickup' ? 'Pickup refinement' : 'Drop-off refinement'}
             </p>
           </div>
         </div>
         <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-100/80">
-          Tap map to pin
+          Search first
         </span>
       </div>
 
       <iframe
         title="Route map picker"
-        className="h-[320px] w-full bg-[#dbeafe]"
+        className="h-[420px] w-full bg-[#dbeafe]"
         sandbox="allow-scripts allow-same-origin"
         srcDoc={source}
       />

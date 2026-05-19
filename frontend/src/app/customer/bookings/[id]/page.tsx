@@ -12,6 +12,8 @@ import {
   Star,
   Truck,
 } from 'lucide-react';
+import { RoutePreviewMap } from '@/components/maps/RoutePreviewMap';
+import { CustomerAiAssistant } from '@/components/support/CustomerAiAssistant';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -42,6 +44,8 @@ type BookingDetail = {
     address?: string | null;
     contactName?: string | null;
     contactPhone?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
   }>;
   driver?: {
     user?: {
@@ -93,6 +97,29 @@ function statusClassName(status: string) {
 function formatLogisticsValue(value?: string | null) {
   return value ? value.replaceAll('_', ' ') : 'Pending';
 }
+
+function formatCustomerBookingAmount(totalPrice: number) {
+  return totalPrice > 0 ? formatMoney(totalPrice) : 'Rate under review';
+}
+
+const bookingDetailAiQuickActions = [
+  {
+    label: 'Explain this booking',
+    message: 'Explain this booking status, route, and what should happen next for the customer.',
+  },
+  {
+    label: 'Payment help',
+    message: 'Help me understand the payment and invoice side of this booking.',
+  },
+  {
+    label: 'Support help',
+    message: 'I need the clearest support path for this booking.',
+  },
+  {
+    label: 'After delivery',
+    message: 'What should I do after delivery for this booking, including payment, proof, or rating?',
+  },
+] as const;
 
 export default function CustomerBookingDetailPage() {
   const params = useParams();
@@ -200,16 +227,25 @@ export default function CustomerBookingDetailPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Link href={`/customer/tracking/${booking.id}`}>
-              <Button className="rounded-[16px] bg-[#1b3f72] px-4 py-3 text-white shadow-none hover:bg-[#163561]">
-                <LocateFixed className="mr-2 h-4 w-4" />
-                Track live
-              </Button>
-            </Link>
-            <Link href="/customer/payments">
-              <Button
-                variant="secondary"
+            <div className="flex flex-wrap gap-3">
+              <Link href={`/customer/tracking/${booking.id}`}>
+                <Button className="rounded-[16px] bg-[#1b3f72] px-4 py-3 text-white shadow-none hover:bg-[#163561]">
+                  <LocateFixed className="mr-2 h-4 w-4" />
+                  Track live
+                </Button>
+              </Link>
+              <Link href="/customer/bookings/new">
+                <Button
+                  variant="secondary"
+                  className="rounded-[16px] bg-white px-4 py-3 text-slate-800 shadow-none hover:bg-slate-100"
+                >
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                  Re-book
+                </Button>
+              </Link>
+              <Link href="/customer/payments">
+                <Button
+                  variant="secondary"
                 className="rounded-[16px] bg-slate-100 px-4 py-3 text-slate-800 shadow-none hover:bg-slate-200"
               >
                 Payments
@@ -228,9 +264,68 @@ export default function CustomerBookingDetailPage() {
         </div>
       </section>
 
+      <section className="overflow-hidden rounded-[32px] border border-slate-200/90 bg-white/94 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+        <RoutePreviewMap
+          className="h-[260px]"
+          titleBadge="Booking route"
+          statusBadge={formatStatus(booking.status)}
+          points={[
+            {
+              label: 'Pickup',
+              tone: 'pickup',
+              lat: booking.stops?.[0]?.latitude ?? null,
+              lng: booking.stops?.[0]?.longitude ?? null,
+            },
+            {
+              label: 'Drop',
+              tone: 'drop',
+              lat: booking.stops?.[1]?.latitude ?? null,
+              lng: booking.stops?.[1]?.longitude ?? null,
+            },
+          ]}
+        />
+
+        <div className="-mt-5 rounded-t-[24px] bg-white px-5 pb-5 pt-4 shadow-[0_-8px_22px_rgba(15,23,42,0.06)]">
+          <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-[#cbd5e1]" />
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-[18px] bg-[#f8fbff] px-4 py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                Pickup
+              </p>
+              <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                {booking.stops?.[0]?.address ?? 'Pickup pending'}
+              </p>
+            </div>
+            <div className="rounded-[18px] bg-[#f8fbff] px-4 py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                Drop-off
+              </p>
+              <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                {booking.stops?.[1]?.address ?? 'Drop pending'}
+              </p>
+            </div>
+            <div className="rounded-[18px] bg-[#f8fbff] px-4 py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                Delivery OTP
+              </p>
+              <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                {booking.deliveryOtp ?? 'Available later'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Amount', value: formatMoney(booking.totalPrice), helper: 'Current commercial total.' },
+          {
+            label: 'Amount',
+            value: formatCustomerBookingAmount(booking.totalPrice),
+            helper:
+              booking.totalPrice > 0
+                ? 'Customer-visible quote total.'
+                : 'Final rate will appear here after admin or marketplace review.',
+          },
           {
             label: 'Driver',
             value: booking.driver?.user?.fullName ?? 'Awaiting assignment',
@@ -408,6 +503,18 @@ export default function CustomerBookingDetailPage() {
         </div>
 
         <div className="space-y-6">
+          <CustomerAiAssistant
+            compact
+            screenContext="CUSTOMER_BOOKING_DETAIL"
+            bookings={[{ id: booking.id, reference: booking.reference }]}
+            defaultBookingId={booking.id}
+            title="Need help with this booking?"
+            description="Ask about status, payment, support, or what happens next for this specific booking."
+            quickActions={bookingDetailAiQuickActions}
+            placeholder="Example: What happens next for this booking, or how do I handle payment and support?"
+            helpText="Zito Assistant stays on customer procedure and uses the current booking context."
+          />
+
           <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#eef6ff] text-[#1b3f72]">
@@ -478,6 +585,17 @@ export default function CustomerBookingDetailPage() {
                   No support tickets linked to this booking yet.
                 </p>
               )}
+            </div>
+
+            <div className="mt-4">
+              <Link href="/customer/support">
+                <Button
+                  variant="secondary"
+                  className="rounded-[16px] bg-slate-100 px-4 py-3 text-slate-800 shadow-none hover:bg-slate-200"
+                >
+                  Open support
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

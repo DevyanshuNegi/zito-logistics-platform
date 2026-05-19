@@ -6,24 +6,32 @@ import { colors } from '../constants/theme';
 export default function BrandLockup({
   mode = 'hero',
   showCompany = true,
+  showTagline = true,
   showDescriptor = true,
 }) {
   const compact = mode === 'compact';
+  const showFullLogo = !compact;
 
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      <View style={[styles.appRow, compact && styles.appRowCompact]}>
-        <View style={styles.appIconFrame}>
-          <Image source={BRAND.assets.appIcon} style={styles.appIcon} resizeMode="contain" />
+      {showFullLogo ? (
+        <View style={styles.heroLogoWrap}>
+          <Image source={BRAND.assets.appLogo} style={styles.heroLogo} resizeMode="contain" />
         </View>
-        <View style={styles.wordmarkFrame}>
-          <Image
-            source={BRAND.assets.appWordmark}
-            style={compact ? styles.wordmarkCompact : styles.wordmark}
-            resizeMode="contain"
-          />
+      ) : (
+        <View style={[styles.appRow, compact && styles.appRowCompact]}>
+          <View style={styles.appIconFrame}>
+            <Image source={BRAND.assets.appIcon} style={styles.appIcon} resizeMode="contain" />
+          </View>
+          <View style={styles.wordmarkFrame}>
+            <Image
+              source={BRAND.assets.appWordmark}
+              style={compact ? styles.wordmarkCompact : styles.wordmark}
+              resizeMode="contain"
+            />
+          </View>
         </View>
-      </View>
+      )}
       {!compact && showCompany ? (
         <View style={styles.companyPanel}>
           <Image source={BRAND.assets.companyLogo} style={styles.companyLogo} resizeMode="contain" />
@@ -32,7 +40,9 @@ export default function BrandLockup({
       {showCompany ? (
         <Text style={[styles.company, compact && styles.companyCompact]}>{BRAND.companyName}</Text>
       ) : null}
-      <Text style={[styles.tagline, compact && styles.taglineCompact]}>{BRAND.appTagline}</Text>
+      {showTagline ? (
+        <Text style={[styles.tagline, compact && styles.taglineCompact]}>{BRAND.appTagline}</Text>
+      ) : null}
       {showDescriptor ? (
         <Text style={[styles.descriptor, compact && styles.descriptorCompact]}>{BRAND.appDescriptor}</Text>
       ) : null}
@@ -46,6 +56,15 @@ const styles = StyleSheet.create({
   },
   containerCompact: {
     alignItems: 'flex-end',
+  },
+  heroLogoWrap: {
+    width: '100%',
+    maxWidth: 320,
+    marginBottom: 16,
+  },
+  heroLogo: {
+    width: '100%',
+    aspectRatio: 1365 / 489,
   },
   appRow: {
     flexDirection: 'row',

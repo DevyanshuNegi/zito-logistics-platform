@@ -17,6 +17,7 @@ import { VEHICLE_TYPES } from '@/lib/phase-one';
 type Vehicle = {
   id: string;
   plateNumber: string;
+  chassisNumber?: string | null;
   make?: string | null;
   model?: string | null;
   year?: number | null;
@@ -25,6 +26,9 @@ type Vehicle = {
   verificationStatus?: string | null;
   capacityKg: number;
   capacityM3?: number | null;
+  insuranceCompany?: string | null;
+  insurancePolicyNumber?: string | null;
+  insuranceExpiry?: string | null;
   deviceGpsLat?: number | null;
   deviceGpsLng?: number | null;
   lastGpsAt?: string | null;
@@ -63,13 +67,24 @@ type OwnedFleetWorkspaceProps = {
 
 const INITIAL_FORM = {
   plateNumber: '',
+  chassisNumber: '',
   make: '',
   model: '',
   year: '',
   type: 'VAN',
   capacityKg: '',
   capacityM3: '',
+  insuranceCompany: '',
+  insurancePolicyNumber: '',
+  insuranceExpiry: '',
 };
+
+function isVehicleApproved(vehicle: Vehicle) {
+  return (
+    vehicle.status === 'ACTIVE' &&
+    String(vehicle.verificationStatus ?? '').toUpperCase() === 'APPROVED'
+  );
+}
 
 function buildToneClasses(tone: 'dark' | 'light') {
   if (tone === 'light') {
@@ -115,9 +130,19 @@ export function OwnedFleetWorkspace({
   const [retiringId, setRetiringId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const activeVehicles = useMemo(
-    () => vehicles.filter((vehicle) => vehicle.status === 'ACTIVE').length,
+  const approvedVehicles = useMemo(
+    () => vehicles.filter((vehicle) => isVehicleApproved(vehicle)),
     [vehicles],
+  );
+
+  const pendingVehicles = useMemo(
+    () => vehicles.filter((vehicle) => !isVehicleApproved(vehicle)),
+    [vehicles],
+  );
+
+  const activeVehicles = useMemo(
+    () => approvedVehicles.length,
+    [approvedVehicles],
   );
 
   const assignedBookings = useMemo(
@@ -157,12 +182,16 @@ export function OwnedFleetWorkspace({
     try {
       await api.post('/fleet', {
         plateNumber: form.plateNumber.trim().toUpperCase(),
+        chassisNumber: form.chassisNumber.trim().toUpperCase(),
         make: form.make || undefined,
         model: form.model || undefined,
         year: form.year ? Number(form.year) : undefined,
         type: form.type,
         capacityKg: Number(form.capacityKg),
-        capacityM3: form.capacityM3 ? Number(form.capacityM3) : undefined,
+        capacityM3: Number(form.capacityM3),
+        insuranceCompany: form.insuranceCompany.trim(),
+        insurancePolicyNumber: form.insurancePolicyNumber.trim().toUpperCase(),
+        insuranceExpiry: form.insuranceExpiry,
       });
 
       setForm(INITIAL_FORM);
@@ -191,8 +220,8 @@ export function OwnedFleetWorkspace({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+    <div className="space-y-4">
+      <div className="grid gap-3">
         <StatCard
           label="Owned vehicles"
           value={String(vehicles.length)}
@@ -223,7 +252,7 @@ export function OwnedFleetWorkspace({
         description="Pick a vehicle number to inspect where your fleet unit is right now, using either onboard GPS or the assigned driver's latest live coordinates."
         title="Vehicle location"
         tone={tone}
-        vehicles={vehicles}
+        vehicles={approvedVehicles}
       />
 
       {error ? (
@@ -238,7 +267,7 @@ export function OwnedFleetWorkspace({
         className={classes.card}
         tone={tone}
       >
-        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreate}>
+        <form className="grid grid-cols-2 gap-4" onSubmit={handleCreate}>
           <Input
             label="Plate number"
             tone={tone === 'light' ? 'light' : 'dark'}
@@ -247,6 +276,17 @@ export function OwnedFleetWorkspace({
               setForm((current) => ({ ...current, plateNumber: event.target.value }))
             }
             required
+            className="col-span-2"
+          />
+          <Input
+            label="Chassis number"
+            tone={tone === 'light' ? 'light' : 'dark'}
+            value={form.chassisNumber}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, chassisNumber: event.target.value }))
+            }
+            required
+            className="col-span-2"
           />
           <label className="block space-y-2">
             <span className={classes.label}>Vehicle type</span>
@@ -282,12 +322,14 @@ export function OwnedFleetWorkspace({
             onChange={(event) =>
               setForm((current) => ({ ...current, capacityM3: event.target.value }))
             }
+            required
           />
           <Input
             label="Make"
             tone={tone === 'light' ? 'light' : 'dark'}
             value={form.make}
             onChange={(event) => setForm((current) => ({ ...current, make: event.target.value }))}
+            required
           />
           <Input
             label="Model"
@@ -296,6 +338,7 @@ export function OwnedFleetWorkspace({
             onChange={(event) =>
               setForm((current) => ({ ...current, model: event.target.value }))
             }
+            required
           />
           <Input
             label="Year"
@@ -303,28 +346,66 @@ export function OwnedFleetWorkspace({
             tone={tone === 'light' ? 'light' : 'dark'}
             value={form.year}
             onChange={(event) => setForm((current) => ({ ...current, year: event.target.value }))}
+            required
           />
-          <div className="flex items-end">
+          <Input
+            label="Insurance company"
+            tone={tone === 'light' ? 'light' : 'dark'}
+            value={form.insuranceCompany}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, insuranceCompany: event.target.value }))
+            }
+            required
+          />
+          <Input
+            label="Policy number"
+            tone={tone === 'light' ? 'light' : 'dark'}
+            value={form.insurancePolicyNumber}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                insurancePolicyNumber: event.target.value,
+              }))
+            }
+            required
+          />
+          <Input
+            label="Insurance expiry"
+            type="date"
+            tone={tone === 'light' ? 'light' : 'dark'}
+            value={form.insuranceExpiry}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, insuranceExpiry: event.target.value }))
+            }
+            required
+            className="col-span-2"
+          />
+          <div className="col-span-2 flex items-end">
             <Button className="w-full" disabled={saving} type="submit">
               {saving ? 'Saving vehicle...' : 'Add vehicle'}
             </Button>
           </div>
         </form>
+        <p className={`mt-4 ${classes.sub}`}>
+          New vehicles stay pending until the structured fleet profile, insurance details, fresh camera-capture inspection package, GPS setup, and internal fleet approval are completed. Only approved vehicles become onboarded and available in the system.
+        </p>
       </SurfaceCard>
 
       <SurfaceCard
-        title="Owned fleet roster"
-        description="Vehicle records created under this account can be used for self-managed logistics or network-linked assignments."
+        title="Pending admin approval"
+        description="These vehicles are saved under your account but are not onboarded yet. Zito operations must verify the full evidence package and activate GPS before they become usable."
         className={classes.card}
         tone={tone}
       >
         {loading ? (
           <Spinner />
+        ) : pendingVehicles.length === 0 ? (
+          <p className={classes.body}>No vehicles are waiting for approval right now.</p>
         ) : (
           <Table
-            emptyMessage={emptyMessage}
+            emptyMessage="No vehicles are waiting for approval right now."
             tone={tone}
-            rows={vehicles}
+            rows={pendingVehicles}
             columns={[
               {
                 key: 'plate',
@@ -336,6 +417,84 @@ export function OwnedFleetWorkspace({
                       {[vehicle.make, vehicle.model, vehicle.year]
                         .filter(Boolean)
                         .join(' ') || 'Vehicle profile pending'}
+                    </p>
+                    <p className={classes.sub}>
+                      Chassis: {vehicle.chassisNumber ?? 'Pending'}
+                    </p>
+                  </div>
+                ),
+              },
+              {
+                key: 'type',
+                header: 'Type',
+                render: (vehicle) => (
+                  <div className={classes.body}>
+                    <p>{vehicle.type}</p>
+                    <p className={classes.sub}>
+                      {vehicle.capacityKg} kg
+                      {vehicle.capacityM3 ? ` · ${vehicle.capacityM3} m3` : ''}
+                    </p>
+                  </div>
+                ),
+              },
+              {
+                key: 'approval',
+                header: 'Approval',
+                render: (vehicle) => (
+                  <div className={classes.usage}>
+                    <p>Verification: {formatStatus(vehicle.verificationStatus ?? 'PENDING_REVIEW')}</p>
+                    <p>Onboarding: Pending admin approval</p>
+                    <p>
+                      Insurance: {vehicle.insuranceCompany ?? 'Pending'}
+                      {vehicle.insuranceExpiry
+                        ? ` · expires ${new Date(vehicle.insuranceExpiry).toLocaleDateString()}`
+                        : ''}
+                    </p>
+                  </div>
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'Next step',
+                render: () => (
+                  <div className={classes.usage}>
+                    <p>Upload the full verification package below.</p>
+                    <p>Zito ops will review, approve, and activate GPS.</p>
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
+      </SurfaceCard>
+
+      <SurfaceCard
+        title="Onboarded fleet roster"
+        description="Only admin-approved vehicles appear here as onboarded fleet units ready for self-managed logistics or network-linked assignments."
+        className={classes.card}
+        tone={tone}
+      >
+        {loading ? (
+          <Spinner />
+        ) : (
+          <Table
+            emptyMessage="No admin-approved vehicles are onboarded yet."
+            tone={tone}
+            rows={approvedVehicles}
+            columns={[
+              {
+                key: 'plate',
+                header: 'Vehicle',
+                render: (vehicle) => (
+                  <div>
+                    <p className={classes.head}>{vehicle.plateNumber}</p>
+                    <p className={classes.sub}>
+                      {[vehicle.make, vehicle.model, vehicle.year]
+                        .filter(Boolean)
+                        .join(' ') || 'Vehicle profile pending'}
+                    </p>
+                    <p className={classes.sub}>
+                      Chassis: {vehicle.chassisNumber ?? 'Pending'}
                     </p>
                   </div>
                 ),
@@ -359,7 +518,11 @@ export function OwnedFleetWorkspace({
                 render: (vehicle) => (
                   <div className={classes.body}>
                     <p>{vehicle.driver?.user?.fullName ?? 'No driver assigned'}</p>
-                    <p className={classes.sub}>Managed from the fleet driver roster.</p>
+                    <p className={classes.sub}>
+                      {vehicle.insuranceCompany
+                        ? `${vehicle.insuranceCompany} · policy ${vehicle.insurancePolicyNumber ?? 'Pending'}`
+                        : 'Insurance details pending'}
+                    </p>
                   </div>
                 ),
               },
@@ -388,7 +551,7 @@ export function OwnedFleetWorkspace({
                 header: 'Actions',
                 render: (vehicle) => (
                   <Button
-                    disabled={retiringId === vehicle.id || vehicle.status !== 'ACTIVE'}
+                    disabled={retiringId === vehicle.id || !isVehicleApproved(vehicle)}
                     variant="danger"
                     onClick={() => void handleRetire(vehicle.id)}
                   >
@@ -402,7 +565,7 @@ export function OwnedFleetWorkspace({
       </SurfaceCard>
 
       <VehicleVerificationPanel
-        description="Truck and container units must complete the compulsory dashboard, front, right, left, and back photo package before internal approval."
+        description="Truck and container units must complete the compulsory number plate, front, right, left, back, chassis, and insurance camera-capture package before internal approval."
         onChange={async () => {
           await loadFleet();
           await onChange?.();

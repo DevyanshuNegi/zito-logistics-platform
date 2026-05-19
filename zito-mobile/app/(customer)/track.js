@@ -8,6 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { api } from '../../src/api/client';
 import { colors } from '../../src/constants/theme';
+import { CustomerAiSupportSheet } from '../../src/components/CustomerAiSupportSheet';
+import { DriverPhotoCard } from '../../src/components/DriverPhotoCard';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { SOSButton } from '../../src/components/SOSButton';
 
@@ -22,6 +24,12 @@ const TIMELINE = [
   { status: 'completed',       label: 'Completed',          icon: '🎉' },
 ];
 const STATUS_ORDER = TIMELINE.map(t => t.status);
+const TRACKING_AI_QUICK_ACTIONS = [
+  'Explain this status',
+  'Help with ETA',
+  'Need support',
+  'After delivery',
+];
 
 export default function TrackScreen() {
   const { bookingId } = useLocalSearchParams();
@@ -32,6 +40,7 @@ export default function TrackScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [rating, setRating]         = useState(0);
   const [ratingDone, setRatingDone] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
   const pollRef = useRef(null);
 
   const loadBookings = useCallback(async () => {
@@ -119,6 +128,11 @@ export default function TrackScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadBookings(); }} tintColor={colors.primary} />}>
 
         <Text style={s.title}>Track Booking</Text>
+
+        <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
+          <Text style={s.helperLabel}>Zito Assistant</Text>
+          <Text style={s.helperTitle}>Ask about status, ETA, support, or what happens next in this trip.</Text>
+        </TouchableOpacity>
 
         {/* Booking selector chips */}
         {active.length > 1 && (
@@ -217,6 +231,22 @@ export default function TrackScreen() {
           </>
         )}
       </ScrollView>
+
+      <CustomerAiSupportSheet
+        visible={showAssistant}
+        onClose={() => setShowAssistant(false)}
+        screenContext="CUSTOMER_TRACKING"
+        title="Tracking help"
+        description="Get customer help for this trip status, ETA questions, support, or next-step guidance."
+        quickActions={TRACKING_AI_QUICK_ACTIONS}
+        bookingOptions={selected ? [{ id: selected.id, reference: selected.reference }] : active.map((booking) => ({
+          id: booking.id,
+          reference: booking.reference,
+        }))}
+        defaultBookingId={selected?.id}
+        placeholder="Ask about this trip status, ETA, delivery update, or when to contact support."
+        helpText="Zito Assistant explains customer procedures and can help you decide when to open support."
+      />
     </SafeAreaView>
   );
 }
@@ -226,6 +256,16 @@ const s = StyleSheet.create({
   center:      { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' },
   content:     { padding: 20, paddingBottom: 40 },
   title:       { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
+  helperCard:  {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.primarySoft,
+    padding: 16,
+    marginBottom: 16,
+  },
+  helperLabel: { fontSize: 11, fontWeight: '800', color: colors.primary, letterSpacing: 1 },
+  helperTitle: { fontSize: 14, lineHeight: 20, color: colors.text, marginTop: 6, fontWeight: '700' },
   empty:       { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
   emptyIcon:   { fontSize: 56, marginBottom: 16 },
   emptyTitle:  { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 },

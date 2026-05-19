@@ -9,6 +9,8 @@ import {
   Prisma,
   ServiceType,
   UserRole,
+  VehicleStatus,
+  VehicleType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -35,6 +37,37 @@ type MarketplacePartnerStatus =
 type MarketplacePricingModel = 'FIXED_PRICE' | 'OPEN_BID' | 'NEGOTIATION';
 type MarketplaceOpportunityStatus = 'OPEN' | 'AWARDED' | 'CLOSED' | 'CANCELLED';
 type MarketplaceBidStatus = 'PENDING' | 'COUNTERED' | 'ACCEPTED' | 'REJECTED';
+
+type OpportunityStopPoint = {
+  latitude: number;
+  longitude: number;
+  areaHint: string | null;
+  stopType: string | null;
+};
+
+type OpportunityRouteSummary = {
+  pickupArea: string | null;
+  deliveryArea: string | null;
+  viaAreas: string[];
+  summary: string;
+};
+
+type OpportunityStopSummary = {
+  totalStops: number;
+  pickupStops: number;
+  deliveryStops: number;
+  intermediateStops: number;
+};
+
+type OpportunityFleetRequirements = {
+  vehicleType: VehicleType | null;
+  minimumCapacityKg: number | null;
+  minimumCapacityM3: number | null;
+  cargoType: string | null;
+  cargoWeightKg: number | null;
+  estimatedDistanceKm: number | null;
+  specialHandling: string[];
+};
 
 type MarketplacePartnerRecord = {
   userId: string;
@@ -90,7 +123,10 @@ type MarketplaceOpportunityRecord = {
   fixedPrice: number | null;
   minimumBid: number | null;
   serviceAreaHints: string[];
-  stopPoints: Array<{ latitude: number; longitude: number; address: string }>;
+  stopPoints: OpportunityStopPoint[];
+  routeSummary: OpportunityRouteSummary;
+  stopSummary: OpportunityStopSummary;
+  fleetRequirements: OpportunityFleetRequirements;
   bids: MarketplaceBidRecord[];
   awardedPartnerId: string | null;
   selectedBidId: string | null;
@@ -135,8 +171,10 @@ type PartnerHydrated = MarketplacePartnerRecord & {
   linkedVehicles: Array<{
     id: string;
     plateNumber: string;
-    type: string;
-    status: string;
+    type: VehicleType;
+    status: VehicleStatus;
+    capacityKg: number;
+    capacityM3: number | null;
   }>;
   linkedWarehouses: Array<{
     id: string;
@@ -168,6 +206,30 @@ type OpportunityHydrated = MarketplaceOpportunityRecord & {
   awardedPartner: PartnerHydrated | null;
   bidsDetailed: Array<MarketplaceBidRecord & { partner: PartnerHydrated | null }>;
   matchedPartnerIds: string[];
+};
+
+type PartnerOpportunityView = {
+  bookingId: string;
+  bookingReference: string;
+  serviceType: ServiceType;
+  partnerType: MarketplacePartnerType;
+  pricingModel: MarketplacePricingModel;
+  status: MarketplaceOpportunityStatus;
+  publishedAt: string;
+  expiresAt: string | null;
+  currency: string;
+  bookingPrice: number;
+  fixedPrice: number | null;
+  minimumBid: number | null;
+  serviceAreaHints: string[];
+  routeSummary: OpportunityRouteSummary;
+  stopSummary: OpportunityStopSummary;
+  fleetRequirements: OpportunityFleetRequirements;
+  myBid: Pick<
+    MarketplaceBidRecord,
+    'id' | 'amount' | 'note' | 'submittedAt' | 'status' | 'counterAmount' | 'respondedAt'
+  > | null;
+  visibility: 'REQUIREMENTS_ONLY';
 };
 
 const PARTNER_PREFIX = 'marketplace:partner:';
@@ -604,6 +666,10 @@ export class MarketplaceService {
       dto.partnerType ?? this.resolveDefaultPartnerType(booking.serviceType);
     const now = new Date();
     const existing = await this.readOpportunityRecord(bookingId);
+    const serviceAreaHints = this.buildServiceAreaHints(booking.stops);
+    const routeSummary = this.buildRouteSummary(booking.stops, serviceAreaHints);
+    const stopSummary = this.buildStopSummary(booking.stops);
+    const fleetRequirements = this.buildFleetRequirements(booking);
     const record: MarketplaceOpportunityRecord = {
       bookingId: booking.id,
       bookingReference: booking.reference,
@@ -619,12 +685,16 @@ export class MarketplaceService {
       bookingPrice: booking.totalPrice,
       fixedPrice,
       minimumBid,
-      serviceAreaHints: booking.stops.map((stop) => stop.address).filter(Boolean),
+      serviceAreaHints,
       stopPoints: booking.stops.map((stop) => ({
         latitude: stop.latitude,
         longitude: stop.longitude,
-        address: stop.address,
+        areaHint: this.sanitizeAreaLabel(stop.address),
+        stopType: stop.stopType,
       })),
+      routeSummary,
+      stopSummary,
+      fleetRequirements,
       bids: [],
       awardedPartnerId: null,
       selectedBidId: null,
@@ -660,7 +730,7 @@ export class MarketplaceService {
   }
 
   async listPartnerOpportunities(userId: string) {
-    const partner = await this.getPartnerRecordOrThrow(userId);
+    const partner = await this.getPartnerProfile(userId);
     if (partner.verificationStatus !== 'APPROVED') {
       throw new BadRequestException(
         'Marketplace partner must be approved before accepting bookings.',
@@ -672,16 +742,19 @@ export class MarketplaceService {
     const matching = open.filter((opportunity) =>
       this.partnerMatchesOpportunity(partner, opportunity),
     );
+    const hydrated = await this.hydrateOpportunities(matching);
 
     return {
-      partner: await this.getPartnerProfile(userId),
-      opportunities: await this.hydrateOpportunities(matching),
+      partner,
+      opportunities: hydrated.map((opportunity) =>
+        this.toPartnerOpportunityView(opportunity, userId),
+      ),
       total: matching.length,
     };
   }
 
   async acceptOpportunity(bookingId: string, userId: string) {
-    const partner = await this.getPartnerRecordOrThrow(userId);
+    const partner = await this.getPartnerProfile(userId);
     const opportunity = await this.getOpportunityRecordOrThrow(bookingId);
     if (opportunity.pricingModel !== 'FIXED_PRICE') {
       throw new BadRequestException(
@@ -713,7 +786,7 @@ export class MarketplaceService {
   }
 
   async submitBid(bookingId: string, userId: string, dto: MarketplaceBidDto) {
-    const partner = await this.getPartnerRecordOrThrow(userId);
+    const partner = await this.getPartnerProfile(userId);
     const opportunity = await this.getOpportunityRecordOrThrow(bookingId);
 
     if (!this.isOpportunityOpen(opportunity)) {
@@ -784,7 +857,7 @@ export class MarketplaceService {
     });
 
     const hydrated = await this.hydrateOpportunities([updated]);
-    return hydrated[0];
+    return this.toPartnerOpportunityView(hydrated[0], userId);
   }
 
   async respondToBid(
@@ -1134,6 +1207,8 @@ export class MarketplaceService {
               plateNumber: true,
               type: true,
               status: true,
+              capacityKg: true,
+              capacityM3: true,
             },
           })
         : Promise.resolve([]),
@@ -1179,30 +1254,15 @@ export class MarketplaceService {
       return [];
     }
 
-    const scorecards = await this.buildPerformanceScorecards(
-      await this.readPartnerRecords(),
-    );
+    const allPartnerRecords = await this.readPartnerRecords();
+    const scorecards = await this.buildPerformanceScorecards(allPartnerRecords);
     const performanceMap = new Map(
       scorecards.map((score) => [score.partnerId, score]),
     );
-
-    const partnerIds = [
-      ...new Set(
-        records.flatMap((record) => [
-          ...(record.awardedPartnerId ? [record.awardedPartnerId] : []),
-          ...record.bids.map((bid) => bid.partnerId),
-        ]),
-      ),
-    ];
     const bookingIds = records.map((record) => record.bookingId);
 
     const [partners, bookings] = await Promise.all([
-      this.hydratePartners(
-        (await this.readPartnerRecords()).filter((record) =>
-          partnerIds.includes(record.userId),
-        ),
-        performanceMap,
-      ),
+      this.hydratePartners(allPartnerRecords, performanceMap),
       this.prisma.booking.findMany({
         where: { id: { in: bookingIds } },
         include: {
@@ -1274,6 +1334,188 @@ export class MarketplaceService {
     });
   }
 
+  private toPartnerOpportunityView(
+    opportunity: OpportunityHydrated,
+    viewerId: string,
+  ): PartnerOpportunityView {
+    const myBid = opportunity.bids.find((bid) => bid.partnerId === viewerId) ?? null;
+
+    return {
+      bookingId: opportunity.bookingId,
+      bookingReference: opportunity.bookingReference,
+      serviceType: opportunity.serviceType,
+      partnerType: opportunity.partnerType,
+      pricingModel: opportunity.pricingModel,
+      status: opportunity.status,
+      publishedAt: opportunity.publishedAt,
+      expiresAt: opportunity.expiresAt,
+      currency: opportunity.currency,
+      bookingPrice: opportunity.bookingPrice,
+      fixedPrice: opportunity.fixedPrice,
+      minimumBid: opportunity.minimumBid,
+      serviceAreaHints: opportunity.serviceAreaHints,
+      routeSummary: opportunity.routeSummary,
+      stopSummary: opportunity.stopSummary,
+      fleetRequirements: opportunity.fleetRequirements,
+      myBid: myBid
+        ? {
+            id: myBid.id,
+            amount: myBid.amount,
+            note: myBid.note,
+            submittedAt: myBid.submittedAt,
+            status: myBid.status,
+            counterAmount: myBid.counterAmount,
+            respondedAt: myBid.respondedAt,
+          }
+        : null,
+      visibility: 'REQUIREMENTS_ONLY',
+    };
+  }
+
+  private buildServiceAreaHints(
+    stops: Array<{ address: string }>,
+  ): string[] {
+    return [...new Set(
+      stops
+        .map((stop) => this.sanitizeAreaLabel(stop.address))
+        .filter((value): value is string => Boolean(value)),
+    )];
+  }
+
+  private buildRouteSummary(
+    stops: Array<{ address: string }>,
+    areaHints: string[],
+  ): OpportunityRouteSummary {
+    const pickupArea = areaHints[0] ?? null;
+    const deliveryArea =
+      areaHints.length > 1 ? areaHints[areaHints.length - 1] : pickupArea;
+    const viaAreas =
+      areaHints.length > 2 ? areaHints.slice(1, -1) : [];
+    const summary =
+      pickupArea && deliveryArea
+        ? pickupArea === deliveryArea
+          ? pickupArea
+          : `${pickupArea} -> ${deliveryArea}`
+        : areaHints[0] ??
+          this.sanitizeAreaLabel(stops[0]?.address ?? '') ??
+          'Route requirements';
+
+    return {
+      pickupArea,
+      deliveryArea,
+      viaAreas,
+      summary,
+    };
+  }
+
+  private buildStopSummary(
+    stops: Array<{ stopType: string }>,
+  ): OpportunityStopSummary {
+    return stops.reduce<OpportunityStopSummary>(
+      (summary, stop) => {
+        const normalized = String(stop.stopType ?? '').toUpperCase();
+        summary.totalStops += 1;
+        if (normalized === 'PICKUP' || normalized === 'LOAD') {
+          summary.pickupStops += 1;
+        } else if (normalized === 'DELIVERY' || normalized === 'UNLOAD') {
+          summary.deliveryStops += 1;
+        } else {
+          summary.intermediateStops += 1;
+        }
+        return summary;
+      },
+      {
+        totalStops: 0,
+        pickupStops: 0,
+        deliveryStops: 0,
+        intermediateStops: 0,
+      },
+    );
+  }
+
+  private buildFleetRequirements(booking: {
+    requiredVehicleType: VehicleType | null;
+    cargoWeightKg: number | null;
+    cargoType: string | null;
+    estimatedDistKm: number;
+    isScheduled: boolean;
+    tradeMode: string | null;
+    railCorridorCode: string | null;
+    pacReady: boolean;
+    serviceType: ServiceType;
+  }): OpportunityFleetRequirements {
+    const specialHandling = [
+      booking.isScheduled ? 'SCHEDULED' : null,
+      booking.tradeMode ? `TRADE:${booking.tradeMode}` : null,
+      booking.railCorridorCode ? `RAIL:${booking.railCorridorCode}` : null,
+      booking.pacReady ? 'PAC_READY' : null,
+      booking.serviceType === ServiceType.WAREHOUSE ? 'WAREHOUSE_FLOW' : null,
+    ].filter((value): value is string => Boolean(value));
+
+    return {
+      vehicleType: booking.requiredVehicleType ?? null,
+      minimumCapacityKg:
+        booking.cargoWeightKg != null ? this.round(booking.cargoWeightKg) : null,
+      minimumCapacityM3: null,
+      cargoType: booking.cargoType?.trim() || null,
+      cargoWeightKg:
+        booking.cargoWeightKg != null ? this.round(booking.cargoWeightKg) : null,
+      estimatedDistanceKm:
+        booking.estimatedDistKm != null ? this.round(booking.estimatedDistKm) : null,
+      specialHandling,
+    };
+  }
+
+  private sanitizeAreaLabel(address: string | null | undefined) {
+    const raw = String(address ?? '').trim().replace(/\s+/g, ' ');
+    if (!raw) {
+      return null;
+    }
+
+    const parts = raw
+      .split(/[,;\n]+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (parts.length >= 2) {
+      return parts.slice(-2).join(', ');
+    }
+
+    const words = raw.split(/\s+/).filter(Boolean);
+    const genericTokens = new Set([
+      'road',
+      'rd',
+      'street',
+      'st',
+      'avenue',
+      'ave',
+      'highway',
+      'lane',
+      'drive',
+      'building',
+      'block',
+      'plot',
+      'house',
+      'apartment',
+      'suite',
+      'floor',
+      'gate',
+      'shop',
+      'office',
+      'room',
+    ]);
+    const filtered = words.filter((word) => {
+      const normalized = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return normalized && !/\d/.test(normalized) && !genericTokens.has(normalized);
+    });
+
+    if (filtered.length >= 2) {
+      return filtered.slice(-2).join(' ');
+    }
+
+    return filtered.join(' ') || raw;
+  }
+
   private calculateCommission(amount: number, partner: MarketplacePartnerRecord) {
     const commissionRatePct = partner.commissionRatePct;
     const serviceFeeFlat = partner.serviceFeeFlat;
@@ -1303,10 +1545,22 @@ export class MarketplaceService {
       | 'baseLongitude'
       | 'serviceRadiusKm'
       | 'verificationStatus'
-    >,
+    > & {
+      linkedVehicles?: Array<{
+        type: VehicleType;
+        status: VehicleStatus;
+        capacityKg: number;
+        capacityM3: number | null;
+      }>;
+    },
     opportunity: Pick<
       MarketplaceOpportunityRecord,
-      'partnerType' | 'serviceAreaHints' | 'stopPoints' | 'status' | 'expiresAt'
+      | 'partnerType'
+      | 'serviceAreaHints'
+      | 'stopPoints'
+      | 'status'
+      | 'expiresAt'
+      | 'fleetRequirements'
     >,
   ) {
     if (partner.verificationStatus !== 'APPROVED') {
@@ -1318,12 +1572,15 @@ export class MarketplaceService {
     if (!this.isOpportunityOpen(opportunity)) {
       return false;
     }
+    if (!this.partnerSupportsFleetRequirement(partner, opportunity.fleetRequirements)) {
+      return false;
+    }
 
     const normalizedAreas = partner.serviceAreas.map((value) =>
       value.trim().toLowerCase(),
     );
     const hintMatch =
-      normalizedAreas.length === 0 ||
+      normalizedAreas.length > 0 &&
       opportunity.serviceAreaHints.some((hint) => {
         const normalizedHint = hint.toLowerCase();
         return normalizedAreas.some(
@@ -1351,6 +1608,57 @@ export class MarketplaceService {
         stop.longitude,
       );
       return distance <= (partner.serviceRadiusKm ?? 0);
+    });
+  }
+
+  private partnerSupportsFleetRequirement(
+    partner: Pick<MarketplacePartnerRecord, 'partnerType'> & {
+      linkedVehicles?: Array<{
+        type: VehicleType;
+        status: VehicleStatus;
+        capacityKg: number;
+        capacityM3: number | null;
+      }>;
+    },
+    fleetRequirements: OpportunityFleetRequirements,
+  ) {
+    if (
+      partner.partnerType !== 'TRANSPORTER' &&
+      partner.partnerType !== 'COURIER_COMPANY'
+    ) {
+      return true;
+    }
+
+    const vehicles = (partner.linkedVehicles ?? []).filter(
+      (vehicle) =>
+        vehicle.status === VehicleStatus.ACTIVE ||
+        vehicle.status === VehicleStatus.INACTIVE,
+    );
+
+    if (vehicles.length === 0) {
+      return false;
+    }
+
+    return vehicles.some((vehicle) => {
+      if (
+        fleetRequirements.vehicleType &&
+        vehicle.type !== fleetRequirements.vehicleType
+      ) {
+        return false;
+      }
+      if (
+        fleetRequirements.minimumCapacityKg != null &&
+        vehicle.capacityKg < fleetRequirements.minimumCapacityKg
+      ) {
+        return false;
+      }
+      if (
+        fleetRequirements.minimumCapacityM3 != null &&
+        (vehicle.capacityM3 ?? 0) < fleetRequirements.minimumCapacityM3
+      ) {
+        return false;
+      }
+      return true;
     });
   }
 
@@ -1814,6 +2122,9 @@ export class MarketplaceService {
         typeof record.minimumBid === 'number' ? record.minimumBid : null,
       serviceAreaHints: this.asStringArray(record.serviceAreaHints),
       stopPoints: this.asStopPoints(record.stopPoints),
+      routeSummary: this.asRouteSummary(record.routeSummary, record.serviceAreaHints),
+      stopSummary: this.asStopSummary(record.stopSummary, record.stopPoints),
+      fleetRequirements: this.asFleetRequirements(record.fleetRequirements),
       bids: this.asBidArray(record.bids),
       awardedPartnerId:
         typeof record.awardedPartnerId === 'string'
@@ -1873,13 +2184,127 @@ export class MarketplaceService {
         return {
           latitude: record.latitude,
           longitude: record.longitude,
-          address:
-            typeof record.address === 'string' ? record.address : 'Unknown stop',
+          areaHint:
+            typeof record.areaHint === 'string'
+              ? record.areaHint
+              : typeof record.address === 'string'
+                ? this.sanitizeAreaLabel(record.address)
+                : null,
+          stopType:
+            typeof record.stopType === 'string' ? record.stopType : null,
         };
       })
-      .filter((item): item is { latitude: number; longitude: number; address: string } =>
+      .filter((item): item is OpportunityStopPoint =>
         Boolean(item),
       );
+  }
+
+  private asRouteSummary(
+    value: Prisma.JsonValue | null | undefined,
+    fallbackHints: Prisma.JsonValue | null | undefined,
+  ): OpportunityRouteSummary {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, Prisma.JsonValue>;
+      return {
+        pickupArea:
+          typeof record.pickupArea === 'string' ? record.pickupArea : null,
+        deliveryArea:
+          typeof record.deliveryArea === 'string' ? record.deliveryArea : null,
+        viaAreas: this.asStringArray(record.viaAreas),
+        summary:
+          typeof record.summary === 'string'
+            ? record.summary
+            : this.asStringArray(fallbackHints).join(' -> ') || 'Route requirements',
+      };
+    }
+
+    const hints = this.asStringArray(fallbackHints);
+    const pickupArea = hints[0] ?? null;
+    const deliveryArea = hints.length > 1 ? hints[hints.length - 1] : pickupArea;
+    return {
+      pickupArea,
+      deliveryArea,
+      viaAreas: hints.length > 2 ? hints.slice(1, -1) : [],
+      summary:
+        pickupArea && deliveryArea
+          ? pickupArea === deliveryArea
+            ? pickupArea
+            : `${pickupArea} -> ${deliveryArea}`
+          : hints.join(' -> ') || 'Route requirements',
+    };
+  }
+
+  private asStopSummary(
+    value: Prisma.JsonValue | null | undefined,
+    fallbackStops: Prisma.JsonValue | null | undefined,
+  ): OpportunityStopSummary {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, Prisma.JsonValue>;
+      return {
+        totalStops:
+          typeof record.totalStops === 'number' ? record.totalStops : 0,
+        pickupStops:
+          typeof record.pickupStops === 'number' ? record.pickupStops : 0,
+        deliveryStops:
+          typeof record.deliveryStops === 'number' ? record.deliveryStops : 0,
+        intermediateStops:
+          typeof record.intermediateStops === 'number'
+            ? record.intermediateStops
+            : 0,
+      };
+    }
+
+    const stops = this.asStopPoints(fallbackStops);
+    return this.buildStopSummary(
+      stops.map((stop) => ({ stopType: stop.stopType ?? 'INTERMEDIATE' })),
+    );
+  }
+
+  private asFleetRequirements(
+    value: Prisma.JsonValue | null | undefined,
+  ): OpportunityFleetRequirements {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, Prisma.JsonValue>;
+      return {
+        vehicleType: this.asVehicleType(record.vehicleType),
+        minimumCapacityKg:
+          typeof record.minimumCapacityKg === 'number'
+            ? record.minimumCapacityKg
+            : null,
+        minimumCapacityM3:
+          typeof record.minimumCapacityM3 === 'number'
+            ? record.minimumCapacityM3
+            : null,
+        cargoType:
+          typeof record.cargoType === 'string' ? record.cargoType : null,
+        cargoWeightKg:
+          typeof record.cargoWeightKg === 'number'
+            ? record.cargoWeightKg
+            : null,
+        estimatedDistanceKm:
+          typeof record.estimatedDistanceKm === 'number'
+            ? record.estimatedDistanceKm
+            : null,
+        specialHandling: this.asStringArray(record.specialHandling),
+      };
+    }
+
+    return {
+      vehicleType: null,
+      minimumCapacityKg: null,
+      minimumCapacityM3: null,
+      cargoType: null,
+      cargoWeightKg: null,
+      estimatedDistanceKm: null,
+      specialHandling: [],
+    };
+  }
+
+  private asVehicleType(value: Prisma.JsonValue | null | undefined) {
+    return typeof value === 'string' &&
+      Object.values(VehicleType).includes(value as VehicleType)
+      ? (value as VehicleType)
+      : null;
   }
 
   private asBidArray(value: Prisma.JsonValue | null | undefined) {

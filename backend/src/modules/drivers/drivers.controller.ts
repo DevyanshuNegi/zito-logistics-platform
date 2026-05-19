@@ -2,6 +2,7 @@ import { Controller, Post, Body, Get, Put, Patch, UseGuards, Req, Query } from '
 import { DriversService } from './drivers.service';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { OnboardPartnerDriverDto } from './dto/onboard-partner-driver.dto';
+import { LinkExistingDriverDto } from './dto/link-existing-driver.dto';
 import { UpdateDriverStatusDto } from './dto/update-driver-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -17,7 +18,7 @@ export class DriversController {
     'ADMIN',
     'SUPER_ADMIN',
     'AGENCY_STAFF',
-    'AGENT',
+    'DRIVER',
     'TRANSPORTER',
     'CUSTOMER',
     'CORPORATE',
@@ -36,18 +37,26 @@ export class DriversController {
   }
 
   @Post('onboard')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF')
+  @UseGuards(RolesGuard)
+  async onboard(@Req() req: any, @Body() dto: OnboardPartnerDriverDto) {
+    return this.driversService.onboardPartnerDriver(dto, req.user);
+  }
+
+  @Post('link-existing')
   @Roles(
     'ADMIN',
     'SUPER_ADMIN',
-    'AGENT',
+    'AGENCY_STAFF',
+    'DRIVER',
     'TRANSPORTER',
     'CUSTOMER',
     'CORPORATE',
     'COURIER_COMPANY',
   )
   @UseGuards(RolesGuard)
-  async onboard(@Req() req: any, @Body() dto: OnboardPartnerDriverDto) {
-    return this.driversService.onboardPartnerDriver(dto, req.user);
+  async linkExisting(@Req() req: any, @Body() dto: LinkExistingDriverDto) {
+    return this.driversService.linkExistingDriver(dto, req.user);
   }
 
   @Post('register')

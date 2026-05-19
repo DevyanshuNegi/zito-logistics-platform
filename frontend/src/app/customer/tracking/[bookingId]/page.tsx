@@ -7,6 +7,7 @@ import { Headset, LocateFixed, Phone, ShieldAlert, Truck } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
+import { CustomerAiAssistant } from '@/components/support/CustomerAiAssistant';
 import { LiveMap } from '@/components/maps/LiveMap';
 import { TrackingTimeline } from '@/components/tracking/TrackingTimeline';
 import { useSocket } from '@/hooks/useSocket';
@@ -74,6 +75,25 @@ function statusClassName(status: string) {
   }
   return 'bg-amber-100 text-amber-700';
 }
+
+const trackingAiQuickActions = [
+  {
+    label: 'Explain this status',
+    message: 'Explain the current booking status and what should happen next for this trip.',
+  },
+  {
+    label: 'Help with ETA',
+    message: 'Help me understand the ETA, route progress, and live tracking state for this booking.',
+  },
+  {
+    label: 'Need support',
+    message: 'I need human support for this tracked booking and want the clearest next step.',
+  },
+  {
+    label: 'After delivery',
+    message: 'What should I do next after delivery, including payments, proof, or support follow-up?',
+  },
+] as const;
 
 export default function CustomerTrackingPage() {
   const params = useParams();
@@ -294,6 +314,18 @@ export default function CustomerTrackingPage() {
         <TrackingTimeline stops={normalizedStops} />
 
         <div className="space-y-6">
+          <CustomerAiAssistant
+            compact
+            screenContext="CUSTOMER_TRACKING"
+            bookings={[{ id: tracking.bookingId, reference: tracking.reference }]}
+            defaultBookingId={tracking.bookingId}
+            title="Need help with this trip?"
+            description="Ask about this booking’s tracking, ETA, route progress, payments after delivery, or when to reach human support. Zito Assistant stays on customer procedure only."
+            quickActions={trackingAiQuickActions}
+            placeholder="Example: Why is this trip still in transit, or what should I do if the route looks delayed?"
+            helpText="Ask about this booking’s tracking, ETA, delivery next steps, or when to contact support."
+          />
+
           <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#eef6ff] text-[#1b3f72]">

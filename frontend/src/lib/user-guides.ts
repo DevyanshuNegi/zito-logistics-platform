@@ -152,11 +152,11 @@ export const APP_GUIDES: Record<'service' | 'partners' | 'internal', AppGuide> =
       {
         title: 'Agent',
         summary:
-          'Operate as a commission-based supply partner that sources vehicles, drivers, and trip capacity.',
+          'Operate as a commission-based supply partner that sources trip capacity and proposes loads.',
         highlights: [
           'Agent is external and separate from Agency Staff or internal agency structures.',
           'Agent registration must capture company legal name plus authorized contact person.',
-          'Fleet, Drivers, and Marketplace are the main working areas for agent operations.',
+          'Marketplace and trip-proposal workflows are the main working areas for agent operations.',
         ],
       },
       {
@@ -194,7 +194,7 @@ export const APP_GUIDES: Record<'service' | 'partners' | 'internal', AppGuide> =
         description: 'Where each partner role spends time.',
         items: [
           'Drivers use jobs, shift, and earnings screens.',
-          'Agents onboard drivers, manage vehicles, and respond to marketplace supply opportunities.',
+          'Agents respond to marketplace supply opportunities and propose trip capacity; they do not own fleet or create driver accounts.',
           'Transporters manage fleet readiness and commercial visibility.',
           'Courier companies run dispatch, scans, waybills, and movement plans.',
           'Warehouse partners manage bins, inventory, scan events, and loss handling.',

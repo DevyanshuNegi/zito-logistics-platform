@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -40,6 +40,7 @@ type VehicleOption = {
   plateNumber: string;
   type?: string | null;
   status?: string | null;
+  verificationStatus?: string | null;
   driver?: {
     id?: string | null;
     user?: {
@@ -48,10 +49,8 @@ type VehicleOption = {
   } | null;
 };
 
-type OnboardDriverResponse = {
-  data: {
-    temporaryPassword?: string | null;
-  };
+type LinkExistingDriverResponse = {
+  message?: string;
 };
 
 type FleetDriverManagerProps = {
@@ -78,8 +77,7 @@ function getToneClasses(tone: 'dark' | 'light') {
       value: 'text-2xl font-semibold text-[#1a1a2e]',
       select:
         'w-full rounded-[14px] border border-[#d7e0ec] bg-white px-3 py-2 text-sm text-[#1a1a2e] focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100',
-      badge:
-        'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
+      badge: 'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
       online: 'bg-[#dcfce7] text-[#15803d]',
       offline: 'bg-[#eef2f7] text-[#64748b]',
     };
@@ -97,8 +95,7 @@ function getToneClasses(tone: 'dark' | 'light') {
     value: 'text-3xl font-semibold text-white',
     select:
       'w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none',
-    badge:
-      'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
+    badge: 'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
     online: 'bg-emerald-500/15 text-emerald-200',
     offline: 'bg-slate-800/70 text-slate-300',
   };
@@ -116,24 +113,19 @@ export function FleetDriverManager({
   const classes = getToneClasses(tone);
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [loadedVehicles, setLoadedVehicles] = useState<VehicleOption[]>(vehicles);
-  const [fullName, setFullName] = useState('');
   const [countryOptionCode, setCountryOptionCode] = useState(DEFAULT_COUNTRY_ISO_CODE);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
-  const [licenseNumber, setLicenseNumber] = useState('');
-  const [licenseExpiry, setLicenseExpiry] = useState('');
-  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [creationFeedback, setCreationFeedback] = useState<{
+  const [linkFeedback, setLinkFeedback] = useState<{
     variant: 'success' | 'danger';
     title: string;
     message: string;
   } | null>(null);
-  const fullNameRef = useRef<HTMLInputElement | null>(null);
 
   const activeDriverCount = useMemo(
     () => drivers.filter((driver) => driver.user?.status === 'ACTIVE').length,
@@ -148,6 +140,15 @@ export function FleetDriverManager({
     [drivers],
   );
   const effectiveVehicles = vehicles.length > 0 ? vehicles : loadedVehicles;
+  const onboardedVehicles = useMemo(
+    () =>
+      effectiveVehicles.filter(
+        (vehicle) =>
+          vehicle.status === 'ACTIVE' &&
+          String(vehicle.verificationStatus ?? '').toUpperCase() === 'APPROVED',
+      ),
+    [effectiveVehicles],
+  );
   const selectedCountryOption = useMemo(
     () => findCountryCodeOptionByIsoCode(countryOptionCode),
     [countryOptionCode],
@@ -173,7 +174,7 @@ export function FleetDriverManager({
       setError(
         caught instanceof ApiError
           ? caught.message
-          : 'Unable to load managed drivers.',
+          : 'Unable to load linked driver accounts.',
       );
     } finally {
       setLoading(false);
@@ -193,45 +194,41 @@ export function FleetDriverManager({
     setSaving(true);
     setError(null);
     setSuccess(null);
-    setTemporaryPassword(null);
-    setCreationFeedback(null);
+    setLinkFeedback(null);
 
     try {
-      const response = await api.post<OnboardDriverResponse>('/drivers/onboard', {
-        fullName,
+      const response = await api.post<LinkExistingDriverResponse>('/drivers/link-existing', {
         phone: buildPhoneContact(
           selectedCountryOption?.dialCode ?? '+254',
           phoneNumber,
         ),
         email: email.trim() || undefined,
-        licenseNumber: licenseNumber.trim() || undefined,
-        licenseExpiry: licenseExpiry || undefined,
       });
 
-      setTemporaryPassword(response.data.temporaryPassword ?? null);
-      setSuccess(
-        'Driver onboarding draft created. The driver uses the Driver app after activation.',
-      );
-      setCreationFeedback({
+      const message =
+        response.message ??
+        'Driver account linked successfully. The driver still signs in through the Zito Partners driver app.';
+
+      setSuccess(message);
+      setLinkFeedback({
         variant: 'success',
-        title: 'Registration successful',
-        message:
-          'Driver onboarding draft created successfully. You can create another driver now or continue with vehicle assignment.',
+        title: 'Driver linked',
+        message,
       });
-      setFullName('');
       setCountryOptionCode(DEFAULT_COUNTRY_ISO_CODE);
       setPhoneNumber('');
       setEmail('');
-      setLicenseNumber('');
-      setLicenseExpiry('');
       await loadDrivers();
       await onChange?.();
     } catch (caught) {
-      const message = caught instanceof ApiError ? caught.message : 'Unable to onboard driver.';
+      const message =
+        caught instanceof ApiError
+          ? caught.message
+          : 'Unable to link the existing driver account.';
       setError(message);
-      setCreationFeedback({
+      setLinkFeedback({
         variant: 'danger',
-        title: 'Registration failed',
+        title: 'Link failed',
         message,
       });
     } finally {
@@ -239,18 +236,11 @@ export function FleetDriverManager({
     }
   }
 
-  function handleCreateAnother() {
-    setCreationFeedback(null);
-    setTemporaryPassword(null);
-    setFullName('');
+  function handleLinkAnother() {
+    setLinkFeedback(null);
     setCountryOptionCode(DEFAULT_COUNTRY_ISO_CODE);
     setPhoneNumber('');
     setEmail('');
-    setLicenseNumber('');
-    setLicenseExpiry('');
-    window.requestAnimationFrame(() => {
-      fullNameRef.current?.focus();
-    });
   }
 
   async function handleAssignmentChange(driver: DriverRow, nextVehicleId: string) {
@@ -296,28 +286,28 @@ export function FleetDriverManager({
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-3">
         <div className={classes.statCard}>
-          <p className={classes.label}>Managed drivers</p>
+          <p className={classes.label}>Linked drivers</p>
           <p className={`mt-3 ${classes.value}`}>{drivers.length}</p>
-          <p className={`mt-2 ${classes.body}`}>All drivers linked to this {ownerLabel}.</p>
+          <p className={`mt-2 ${classes.body}`}>Driver accounts linked to this {ownerLabel}.</p>
         </div>
         <div className={classes.statCard}>
           <p className={classes.label}>Active accounts</p>
           <p className={`mt-3 ${classes.value}`}>{activeDriverCount}</p>
           <p className={`mt-2 ${classes.body}`}>
-            Drivers already active and ready to sign in to the driver app.
+            Drivers already active and ready to sign in through Zito Partners.
           </p>
         </div>
         <div className={classes.statCard}>
           <p className={classes.label}>Vehicle links</p>
           <p className={`mt-3 ${classes.value}`}>{assignedVehicleCount}</p>
           <p className={`mt-2 ${classes.body}`}>
-            {availableDriverCount} available drivers can still be matched to vehicles.
+            {availableDriverCount} linked drivers can still be matched to vehicles.
           </p>
         </div>
       </div>
 
-      <Alert title="Driver app access" variant="info">
-        Fleet-managed drivers still sign in through the dedicated driver app. Fleet owners only manage roster ownership, readiness, and vehicle assignment.
+      <Alert title="Driver app rule" variant="info">
+        Drivers must register and sign in through the Zito Partners driver app. Fleet owners do not create driver accounts here; they only link existing driver accounts and assign them to approved vehicles.
       </Alert>
 
       {error ? (
@@ -329,26 +319,17 @@ export function FleetDriverManager({
       {success ? (
         <Alert title="Fleet driver update" variant="success">
           {success}
-          {temporaryPassword ? ` Temporary password: ${temporaryPassword}` : ''}
         </Alert>
       ) : null}
 
       <section className={classes.card}>
         <div className="mb-5">
-          <p className={classes.label}>Driver roster</p>
+          <p className={classes.label}>Link driver account</p>
           <h3 className={`mt-1 ${classes.heading}`}>{title}</h3>
           <p className={`mt-2 ${classes.copy}`}>{description}</p>
         </div>
 
         <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleSubmit}>
-          <Input
-            label="Full name"
-            tone={tone === 'light' ? 'light' : 'dark'}
-            ref={fullNameRef}
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-            required
-          />
           <div className="md:col-span-2 xl:col-span-2">
             <PhoneContactField
               required
@@ -360,52 +341,42 @@ export function FleetDriverManager({
             />
           </div>
           <Input
-            label="Email"
+            label="Driver email"
             tone={tone === 'light' ? 'light' : 'dark'}
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
-          <Input
-            label="License number"
-            tone={tone === 'light' ? 'light' : 'dark'}
-            value={licenseNumber}
-            onChange={(event) => setLicenseNumber(event.target.value)}
-          />
-          <Input
-            label="License expiry"
-            tone={tone === 'light' ? 'light' : 'dark'}
-            type="date"
-            value={licenseExpiry}
-            onChange={(event) => setLicenseExpiry(event.target.value)}
-          />
-          <div className="space-y-3 md:col-span-2 xl:col-span-2">
-            {creationFeedback ? (
-              <Alert title={creationFeedback.title} variant={creationFeedback.variant}>
-                {creationFeedback.message}
-                {temporaryPassword ? ` Temporary password: ${temporaryPassword}` : ''}
+          <div className="space-y-3 md:col-span-2 xl:col-span-1">
+            {linkFeedback ? (
+              <Alert title={linkFeedback.title} variant={linkFeedback.variant}>
+                {linkFeedback.message}
               </Alert>
             ) : null}
             <div className="flex flex-wrap items-end gap-3">
               <Button className="w-full sm:w-auto" disabled={saving} type="submit">
-                {saving ? 'Saving driver...' : 'Create driver'}
+                {saving ? 'Linking driver...' : 'Link driver account'}
               </Button>
-              {creationFeedback?.variant === 'success' ? (
-                <Button type="button" variant="ghost" onClick={handleCreateAnother}>
-                  Create another
+              {linkFeedback?.variant === 'success' ? (
+                <Button type="button" variant="ghost" onClick={handleLinkAnother}>
+                  Link another
                 </Button>
               ) : null}
             </div>
           </div>
         </form>
+
+        <p className={`mt-4 ${classes.body}`}>
+          Ask the driver to register in Zito Partners first. After registration, link the driver here by phone number, then place the driver onto an admin-approved vehicle.
+        </p>
       </section>
 
       <section className={classes.card}>
         <div className="mb-5">
           <p className={classes.label}>Live roster</p>
-          <h3 className={`mt-1 ${classes.heading}`}>Managed driver cards</h3>
+          <h3 className={`mt-1 ${classes.heading}`}>Linked driver cards</h3>
           <p className={`mt-2 ${classes.copy}`}>
-            Assign a managed driver to a vehicle from the same owned fleet. Each driver can hold only one live vehicle assignment at a time.
+            Assign a linked driver to a vehicle from the same approved fleet. Each driver can hold only one live vehicle assignment at a time.
           </p>
         </div>
 
@@ -413,15 +384,15 @@ export function FleetDriverManager({
           <Spinner />
         ) : drivers.length === 0 ? (
           <div className={classes.mutedCard}>
-            <p className={classes.title}>No drivers yet</p>
+            <p className={classes.title}>No linked drivers yet</p>
             <p className={`mt-2 ${classes.body}`}>
-              Add your first driver above. The roster will appear here with activation status, license details, and vehicle assignment.
+              Ask the driver to complete registration in Zito Partners, then link that existing driver account above. The linked roster will appear here with activation status, license details, and vehicle assignment.
             </p>
           </div>
         ) : (
           <div className="space-y-3">
             {drivers.map((driver) => {
-              const vehicleOptions = effectiveVehicles.filter(
+              const vehicleOptions = onboardedVehicles.filter(
                 (vehicle) => !vehicle.driver?.id || vehicle.driver.id === driver.id,
               );
 
@@ -468,7 +439,7 @@ export function FleetDriverManager({
                         <div>
                           <p className={classes.label}>License</p>
                           <p className={`mt-1 ${classes.body}`}>
-                            {driver.licenseNumber ?? 'Not captured'}
+                            {driver.licenseNumber ?? 'Driver must complete profile'}
                           </p>
                         </div>
                         <div>
@@ -507,6 +478,10 @@ export function FleetDriverManager({
                       </select>
                       {assigningDriverId === driver.id ? (
                         <p className={`mt-2 ${classes.body}`}>Updating assignment...</p>
+                      ) : vehicleOptions.length === 0 ? (
+                        <p className={`mt-2 ${classes.body}`}>
+                          Only admin-approved vehicles can receive driver assignments.
+                        </p>
                       ) : null}
                     </div>
                   </div>

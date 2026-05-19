@@ -18,6 +18,7 @@ import { KPICard } from '../../src/components/KPICard';
 import { SOSButton } from '../../src/components/SOSButton';
 import { QuickReorderCard } from '../../src/components/QuickReorderCard';
 import { SkeletonDashboard } from '../../src/components/SkeletonLoader';
+import { CustomerAiSupportSheet } from '../../src/components/CustomerAiSupportSheet';
 import BrandLockup from '../../src/components/BrandLockup';
 
 export default function HomeScreen() {
@@ -32,6 +33,7 @@ export default function HomeScreen() {
     moneySaved: 0,
     completedCount: 0,
   });
+  const [showAssistant, setShowAssistant] = useState(false);
 
   const load = async () => {
     try {
@@ -113,6 +115,12 @@ export default function HomeScreen() {
             <Text style={s.ctaSub}>Motorcycles, vans, pickups, and trucks with live pricing guidance.</Text>
           </View>
           <Text style={s.ctaArrow}>Open</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={s.assistantCard} onPress={() => setShowAssistant(true)}>
+          <Text style={s.assistantLabel}>Zito Assistant</Text>
+          <Text style={s.assistantTitle}>Get customer help for booking, tracking, payments, or your own fleet.</Text>
+          <Text style={s.assistantHint}>Open assistant</Text>
         </TouchableOpacity>
 
         {active.length > 0 ? (
@@ -250,6 +258,26 @@ export default function HomeScreen() {
           ))}
         </View>
       </ScrollView>
+
+      <CustomerAiSupportSheet
+        visible={showAssistant}
+        onClose={() => setShowAssistant(false)}
+        screenContext="CUSTOMER_HOME"
+        title="Ask Zito Assistant"
+        description="Ask about booking procedure, live tracking, payments, or customer-owned fleet steps without leaving the customer app."
+        bookingOptions={bookings.slice(0, 8).map((booking) => ({
+          id: booking.id,
+          reference: booking.reference,
+        }))}
+        quickActions={[
+          { label: 'Help me book', message: 'Show me the correct customer booking procedure.' },
+          { label: 'Track my trip', message: 'Help me understand booking status or tracking.' },
+          { label: 'Payment help', message: 'Help me understand customer payment or invoice procedure.' },
+          { label: 'Own fleet help', message: 'Help me manage my customer-owned fleet and link drivers from the Zito Partners driver app.' },
+        ]}
+        placeholder="Example: How do I book correctly, or where should I go if I need help with a live trip?"
+        helpText="Ask about customer procedure, bookings, tracking, payments, or your own fleet."
+      />
     </SafeAreaView>
   );
 }
@@ -284,6 +312,34 @@ const s = StyleSheet.create({
   ctaTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
   ctaSub: { fontSize: 12, color: colors.textMuted, marginTop: 2, lineHeight: 18 },
   ctaArrow: { fontSize: 12, color: colors.primary, fontWeight: '700' },
+  assistantCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 24,
+  },
+  assistantLabel: {
+    color: colors.textFaint,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  assistantTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 8,
+    lineHeight: 22,
+  },
+  assistantHint: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 10,
+  },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 },
   card: {
     backgroundColor: colors.bgCard,

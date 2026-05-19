@@ -438,7 +438,7 @@ export default function AdminVerificationPage() {
 
       <SurfaceCard
         title="Fleet verification desk"
-        description="Heavy vehicles and container trucks must complete the five-photo verification packet before final approval."
+        description="Heavy vehicles and container trucks must complete the number plate, front, right, left, back, chassis, and insurance inspection packet before final approval."
       >
         {loading && !dashboard ? (
           <Spinner />
@@ -537,7 +537,7 @@ export default function AdminVerificationPage() {
                       );
                     })
                   ) : (
-                    <p className="text-sm text-slate-300">This vehicle type does not require the five-photo truck verification packet.</p>
+                    <p className="text-sm text-slate-300">This vehicle type does not require the full truck inspection packet.</p>
                   )}
                 </div>
 

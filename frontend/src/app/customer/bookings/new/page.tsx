@@ -11,12 +11,14 @@ import {
   Clock3,
   MapPinned,
   Package,
+  Search,
   ShieldCheck,
   Truck,
   Warehouse,
 } from 'lucide-react';
 import { RoutePreviewMap } from '@/components/maps/RoutePreviewMap';
 import { RouteLocationPicker } from '@/components/maps/RouteLocationPicker';
+import { CustomerAiAssistant } from '@/components/support/CustomerAiAssistant';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -24,15 +26,11 @@ import { ApiError, api } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 import {
   estimateDistanceKm,
+  geocodeAddress,
   parseCoordinate,
   reverseGeocodeCoordinates,
   type GeocodeLookup,
 } from '@/lib/geo';
-import {
-  KENYA_COUNTIES,
-  LOCATION_RATE_TYPES,
-  SUPPORTED_PRICING_COUNTRIES,
-} from '@/lib/location-pricing';
 import { SERVICE_TYPES, VEHICLE_TYPES } from '@/lib/phase-one';
 import { useAppPreferences } from '@/contexts/AppPreferencesContext';
 
@@ -58,38 +56,31 @@ type RateQuoteResponse = {
 };
 
 type LocalityRateType = 'ANY' | 'TOWN' | 'RURAL';
-
-type AutoPricingScope = {
-  countryCode: string;
-  county: string;
-  localityType: LocalityRateType;
-  summary: string;
+type RecentPlace = {
+  address: string;
+  countryCode: string | null;
+  county: string | null;
+  id: string;
+  label: string;
+  latitude: string;
+  localityType: 'ANY' | 'TOWN' | 'RURAL';
+  longitude: string;
 };
 
-function formatLocalityRateType(value: LocalityRateType) {
-  if (value === 'TOWN') {
-    return 'Town / urban';
-  }
+type SavedPlace = {
+  address: string;
+  countryCode: string | null;
+  county: string | null;
+  id: string;
+  label: string;
+  latitude: string;
+  localityType: 'ANY' | 'TOWN' | 'RURAL';
+  longitude: string;
+};
 
-  if (value === 'RURAL') {
-    return 'Rural';
-  }
-
-  return 'Any area';
-}
-
-function buildPricingScopeSummary(scope: {
-  countryCode: string;
-  county: string;
-  localityType: LocalityRateType;
-}) {
-  const countryLabel =
-    SUPPORTED_PRICING_COUNTRIES.find((option) => option.code === scope.countryCode)?.label ??
-    scope.countryCode;
-
-  const scopeLabel = scope.countryCode === 'KE' ? scope.county || 'Kenya' : countryLabel;
-  return `${scopeLabel} / ${formatLocalityRateType(scope.localityType)}`;
-}
+const RECENT_PLACES_STORAGE_KEY = 'zito_customer_recent_places_v1';
+const SAVED_PLACES_STORAGE_KEY = 'zito_customer_saved_places_v1';
+const SAVED_PLACE_LABELS = ['Home', 'Office', 'Warehouse'] as const;
 
 const serviceCards = [
   {
@@ -201,6 +192,25 @@ const vehicleMeta: Record<string, { label: string; capacity: string; note: strin
 
 const cargoChips = ['Documents', 'Electronics', 'Retail cartons', 'Furniture', 'Perishables', 'Machinery'] as const;
 
+const bookingAiQuickActions = [
+  {
+    label: 'Set pickup correctly',
+    message: 'How should I search and confirm the pickup location before I continue?',
+  },
+  {
+    label: 'Set drop-off correctly',
+    message: 'How should I search and confirm the drop-off location before I continue?',
+  },
+  {
+    label: 'Confirm the route',
+    message: 'Show me the correct customer route-confirmation procedure before vehicle selection.',
+  },
+  {
+    label: 'Book with my fleet',
+    message: 'How does customer-owned fleet booking work for this trip?',
+  },
+] as const;
+
 const freightTradeModes = [
   { value: 'LOCAL', label: 'Local move' },
   { value: 'IMPORT', label: 'Import' },
@@ -238,6 +248,11 @@ function resolveEnumValue<T extends readonly string[]>(options: T, value: string
   }
 
   return options.includes(value as T[number]) ? value : null;
+}
+
+function buildPlaceLabel(address: string) {
+  const [firstPart] = address.split(',');
+  return firstPart?.trim() || 'Saved place';
 }
 
 function StepChip({
@@ -294,8 +309,6 @@ export default function NewBookingPage() {
   const [pricingCountryCode, setPricingCountryCode] = useState('KE');
   const [pricingCounty, setPricingCounty] = useState('');
   const [pricingAreaType, setPricingAreaType] = useState<LocalityRateType>('ANY');
-  const [detectedPricingScope, setDetectedPricingScope] = useState<AutoPricingScope | null>(null);
-  const [pricingScopeMode, setPricingScopeMode] = useState<'auto' | 'manual'>('auto');
   const [tradeMode, setTradeMode] = useState('LOCAL');
   const [railCorridorCode, setRailCorridorCode] = useState('');
   const [originNode, setOriginNode] = useState('');
@@ -314,7 +327,13 @@ export default function NewBookingPage() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [activeStopSelection, setActiveStopSelection] = useState<StopKind>('pickup');
   const [resolvingMapStop, setResolvingMapStop] = useState<StopKind | null>(null);
-  const usingPickupDetectedScope = pricingScopeMode === 'auto' && detectedPricingScope != null;
+  const [locatingStop, setLocatingStop] = useState<StopKind | null>(null);
+  const [searchSheetStop, setSearchSheetStop] = useState<StopKind | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [recentPlaces, setRecentPlaces] = useState<RecentPlace[]>([]);
+  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const routePickerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -327,6 +346,11 @@ export default function NewBookingPage() {
     const requestedVehicle = resolveEnumValue(VEHICLE_TYPES, params.get('vehicle'));
     const serviceMeta = serviceCards.find((item) => item.value === requestedService);
 
+    if (requestedService === 'WAREHOUSE') {
+      router.replace('/customer/warehouse');
+      return;
+    }
+
     if (requestedService) {
       setServiceType(requestedService);
     }
@@ -338,6 +362,46 @@ export default function NewBookingPage() {
 
     if (serviceMeta) {
       setVehicleType(serviceMeta.suggestedVehicleType);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(RECENT_PLACES_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as RecentPlace[];
+      if (Array.isArray(parsed)) {
+        setRecentPlaces(parsed.slice(0, 5));
+      }
+    } catch {
+      window.localStorage.removeItem(RECENT_PLACES_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SAVED_PLACES_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as SavedPlace[];
+      if (Array.isArray(parsed)) {
+        setSavedPlaces(parsed);
+      }
+    } catch {
+      window.localStorage.removeItem(SAVED_PLACES_STORAGE_KEY);
     }
   }, []);
 
@@ -369,6 +433,26 @@ export default function NewBookingPage() {
   const requiresTradeDocuments = isContainerWorkflow && tradeMode !== 'LOCAL';
   const pickupPinned = parseCoordinate(pickupLat) != null && parseCoordinate(pickupLng) != null;
   const dropPinned = parseCoordinate(dropLat) != null && parseCoordinate(dropLng) != null;
+  const pricingReviewRequired =
+    step === 3 && estimatedDistance != null && !quoteLoading && !quote && Boolean(quoteError);
+  const customerQuoteBadge =
+    quote
+      ? formatMoney(quote.totalPrice, quote.currency)
+      : quoteLoading
+        ? 'Preparing rate'
+        : pricingReviewRequired
+          ? 'Rate under review'
+          : 'Free map route';
+  const customerQuotePillLabel = quote ? 'Quote' : pricingReviewRequired ? 'Rate status' : 'Route';
+  const customerQuotePillValue = quote
+    ? formatMoney(quote.totalPrice, quote.currency)
+    : quoteLoading
+      ? 'Preparing'
+      : pricingReviewRequired
+        ? 'Under review'
+        : estimatedDistance != null
+          ? `${estimatedDistance} km`
+          : 'Route needed';
 
   useEffect(() => {
     if (!(availableVehicleTypes as readonly string[]).includes(vehicleType)) {
@@ -426,45 +510,13 @@ export default function NewBookingPage() {
   ]);
 
   function applyPickupPricingScope(result: GeocodeLookup) {
-    const supportedCountry = SUPPORTED_PRICING_COUNTRIES.find(
-      (option) => option.code === result.countryCode,
-    )?.code;
-
-    if (!supportedCountry) {
-      setDetectedPricingScope(null);
-      return;
-    }
-
-    const localityType: LocalityRateType =
-      supportedCountry === 'KE' ? result.localityType : 'ANY';
+    const supportedCountry = result.countryCode?.trim().toUpperCase() ?? 'KE';
+    const localityType: LocalityRateType = supportedCountry === 'KE' ? result.localityType : 'ANY';
     const county = supportedCountry === 'KE' ? result.county ?? '' : '';
-    const nextScope: AutoPricingScope = {
-      countryCode: supportedCountry,
-      county,
-      localityType,
-      summary: buildPricingScopeSummary({
-        countryCode: supportedCountry,
-        county,
-        localityType,
-      }),
-    };
 
-    setDetectedPricingScope(nextScope);
-    setPricingScopeMode('auto');
-    setPricingCountryCode(nextScope.countryCode);
-    setPricingCounty(nextScope.county);
-    setPricingAreaType(nextScope.localityType);
-  }
-
-  function restorePickupDetectedPricingScope() {
-    if (!detectedPricingScope) {
-      return;
-    }
-
-    setPricingScopeMode('auto');
-    setPricingCountryCode(detectedPricingScope.countryCode);
-    setPricingCounty(detectedPricingScope.county);
-    setPricingAreaType(detectedPricingScope.localityType);
+    setPricingCountryCode(supportedCountry);
+    setPricingCounty(county);
+    setPricingAreaType(localityType);
   }
 
   function applyGeocode(kind: StopKind, result: GeocodeLookup) {
@@ -481,6 +533,36 @@ export default function NewBookingPage() {
     setDropLng(result.longitude);
   }
 
+  function saveRecentPlace(result: GeocodeLookup) {
+    const nextItem: RecentPlace = {
+      id: `${result.latitude}:${result.longitude}`,
+      label: buildPlaceLabel(result.address),
+      address: result.address,
+      latitude: result.latitude,
+      longitude: result.longitude,
+      countryCode: result.countryCode,
+      county: result.county,
+      localityType: result.localityType,
+    };
+
+    setRecentPlaces((current) => {
+      const nextPlaces = [
+        nextItem,
+        ...current.filter(
+          (item) =>
+            item.id !== nextItem.id &&
+            item.address.trim().toLowerCase() !== nextItem.address.trim().toLowerCase(),
+        ),
+      ].slice(0, 5);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(RECENT_PLACES_STORAGE_KEY, JSON.stringify(nextPlaces));
+      }
+
+      return nextPlaces;
+    });
+  }
+
   function focusRouteMap(kind: StopKind) {
     setStep(1);
     setActiveStopSelection(kind);
@@ -488,6 +570,93 @@ export default function NewBookingPage() {
       behavior: 'smooth',
       block: 'center',
     });
+  }
+
+  function openLocationSearch(kind: StopKind) {
+    setStep(1);
+    setSearchError(null);
+    setSearchLoading(false);
+    setSearchSheetStop(kind);
+    setSearchQuery(kind === 'pickup' ? pickupAddress : dropAddress);
+  }
+
+  function closeLocationSearch() {
+    setSearchSheetStop(null);
+    setSearchLoading(false);
+    setSearchError(null);
+  }
+
+  async function handleLocationSearch(kind: StopKind) {
+    if (!searchQuery.trim()) {
+      setSearchError(`Enter a ${kind === 'pickup' ? 'pickup' : 'drop-off'} location first.`);
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchError(null);
+
+    try {
+      const result = await geocodeAddress(searchQuery);
+      applyGeocode(kind, result);
+      saveRecentPlace(result);
+      setActiveStopSelection(kind);
+      closeLocationSearch();
+      routePickerRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    } catch (caught) {
+      setSearchError(
+        caught instanceof Error
+          ? caught.message
+          : 'Location search is unavailable right now. Try again or use move pin.',
+      );
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  async function handleUseCurrentLocation(kind: StopKind) {
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) {
+      setSearchError('Current location is not available in this browser right now.');
+      return;
+    }
+
+    setSearchLoading(false);
+    setSearchError(null);
+    setLocatingStop(kind);
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        window.navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 30000,
+        });
+      });
+
+      const result = await reverseGeocodeCoordinates(
+        position.coords.latitude,
+        position.coords.longitude,
+      );
+
+      applyGeocode(kind, result);
+      saveRecentPlace(result);
+      setActiveStopSelection(kind);
+      closeLocationSearch();
+      routePickerRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    } catch (caught) {
+      setSearchError(
+        caught instanceof Error
+          ? caught.message
+          : 'Unable to use current location right now. Search the location manually instead.',
+      );
+    } finally {
+      setLocatingStop((current) => (current === kind ? null : current));
+    }
   }
 
   async function handleMapPinSelection(kind: StopKind, latitude: number, longitude: number) {
@@ -508,6 +677,7 @@ export default function NewBookingPage() {
     try {
       const result = await reverseGeocodeCoordinates(latitude, longitude);
       applyGeocode(kind, result);
+      saveRecentPlace(result);
     } catch (caught) {
       if (kind === 'pickup') {
         setPickupAddress((current) => current.trim() || `${latText}, ${lngText}`);
@@ -537,11 +707,96 @@ export default function NewBookingPage() {
     const hasDrop = parseCoordinate(dropLat) != null && parseCoordinate(dropLng) != null;
 
     if (!hasPickup || !hasDrop) {
-      setError('Drop both pickup and drop pins on the map before continuing.');
+      setError('Search and confirm both pickup and drop-off locations before continuing.');
       return false;
     }
 
     return true;
+  }
+
+  function handleSelectRecentPlace(kind: StopKind, place: RecentPlace) {
+    applyGeocode(kind, {
+      address: place.address,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      countryCode: place.countryCode,
+      countryName: null,
+      county: place.county,
+      localityType: place.localityType,
+    });
+    setActiveStopSelection(kind);
+    closeLocationSearch();
+    routePickerRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }
+
+  function saveNamedPlace(label: (typeof SAVED_PLACE_LABELS)[number], kind: StopKind) {
+    const source =
+      kind === 'pickup'
+        ? {
+            address: pickupAddress,
+            latitude: pickupLat,
+            longitude: pickupLng,
+            countryCode: pricingCountryCode,
+            county: pricingCounty || null,
+            localityType: pricingAreaType,
+          }
+        : {
+            address: dropAddress,
+            latitude: dropLat,
+            longitude: dropLng,
+            countryCode: null,
+            county: null,
+            localityType: 'ANY' as const,
+          };
+
+    if (!source.address.trim() || !source.latitude || !source.longitude) {
+      return;
+    }
+
+    const nextPlace: SavedPlace = {
+      id: `${label.toLowerCase()}-${kind}`,
+      label,
+      address: source.address,
+      latitude: source.latitude,
+      longitude: source.longitude,
+      countryCode: source.countryCode,
+      county: source.county,
+      localityType: source.localityType,
+    };
+
+    setSavedPlaces((current) => {
+      const nextPlaces = [
+        nextPlace,
+        ...current.filter((place) => place.label !== label),
+      ].slice(0, 6);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(SAVED_PLACES_STORAGE_KEY, JSON.stringify(nextPlaces));
+      }
+
+      return nextPlaces;
+    });
+  }
+
+  function handleSelectSavedPlace(kind: StopKind, place: SavedPlace) {
+    applyGeocode(kind, {
+      address: place.address,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      countryCode: place.countryCode,
+      countryName: null,
+      county: place.county,
+      localityType: place.localityType,
+    });
+    setActiveStopSelection(kind);
+    closeLocationSearch();
+    routePickerRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
   }
 
   function validateFreightWorkflow() {
@@ -584,16 +839,6 @@ export default function NewBookingPage() {
     setError(null);
 
     if (step === 1) {
-      if (
-        !pickupContactName.trim() ||
-        !pickupContactPhone.trim() ||
-        !dropContactName.trim() ||
-        !dropContactPhone.trim()
-      ) {
-        setError('Add both contact blocks before continuing to vehicle selection.');
-        return;
-      }
-
       const routeReady = await ensureRouteCoordinates();
       if (!routeReady) {
         return;
@@ -631,6 +876,17 @@ export default function NewBookingPage() {
     if (workflowError) {
       setSaving(false);
       setError(workflowError);
+      return;
+    }
+
+    if (
+      !pickupContactName.trim() ||
+      !pickupContactPhone.trim() ||
+      !dropContactName.trim() ||
+      !dropContactPhone.trim()
+    ) {
+      setSaving(false);
+      setError('Add both pickup and drop-off contact details before confirming the booking.');
       return;
     }
 
@@ -697,15 +953,179 @@ export default function NewBookingPage() {
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
+      {searchSheetStop ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-0 md:p-4 md:items-center">
+          <div className="flex h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[32px] border border-slate-200 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.22)] md:h-auto md:max-h-[90vh] md:rounded-[32px]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 pb-4 pt-5">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#64748b]">
+                  {searchSheetStop === 'pickup' ? 'Pickup search' : 'Drop-off search'}
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-[#1a1a2e]">
+                  {searchSheetStop === 'pickup'
+                    ? 'Search pickup location first'
+                    : 'Search drop-off location first'}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-[#64748b]">
+                  Select a place first. The map will center there automatically and place the
+                  pin for confirmation.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-full px-3 py-2 text-sm font-semibold text-[#64748b] transition hover:bg-[#f1f5fb] hover:text-[#1a1a2e]"
+                onClick={closeLocationSearch}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+              <Input
+                tone="light"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={
+                  searchSheetStop === 'pickup'
+                    ? 'Search pickup area, building, road, or landmark'
+                    : 'Search destination area, building, road, or landmark'
+                }
+                help="Search comes first. Use move pin only if the exact door, gate, or loading point needs adjustment."
+                autoFocus
+              />
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4 text-left transition hover:border-[#93c5fd] hover:bg-white"
+                  onClick={() => void handleUseCurrentLocation(searchSheetStop)}
+                  disabled={locatingStop === searchSheetStop}
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                    Quick action
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                    {locatingStop === searchSheetStop ? 'Finding you...' : 'Use current location'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-[#64748b]">
+                    Set the nearest live location and place the pin automatically.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4 text-left transition hover:border-[#93c5fd] hover:bg-white"
+                  onClick={() => {
+                    closeLocationSearch();
+                    focusRouteMap(searchSheetStop);
+                  }}
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                    Map refine
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">Move pin on map</p>
+                  <p className="mt-1 text-xs leading-5 text-[#64748b]">
+                    Use only if the exact gate, door, or loading point needs correction.
+                  </p>
+                </button>
+                <div className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                    Route rule
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">Search first</p>
+                  <p className="mt-1 text-xs leading-5 text-[#64748b]">
+                    Search the place, let the map jump there, then confirm the pin.
+                  </p>
+                </div>
+              </div>
+
+              {savedPlaces.length ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Saved places
+                    </p>
+                    <p className="mt-1 text-sm text-[#64748b]">
+                      One-tap places for repeat routes like home, office, or warehouse.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {savedPlaces.map((place) => (
+                      <button
+                        key={place.id}
+                        type="button"
+                        className="rounded-[18px] border border-[#d7e0ec] bg-white px-4 py-3 text-left transition hover:border-[#93c5fd] hover:bg-[#f8fbff]"
+                        onClick={() => handleSelectSavedPlace(searchSheetStop, place)}
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#1b3f72]">
+                          {place.label}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{buildPlaceLabel(place.address)}</p>
+                        <p className="mt-1 text-xs leading-5 text-[#64748b]">{place.address}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {recentPlaces.length ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Recent places
+                    </p>
+                    <p className="mt-1 text-sm text-[#64748b]">
+                      Reuse a recent location without typing again.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {recentPlaces.map((place) => (
+                      <button
+                        key={place.id}
+                        type="button"
+                        className="w-full rounded-[18px] border border-[#d7e0ec] bg-white px-4 py-3 text-left transition hover:border-[#93c5fd] hover:bg-[#f8fbff]"
+                        onClick={() => handleSelectRecentPlace(searchSheetStop, place)}
+                      >
+                        <p className="text-sm font-semibold text-[#1a1a2e]">{place.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-[#64748b]">{place.address}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {searchError ? (
+                <Alert title="Location search issue" variant="danger">
+                  {searchError}
+                </Alert>
+              ) : null}
+
+              <div className="sticky bottom-0 flex flex-wrap gap-3 border-t border-slate-100 bg-white pb-1 pt-4">
+                <Button
+                  type="button"
+                  className="rounded-[14px] px-4 py-3"
+                  onClick={() => void handleLocationSearch(searchSheetStop)}
+                  disabled={searchLoading}
+                >
+                  <Search className="mr-2 h-4 w-4" />
+                  {searchLoading ? 'Searching...' : 'Search location'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {error ? (
         <Alert title="Booking could not be created" variant="danger">
           {error}
         </Alert>
       ) : null}
 
-      {quoteError && step === 3 ? (
-        <Alert title="Quote unavailable" variant="warning">
-          {quoteError}
+      {pricingReviewRequired ? (
+        <Alert title="Rate review needed" variant="warning">
+          Final pricing will be confirmed by Zito after admin review and any contract or marketplace proposals needed for this trip.
         </Alert>
       ) : null}
 
@@ -713,13 +1133,7 @@ export default function NewBookingPage() {
         <RoutePreviewMap
           className="h-[250px]"
           titleBadge={`${selectedService.label} route`}
-          statusBadge={
-            quote
-              ? formatMoney(quote.totalPrice, quote.currency)
-              : quoteLoading
-                ? 'Calculating quote'
-                : 'Free map route'
-          }
+          statusBadge={customerQuoteBadge}
           points={[
             {
               label: 'Pickup',
@@ -755,27 +1169,9 @@ export default function NewBookingPage() {
 
             <div className="min-w-[118px] rounded-[18px] bg-[linear-gradient(180deg,#06101f_0%,#0b1730_100%)] px-3 py-3 text-right text-white shadow-[0_12px_28px_rgba(6,16,31,0.18)]">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/72">
-                Quote
+                {customerQuotePillLabel}
               </p>
-              <p className="mt-1 text-base font-bold">
-                {quote
-                  ? formatMoney(quote.totalPrice, quote.currency)
-                  : quoteLoading
-                    ? 'Calculating'
-                    : estimatedDistance != null
-                      ? `${estimatedDistance} km`
-                      : 'Route needed'}
-              </p>
-              {quote?.pricingScope ? (
-                <p className="mt-1 text-[10px] font-medium text-cyan-100/72">
-                  {quote.pricingScope.county ?? quote.pricingScope.countryCode} /{' '}
-                  {quote.pricingScope.localityType === 'ANY'
-                    ? 'Any area'
-                    : quote.pricingScope.localityType === 'TOWN'
-                      ? 'Town'
-                      : 'Rural'}
-                </p>
-              ) : null}
+              <p className="mt-1 text-base font-bold">{customerQuotePillValue}</p>
             </div>
           </div>
 
@@ -794,13 +1190,13 @@ export default function NewBookingPage() {
                   ? 'bg-[#dbeafe] ring-2 ring-[#60a5fa]'
                   : 'bg-[#f1f5fb] hover:bg-[#e8f1ff]',
               ].join(' ')}
-              onClick={() => focusRouteMap('pickup')}
+              onClick={() => openLocationSearch('pickup')}
             >
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
                 Pickup
               </p>
               <p className="mt-1 line-clamp-2 text-sm font-semibold text-[#1a1a2e]">
-                {pickupAddress || 'Add pickup stop'}
+                {pickupAddress || 'Search pickup location'}
               </p>
             </button>
             <button
@@ -811,340 +1207,255 @@ export default function NewBookingPage() {
                   ? 'bg-[#ede9fe] ring-2 ring-[#a78bfa]'
                   : 'bg-[#f1f5fb] hover:bg-[#f4efff]',
               ].join(' ')}
-              onClick={() => focusRouteMap('drop')}
+              onClick={() => openLocationSearch('drop')}
             >
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
                 Drop
               </p>
               <p className="mt-1 line-clamp-2 text-sm font-semibold text-[#1a1a2e]">
-                {dropAddress || 'Add drop stop'}
+                {dropAddress || 'Search drop-off location'}
               </p>
             </button>
-          </div>
-
-          <div className="mt-4 rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
-              Pricing scope
-            </p>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-[#475569]">Country</span>
-                <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
-                  value={pricingCountryCode}
-                  onChange={(event) => {
-                    const nextCountry = event.target.value;
-                    setPricingScopeMode('manual');
-                    setPricingCountryCode(nextCountry);
-                    if (nextCountry !== 'KE') {
-                      setPricingCounty('');
-                      setPricingAreaType('ANY');
-                    }
-                  }}
-                >
-                  {SUPPORTED_PRICING_COUNTRIES.map((option) => (
-                    <option key={option.code} value={option.code}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-[#475569]">Kenya county</span>
-                <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100 disabled:text-slate-400"
-                  disabled={pricingCountryCode !== 'KE'}
-                  value={pricingCounty}
-                  onChange={(event) => {
-                    setPricingScopeMode('manual');
-                    setPricingCounty(event.target.value);
-                  }}
-                >
-                  <option value="">All Kenya counties</option>
-                  {KENYA_COUNTIES.map((county) => (
-                    <option key={county} value={county}>
-                      {county}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-[#475569]">Area type</span>
-                <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
-                  value={pricingAreaType}
-                  onChange={(event) => {
-                    setPricingScopeMode('manual');
-                    setPricingAreaType(event.target.value as LocalityRateType);
-                  }}
-                >
-                  {LOCATION_RATE_TYPES.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {detectedPricingScope ? (
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                <span
-                  className={[
-                    'inline-flex rounded-full px-2.5 py-1 font-semibold',
-                    usingPickupDetectedScope
-                      ? 'bg-[#dcfce7] text-[#166534]'
-                      : 'bg-[#fef3c7] text-[#92400e]',
-                  ].join(' ')}
-                >
-                  {usingPickupDetectedScope ? 'Pickup scope auto-detected' : 'Manual pricing override'}
-                </span>
-                <span className="text-[#64748b]">
-                  {usingPickupDetectedScope
-                    ? `Using ${detectedPricingScope.summary} from the pickup map pin.`
-                    : `Pickup pin suggested ${detectedPricingScope.summary}.`}
-                </span>
-                {!usingPickupDetectedScope ? (
-                  <button
-                    type="button"
-                    className="font-semibold text-[#1d4ed8] transition hover:text-[#1e3a8a]"
-                    onClick={restorePickupDetectedPricingScope}
-                  >
-                    Use pickup scope
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-[#64748b]">
-                Kenya quotes can use county pricing and separate town versus rural rates before surge and tax are applied. The pickup map pin will auto-fill this scope when the lookup can identify it.
-              </p>
-            )}
           </div>
         </div>
       </section>
 
       {step === 1 ? (
-        <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-          <div className="mb-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-              Route setup
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Add both stops cleanly</h2>
-            <p className="mt-1 text-sm leading-6 text-[#64748b]">
-              Tap the map for pickup first, then drop. The address fills from the pin and only
-              then becomes editable for manual refinement.
-            </p>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-[1.15fr,0.85fr]">
-            <div className="space-y-4" ref={routePickerRef}>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={[
-                    'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition',
-                    activeStopSelection === 'pickup'
-                      ? 'border-transparent bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white shadow-[0_10px_24px_rgba(59,130,246,0.18)]'
-                      : 'border-[#cbd5e1] bg-white text-[#1b3f72] hover:bg-[#eef4ff]',
-                  ].join(' ')}
-                  onClick={() => focusRouteMap('pickup')}
-                >
-                  <ArrowUpCircle className="h-4 w-4" />
-                  Pickup pin
-                </button>
-                <button
-                  type="button"
-                  className={[
-                    'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition',
-                    activeStopSelection === 'drop'
-                      ? 'border-transparent bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white shadow-[0_10px_24px_rgba(59,130,246,0.18)]'
-                      : 'border-[#cbd5e1] bg-white text-[#1b3f72] hover:bg-[#eef4ff]',
-                  ].join(' ')}
-                  onClick={() => focusRouteMap('drop')}
-                >
-                  <ArrowDownCircle className="h-4 w-4" />
-                  Drop pin
-                </button>
-              </div>
-
-              <RouteLocationPicker
-                activeStopKind={activeStopSelection}
-                pickup={{
-                  lat: parseCoordinate(pickupLat),
-                  lng: parseCoordinate(pickupLng),
-                }}
-                drop={{
-                  lat: parseCoordinate(dropLat),
-                  lng: parseCoordinate(dropLng),
-                }}
-                onSelect={(kind, latitude, longitude) => {
-                  void handleMapPinSelection(kind, latitude, longitude);
-                }}
-              />
-
-              <div className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-                  Pin-first rule
-                </p>
-                <p className="mt-2 text-sm leading-6 text-[#475569]">
-                  The route begins from the map. After each pin drops, the stop address fills
-                  automatically and you can refine the wording manually if the landmark needs
-                  cleanup.
-                </p>
-              </div>
+        <div className="space-y-4">
+          <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+            <div className="mb-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                Route setup
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Search pickup and drop-off first</h2>
+              <p className="mt-1 text-sm leading-6 text-[#64748b]">
+                Tap pickup or drop-off, search the place, and let the map move there automatically.
+                Only use the map to fine-tune the exact gate, door, or loading point if needed.
+              </p>
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-[18px] bg-[#f8faff] p-4">
-                <div className="flex items-start gap-3">
-                  <div className="flex flex-col items-center">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#dbeafe] text-[#2563eb]">
-                      <ArrowUpCircle className="h-4.5 w-4.5" />
-                    </div>
-                    <div className="mt-2 h-14 w-px bg-[#cbd5e1]" />
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={[
-                          'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
-                          pickupPinned ? 'bg-[#dbeafe] text-[#1d4ed8]' : 'bg-[#eef2f7] text-[#64748b]',
-                        ].join(' ')}
-                      >
-                        {pickupPinned ? 'Pickup pin ready' : 'Pin required'}
-                      </span>
-                      {resolvingMapStop === 'pickup' ? (
-                        <span className="inline-flex rounded-full bg-[#fff7ed] px-2.5 py-1 text-[10px] font-semibold text-[#c2410c]">
-                          Resolving address...
-                        </span>
-                      ) : null}
-                    </div>
+              <div className="space-y-4" ref={routePickerRef}>
+                <RouteLocationPicker
+                  activeStopKind={activeStopSelection}
+                  pickup={{
+                    lat: parseCoordinate(pickupLat),
+                    lng: parseCoordinate(pickupLng),
+                  }}
+                  drop={{
+                    lat: parseCoordinate(dropLat),
+                    lng: parseCoordinate(dropLng),
+                  }}
+                  onSelect={(kind, latitude, longitude) => {
+                    void handleMapPinSelection(kind, latitude, longitude);
+                  }}
+                />
 
-                    <Input
-                      label="Pickup address"
-                      tone="light"
-                      value={pickupAddress}
-                      onChange={(event) => setPickupAddress(event.target.value)}
-                      placeholder="Drop the pickup pin first, then refine the address"
-                      help={
-                        pickupPinned
-                          ? 'Auto-filled from the pickup pin. Refine the landmark or building text if needed.'
-                          : 'Tap Pickup pin, then tap the map to unlock the address.'
-                      }
-                      disabled={!pickupPinned}
-                      required
-                    />
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Input
-                        label="Contact name"
-                        tone="light"
-                        value={pickupContactName}
-                        onChange={(event) => setPickupContactName(event.target.value)}
-                        placeholder="Pickup contact"
-                        required
-                      />
-                      <Input
-                        label="Phone"
-                        tone="light"
-                        value={pickupContactPhone}
-                        onChange={(event) => setPickupContactPhone(event.target.value)}
-                        placeholder="+254..."
-                        required
-                      />
+                {pickupPinned && dropPinned ? (
+                  <div className="rounded-[20px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                          Route ready
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
+                          {estimatedDistance != null
+                            ? `${estimatedDistance} km preview ready for vehicle selection`
+                            : 'Both stops are selected and ready for the next step.'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-[#dcfce7] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#15803d]">
+                        Pickup and drop confirmed
+                      </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        className="rounded-[12px] px-3 py-2 text-xs"
-                        onClick={() => focusRouteMap('pickup')}
-                      >
-                        {pickupPinned ? 'Move pickup pin' : 'Select pickup on map'}
-                      </Button>
-                      {pickupPinned ? (
-                        <span className="text-xs text-[#64748b]">
-                          {pickupLat}, {pickupLng}
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-[16px] bg-white px-4 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                          Pickup
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{pickupAddress}</p>
+                      </div>
+                      <div className="rounded-[16px] bg-white px-4 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                          Drop-off
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{dropAddress}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-[20px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Search-first route
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#475569]">
+                      Search the location first, let the map place the pin automatically, then
+                      adjust the pin only if the exact entrance, loading bay, or building frontage
+                      needs cleanup.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-[18px] bg-[#f8faff] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#dbeafe] text-[#2563eb]">
+                        <ArrowUpCircle className="h-4.5 w-4.5" />
+                      </div>
+                      <div className="mt-2 h-14 w-px bg-[#cbd5e1]" />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={[
+                            'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
+                            pickupPinned ? 'bg-[#dbeafe] text-[#1d4ed8]' : 'bg-[#eef2f7] text-[#64748b]',
+                          ].join(' ')}
+                        >
+                          {pickupPinned ? 'Pickup pin ready' : 'Pin required'}
                         </span>
-                      ) : null}
+                        {resolvingMapStop === 'pickup' ? (
+                          <span className="inline-flex rounded-full bg-[#fff7ed] px-2.5 py-1 text-[10px] font-semibold text-[#c2410c]">
+                            Resolving address...
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <Input
+                        label="Pickup address"
+                        tone="light"
+                        value={pickupAddress}
+                        onChange={(event) => setPickupAddress(event.target.value)}
+                        placeholder="Search pickup first, then refine the address if needed"
+                        help={
+                          pickupPinned
+                            ? 'Auto-filled from the selected pickup location. Refine the landmark or building text if needed.'
+                            : 'Search pickup first. Use current location or move pin only if the exact gate needs adjustment.'
+                        }
+                        disabled={!pickupPinned}
+                        required
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          className="rounded-[12px] px-3 py-2 text-xs"
+                          onClick={() => openLocationSearch('pickup')}
+                        >
+                          {pickupPinned ? 'Search pickup again' : 'Search pickup'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="rounded-[12px] border border-[#cbd5e1] bg-white px-3 py-2 text-xs text-[#1b3f72] shadow-none hover:bg-[#eef4ff]"
+                          onClick={() => focusRouteMap('pickup')}
+                        >
+                          {pickupPinned ? 'Adjust pickup pin' : 'Move pin on map'}
+                        </Button>
+                        {pickupPinned ? (
+                          <>
+                            {SAVED_PLACE_LABELS.map((label) => (
+                              <button
+                                key={label}
+                                type="button"
+                                className="rounded-full border border-[#cbd5e1] bg-white px-3 py-2 text-[11px] font-semibold text-[#1b3f72] transition hover:bg-[#eef4ff]"
+                                onClick={() => saveNamedPlace(label, 'pickup')}
+                              >
+                                Save as {label}
+                              </button>
+                            ))}
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded-[18px] bg-[#f8faff] p-4">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ede9fe] text-[#7c3aed]">
-                    <ArrowDownCircle className="h-4.5 w-4.5" />
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={[
-                          'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
-                          dropPinned ? 'bg-[#ede9fe] text-[#7c3aed]' : 'bg-[#eef2f7] text-[#64748b]',
-                        ].join(' ')}
-                      >
-                        {dropPinned ? 'Drop pin ready' : 'Pin required'}
-                      </span>
-                      {resolvingMapStop === 'drop' ? (
-                        <span className="inline-flex rounded-full bg-[#fff7ed] px-2.5 py-1 text-[10px] font-semibold text-[#c2410c]">
-                          Resolving address...
-                        </span>
-                      ) : null}
+                <div className="rounded-[18px] bg-[#f8faff] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ede9fe] text-[#7c3aed]">
+                      <ArrowDownCircle className="h-4.5 w-4.5" />
                     </div>
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={[
+                            'inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold',
+                            dropPinned ? 'bg-[#ede9fe] text-[#7c3aed]' : 'bg-[#eef2f7] text-[#64748b]',
+                          ].join(' ')}
+                        >
+                          {dropPinned ? 'Drop pin ready' : 'Pin required'}
+                        </span>
+                        {resolvingMapStop === 'drop' ? (
+                          <span className="inline-flex rounded-full bg-[#fff7ed] px-2.5 py-1 text-[10px] font-semibold text-[#c2410c]">
+                            Resolving address...
+                          </span>
+                        ) : null}
+                      </div>
 
-                    <Input
-                      label="Drop-off address"
-                      tone="light"
-                      value={dropAddress}
-                      onChange={(event) => setDropAddress(event.target.value)}
-                      placeholder="Drop the drop pin first, then refine the address"
-                      help={
-                        dropPinned
-                          ? 'Auto-filled from the drop pin. Refine the landmark or building text if needed.'
-                          : 'Tap Drop pin, then tap the map to unlock the address.'
-                      }
-                      disabled={!dropPinned}
-                      required
-                    />
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <Input
-                        label="Receiver name"
+                        label="Drop-off address"
                         tone="light"
-                        value={dropContactName}
-                        onChange={(event) => setDropContactName(event.target.value)}
-                        placeholder="Receiver contact"
+                        value={dropAddress}
+                        onChange={(event) => setDropAddress(event.target.value)}
+                        placeholder="Search drop-off first, then refine the address if needed"
+                        help={
+                          dropPinned
+                            ? 'Auto-filled from the selected drop-off location. Refine the landmark or building text if needed.'
+                            : 'Search drop-off first. Use move pin only if the exact gate needs adjustment.'
+                        }
+                        disabled={!dropPinned}
                         required
                       />
-                      <Input
-                        label="Receiver phone"
-                        tone="light"
-                        value={dropContactPhone}
-                        onChange={(event) => setDropContactPhone(event.target.value)}
-                        placeholder="+254..."
-                        required
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        className="rounded-[12px] px-3 py-2 text-xs"
-                        onClick={() => focusRouteMap('drop')}
-                      >
-                        {dropPinned ? 'Move drop pin' : 'Select drop on map'}
-                      </Button>
-                      {dropPinned ? (
-                        <span className="text-xs text-[#64748b]">
-                          {dropLat}, {dropLng}
-                        </span>
-                      ) : null}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          className="rounded-[12px] px-3 py-2 text-xs"
+                          onClick={() => openLocationSearch('drop')}
+                        >
+                          {dropPinned ? 'Search drop-off again' : 'Search drop-off'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="rounded-[12px] border border-[#cbd5e1] bg-white px-3 py-2 text-xs text-[#1b3f72] shadow-none hover:bg-[#eef4ff]"
+                          onClick={() => focusRouteMap('drop')}
+                        >
+                          {dropPinned ? 'Adjust drop pin' : 'Move pin on map'}
+                        </Button>
+                        {dropPinned ? (
+                          <>
+                            {SAVED_PLACE_LABELS.map((label) => (
+                              <button
+                                key={label}
+                                type="button"
+                                className="rounded-full border border-[#cbd5e1] bg-white px-3 py-2 text-[11px] font-semibold text-[#1b3f72] transition hover:bg-[#eef4ff]"
+                                onClick={() => saveNamedPlace(label, 'drop')}
+                              >
+                                Save as {label}
+                              </button>
+                            ))}
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+
+          <CustomerAiAssistant
+            compact
+            screenContext="CUSTOMER_BOOKING"
+            title="Need help with this booking step?"
+            description="Ask about pickup search, drop-off search, route confirmation, vehicle choice, or how customer-owned fleet booking works. Zito Assistant explains the procedure without exposing pricing logic."
+            quickActions={bookingAiQuickActions}
+            placeholder="Example: How should I confirm pickup and drop-off before I choose a vehicle?"
+            helpText="Ask only about customer booking procedure, route setup, quote next steps, or owned-fleet booking."
+          />
+        </div>
       ) : null}
 
       {step === 2 ? (
@@ -1169,6 +1480,10 @@ export default function NewBookingPage() {
                         : 'border-[#b8c9e4] bg-white text-[#1b3f72] hover:bg-[#eef4ff]',
                     ].join(' ')}
                     onClick={() => {
+                      if (item.value === 'WAREHOUSE') {
+                        router.push('/customer/warehouse');
+                        return;
+                      }
                       setServiceType(item.value);
                       setVehicleType(item.suggestedVehicleType);
                     }}
@@ -1184,12 +1499,16 @@ export default function NewBookingPage() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
               Vehicle cards
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Instant pricing selection</h2>
+            <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Choose the best vehicle for this route</h2>
+            <p className="mt-1 text-sm leading-6 text-[#64748b]">
+              Compare capacity, route fit, and dispatch speed quickly. The review step shows either the final quote or the rate-review status for this trip.
+            </p>
 
-              <div className="mt-3 space-y-2">
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 {availableVehicleTypes.map((option) => {
                   const meta = vehicleMeta[option];
                   const active = option === vehicleType;
+                  const recommended = option === selectedService.suggestedVehicleType;
                   const Icon =
                     option === 'MOTORBIKE'
                       ? Bike
@@ -1204,30 +1523,58 @@ export default function NewBookingPage() {
                     key={option}
                     type="button"
                     className={[
-                      'flex w-full items-center gap-3 rounded-[14px] border px-3 py-3 text-left transition',
+                      'relative flex w-full flex-col items-start gap-3 rounded-[18px] border px-4 py-4 text-left transition',
                       active
-                        ? 'border-[#1b3f72] bg-[#eef4ff]'
+                        ? 'border-[#1b3f72] bg-[linear-gradient(180deg,#eef6ff_0%,#ffffff_100%)] shadow-[0_12px_30px_rgba(27,63,114,0.10)]'
                         : 'border-[#e2e8f0] bg-[#f8faff] hover:border-[#b8c9e4] hover:bg-white',
                     ].join(' ')}
                     onClick={() => setVehicleType(option)}
                   >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-white text-[#1b3f72] shadow-sm">
-                      <Icon className="h-5 w-5" />
+                    <div className="flex w-full items-start justify-between gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-white text-[#1b3f72] shadow-sm">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {recommended ? (
+                          <span className="inline-flex rounded-full bg-[#dcfce7] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#15803d]">
+                            Recommended
+                          </span>
+                        ) : null}
+                        {active ? (
+                          <span className="inline-flex rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+                            Selected
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-[#1a1a2e]">
+
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold text-[#1a1a2e]">
                         {meta?.label ?? option.replaceAll('_', ' ')}
                       </p>
-                      <p className="text-[11px] text-[#64748b]">{meta?.capacity ?? 'Vehicle match for this route.'}</p>
+                      <p className="mt-1 text-[12px] text-[#64748b]">
+                        {meta?.capacity ?? 'Vehicle match for this route.'}
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-semibold text-[#1b3f72]">{meta?.eta ?? 'Route matched'}</p>
-                      {active ? (
-                        <span className="mt-1 inline-flex rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 px-2 py-1 text-[10px] font-semibold text-white">
-                          Selected
-                        </span>
-                      ) : null}
+
+                    <div className="grid w-full grid-cols-2 gap-2">
+                      <div className="rounded-[14px] bg-white px-3 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">
+                          Dispatch
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#1b3f72]">{meta?.eta ?? 'Route matched'}</p>
+                      </div>
+                      <div className="rounded-[14px] bg-white px-3 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">
+                          Best use
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{selectedService.label}</p>
+                      </div>
                     </div>
+
+                    <p className="text-xs leading-5 text-[#64748b]">
+                      {meta?.note ?? 'Recommended option for this service lane.'}
+                    </p>
                   </button>
                 );
               })}
@@ -1466,34 +1813,109 @@ export default function NewBookingPage() {
 
       {step === 3 ? (
         <div className="space-y-4">
-          <section className="rounded-[22px] border border-transparent bg-[linear-gradient(135deg,#06101f_0%,#0f1b31_100%)] p-4 text-white shadow-[0_12px_30px_rgba(6,16,31,0.22)]">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/72">
-              Estimated quote
-            </p>
-            <p className="mt-2 text-3xl font-extrabold">
-              {quote
-                ? formatMoney(quote.totalPrice, quote.currency)
-                : quoteLoading
-                  ? 'Calculating...'
-                  : 'Awaiting route'}
-            </p>
-            <p className="mt-2 text-sm text-slate-300">
-              {estimatedDistance != null
-                ? `${estimatedDistance} km route`
-                : 'Add both stops to calculate price.'}
-            </p>
-            {quote?.baseCurrencyQuote && quote.baseCurrencyQuote.currency !== quote.currency ? (
-              <p className="mt-2 text-xs text-slate-400">
-                Base KES quote: {formatMoney(quote.baseCurrencyQuote.totalPrice, quote.baseCurrencyQuote.currency)}
-              </p>
-            ) : null}
+          <section className="overflow-hidden rounded-[26px] border border-transparent bg-[linear-gradient(135deg,#06101f_0%,#0f1b31_100%)] p-5 text-white shadow-[0_12px_30px_rgba(6,16,31,0.22)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/72">
+                  Final review
+                </p>
+                <h2 className="mt-1 text-2xl font-bold leading-tight">Review your trip before you confirm</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                  Check the route, selected vehicle, and contact details. You can still edit the route or vehicle before creating the booking.
+                </p>
+              </div>
+
+              <div className="rounded-[20px] bg-white/8 px-4 py-4 text-right shadow-[0_10px_30px_rgba(15,23,42,0.16)] backdrop-blur">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/72">
+                  {quote ? 'Estimated quote' : 'Rate status'}
+                </p>
+                <p className="mt-2 text-3xl font-extrabold">
+                  {quote
+                    ? formatMoney(quote.totalPrice, quote.currency)
+                    : quoteLoading
+                      ? 'Preparing...'
+                      : pricingReviewRequired
+                        ? 'Under review'
+                        : 'Awaiting route'}
+                </p>
+                <p className="mt-2 text-sm text-slate-300">
+                  {pricingReviewRequired
+                    ? 'Admin will confirm the final rate from contract terms or marketplace proposals.'
+                    : estimatedDistance != null
+                      ? `${estimatedDistance} km route`
+                      : 'Add both stops to prepare the booking.'}
+                </p>
+                {quote?.baseCurrencyQuote && quote.baseCurrencyQuote.currency !== quote.currency ? (
+                  <p className="mt-2 text-xs text-slate-400">
+                    Base KES quote: {formatMoney(quote.baseCurrencyQuote.totalPrice, quote.baseCurrencyQuote.currency)}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="rounded-[18px] border border-white/10 bg-white/8 px-4 py-4 backdrop-blur">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200/72">
+                  Service lane
+                </p>
+                <p className="mt-1 text-base font-semibold">{selectedService.label}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-300">
+                  {selectedService.description}
+                </p>
+              </div>
+              <div className="rounded-[18px] border border-white/10 bg-white/8 px-4 py-4 backdrop-blur">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200/72">
+                  Selected vehicle
+                </p>
+                <p className="mt-1 text-base font-semibold">{selectedVehicle.label}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-300">
+                  {selectedVehicle.eta} · {selectedVehicle.capacity}
+                </p>
+              </div>
+              <div className="rounded-[18px] border border-white/10 bg-white/8 px-4 py-4 backdrop-blur">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200/72">
+                  Booking confidence
+                </p>
+                <p className="mt-1 text-base font-semibold">
+                  {pricingReviewRequired ? 'Route ready for rate review' : 'Route and quote ready'}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-300">
+                  {pricingReviewRequired
+                    ? 'We’ll use the confirmed route, then let admin and approved supply confirm the final rate before dispatch.'
+                    : 'We’ll use the confirmed route, then coordinate the pickup and drop-off using the contacts below.'}
+                </p>
+              </div>
+            </div>
           </section>
 
           <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-              Route summary
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Stops and service</h2>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                  Route summary
+                </p>
+                <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Stops and service</h2>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-[12px] border border-[#cbd5e1] bg-white px-3 py-2 text-xs text-[#1b3f72] shadow-none hover:bg-[#eef4ff]"
+                  onClick={() => setStep(1)}
+                >
+                  Edit route
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-[12px] border border-[#cbd5e1] bg-white px-3 py-2 text-xs text-[#1b3f72] shadow-none hover:bg-[#eef4ff]"
+                  onClick={() => setStep(2)}
+                >
+                  Change vehicle
+                </Button>
+              </div>
+            </div>
 
             <div className="mt-4 space-y-3">
               {summaryStops.map((stop, index) => (
@@ -1540,6 +1962,77 @@ export default function NewBookingPage() {
                   Vehicle
                 </p>
                 <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{selectedVehicle.label}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[16px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                What happens next
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[#475569]">
+                {pricingReviewRequired
+                  ? 'After you send this request, Zito will review contract terms or marketplace proposals, confirm the final rate, and then move the trip toward assignment.'
+                  : 'After you confirm, Zito will create the booking reference, prepare assignment, and move you to live tracking once the trip is active.'}
+              </p>
+            </div>
+          </section>
+
+          <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+              Stop contacts
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Who should we reach at each stop?</h2>
+            <p className="mt-1 text-sm leading-6 text-[#64748b]">
+              Add the pickup and receiver contacts after the route is confirmed so the early booking flow stays simple.
+            </p>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-[18px] bg-[#f8faff] p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                  Pickup contact
+                </p>
+                <div className="mt-3 grid gap-3">
+                  <Input
+                    label="Contact name"
+                    tone="light"
+                    value={pickupContactName}
+                    onChange={(event) => setPickupContactName(event.target.value)}
+                    placeholder="Pickup contact"
+                    required
+                  />
+                  <Input
+                    label="Phone"
+                    tone="light"
+                    value={pickupContactPhone}
+                    onChange={(event) => setPickupContactPhone(event.target.value)}
+                    placeholder="+254..."
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-[18px] bg-[#f8faff] p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                  Drop-off contact
+                </p>
+                <div className="mt-3 grid gap-3">
+                  <Input
+                    label="Receiver name"
+                    tone="light"
+                    value={dropContactName}
+                    onChange={(event) => setDropContactName(event.target.value)}
+                    placeholder="Receiver contact"
+                    required
+                  />
+                  <Input
+                    label="Receiver phone"
+                    tone="light"
+                    value={dropContactPhone}
+                    onChange={(event) => setDropContactPhone(event.target.value)}
+                    placeholder="+254..."
+                    required
+                  />
+                </div>
               </div>
             </div>
           </section>
@@ -1677,20 +2170,21 @@ export default function NewBookingPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              {[
-                'Pickup and drop addresses should match the actual route.',
-                'Each stop should have the right contact and phone number.',
-                'Free map lookup is now preferred; manual route pins remain only as a fallback.',
-              ].map((item) => (
-                <div key={item} className="flex gap-3 rounded-[14px] bg-[#f8faff] px-3 py-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#1b3f72] shadow-sm">
+              <div className="rounded-[18px] border border-[#d7e0ec] bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-4 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#1b3f72] shadow-sm">
                     <ShieldCheck className="h-4 w-4" />
                   </div>
-                  <p className="text-sm leading-6 text-[#475569]">{item}</p>
+                  <div>
+                    <p className="text-sm font-semibold text-[#1a1a2e]">Final confirmation</p>
+                    <p className="mt-1 text-sm leading-6 text-[#475569]">
+                      {pricingReviewRequired
+                        ? 'Review the route, stop contacts, and selected vehicle before sending this booking for final rate confirmation.'
+                        : 'Review the route, stop contacts, selected vehicle, and quote before creating the booking.'}
+                    </p>
+                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
           </section>
         </div>
       ) : null}
@@ -1699,7 +2193,7 @@ export default function NewBookingPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-[11px] font-medium text-[#64748b]">
             {step === 1 ? (
-              <MapPinned className="h-4 w-4 text-[#1b3f72]" />
+                <MapPinned className="h-4 w-4 text-[#1b3f72]" />
             ) : step === 2 ? (
               <Truck className="h-4 w-4 text-[#1b3f72]" />
             ) : (
@@ -1707,10 +2201,12 @@ export default function NewBookingPage() {
             )}
             <span>
               {step === 1
-                ? 'Finish route details.'
+                ? 'Confirm the route.'
                 : step === 2
                   ? 'Choose the best vehicle.'
-                  : 'Review and create the booking.'}
+                  : pricingReviewRequired
+                    ? 'Add contacts and send for rate review.'
+                    : 'Add contacts and create the booking.'}
             </span>
           </div>
 
@@ -1734,11 +2230,17 @@ export default function NewBookingPage() {
                   void advanceStep();
                 }}
               >
-                {step === 1 ? 'Continue to vehicles' : 'Review quote'}
+                {step === 1 ? 'Confirm route' : 'Review booking'}
               </Button>
             ) : (
               <Button disabled={saving} type="submit" className="rounded-[14px] px-4">
-                {saving ? 'Creating...' : 'Confirm booking'}
+                {saving
+                  ? pricingReviewRequired
+                    ? 'Sending...'
+                    : 'Creating...'
+                  : pricingReviewRequired
+                    ? 'Send for rate review'
+                    : 'Confirm booking'}
               </Button>
             )}
           </div>

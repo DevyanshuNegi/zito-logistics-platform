@@ -20,6 +20,50 @@ function formatMoney(value) {
   return `KES ${Number(value || 0).toLocaleString()}`;
 }
 
+function prettifyToken(value) {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatRoute(item) {
+  return (
+    item.routeSummary?.summary ||
+    (item.serviceAreaHints || []).join(' -> ') ||
+    'Coverage by matched route'
+  );
+}
+
+function formatRequirements(item) {
+  const fleet = item.fleetRequirements || {};
+  const stopSummary = item.stopSummary || {};
+  const parts = [];
+
+  if (fleet.vehicleType) {
+    parts.push(prettifyToken(fleet.vehicleType));
+  }
+  if (fleet.cargoType) {
+    parts.push(prettifyToken(fleet.cargoType));
+  }
+  if (fleet.cargoWeightKg != null) {
+    parts.push(`${Number(fleet.cargoWeightKg).toLocaleString()} kg`);
+  }
+  if (stopSummary.totalStops) {
+    parts.push(
+      `${stopSummary.totalStops} stop${stopSummary.totalStops === 1 ? '' : 's'}`,
+    );
+  }
+  if (fleet.estimatedDistanceKm != null) {
+    parts.push(`${Number(fleet.estimatedDistanceKm).toLocaleString()} km`);
+  }
+
+  return (
+    parts.join(' · ') ||
+    'Requirements will appear here once dispatch publishes the load.'
+  );
+}
+
 export default function AgentOpportunitiesScreen() {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +93,10 @@ export default function AgentOpportunitiesScreen() {
     setBusyId(bookingId);
     try {
       setError('');
-      await api.post(`/api/v1/marketplace/partner/opportunities/${bookingId}/accept`, {});
+      await api.post(
+        `/api/v1/marketplace/partner/opportunities/${bookingId}/accept`,
+        {},
+      );
       load();
     } catch (requestError) {
       setError(requestError.message);
@@ -105,7 +152,8 @@ export default function AgentOpportunitiesScreen() {
       >
         <Text style={styles.title}>Marketplace Loads</Text>
         <Text style={styles.subtitle}>
-          Review fixed-price and bid-based supply opportunities matched to the agent service area.
+          Review matched supply requirements only. Customer details unlock after
+          award.
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -125,26 +173,38 @@ export default function AgentOpportunitiesScreen() {
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardTitle}>
-                        {item.booking?.reference || item.bookingReference || 'Opportunity'}
+                        {item.bookingReference || 'Opportunity'}
                       </Text>
                       <Text style={styles.meta}>
-                        {item.serviceType} · {item.pricingModel?.replace('_', ' ')}
+                        {prettifyToken(item.serviceType)} ·{' '}
+                        {prettifyToken(item.pricingModel)}
                       </Text>
                     </View>
-                    <StatusBadge status={String(item.status || 'open').toLowerCase()} />
+                    <StatusBadge
+                      status={String(item.status || 'open').toLowerCase()}
+                    />
                   </View>
 
+                  <Text style={styles.copy}>{formatRoute(item)}</Text>
+                  <Text style={styles.copy}>{formatRequirements(item)}</Text>
                   <Text style={styles.copy}>
-                    {(item.serviceAreaHints || []).join(', ') || 'Coverage by matched service area'}
-                  </Text>
-                  <Text style={styles.copy}>
-                    Fixed price: {formatMoney(item.fixedPrice || item.bookingPrice)} · Minimum bid:{' '}
+                    Fixed price: {formatMoney(item.fixedPrice || item.bookingPrice)} ·
+                    {' '}Minimum bid:{' '}
                     {item.minimumBid != null ? formatMoney(item.minimumBid) : 'N/A'}
                   </Text>
+                  {item.myBid ? (
+                    <Text style={styles.copy}>
+                      My bid: {formatMoney(item.myBid.amount)} ·{' '}
+                      {prettifyToken(item.myBid.status)}
+                    </Text>
+                  ) : null}
 
                   {isFixed ? (
                     <TouchableOpacity
-                      style={[styles.primaryBtn, busyId === bookingId && styles.primaryBtnDim]}
+                      style={[
+                        styles.primaryBtn,
+                        busyId === bookingId && styles.primaryBtnDim,
+                      ]}
                       disabled={busyId === bookingId}
                       onPress={() => handleAccept(bookingId)}
                     >
@@ -158,14 +218,20 @@ export default function AgentOpportunitiesScreen() {
                         style={styles.input}
                         value={String(bidDrafts[bookingId] || '')}
                         onChangeText={(value) =>
-                          setBidDrafts((current) => ({ ...current, [bookingId]: value.replace(/[^0-9.]/g, '') }))
+                          setBidDrafts((current) => ({
+                            ...current,
+                            [bookingId]: value.replace(/[^0-9.]/g, ''),
+                          }))
                         }
                         placeholder="Enter bid amount"
                         placeholderTextColor={colors.textFaint}
                         keyboardType="numeric"
                       />
                       <TouchableOpacity
-                        style={[styles.primaryBtn, busyId === bookingId && styles.primaryBtnDim]}
+                        style={[
+                          styles.primaryBtn,
+                          busyId === bookingId && styles.primaryBtnDim,
+                        ]}
                         disabled={busyId === bookingId}
                         onPress={() => handleBid(bookingId)}
                       >
@@ -187,7 +253,12 @@ export default function AgentOpportunitiesScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' },
+  center: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   content: { padding: 20, gap: 16, paddingBottom: 40 },
   title: { color: colors.text, fontSize: 24, fontWeight: '800' },
   subtitle: { color: colors.textMuted, fontSize: 14, lineHeight: 21 },
@@ -201,7 +272,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.bgElevated,
   },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginBottom: 10 },
+  cardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 10,
+  },
   cardTitle: { color: colors.text, fontSize: 14, fontWeight: '700' },
   meta: { color: colors.textFaint, fontSize: 11, marginTop: 4 },
   copy: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 6 },

@@ -1,220 +1,64 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Spinner } from '@/components/ui/Spinner';
-import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
-import { FuelReportPanel } from '@/components/operations/FuelReportPanel';
-import { ApiError, api } from '@/lib/api';
-import { formatStatus } from '@/lib/format';
-import { VEHICLE_TYPES } from '@/lib/phase-one';
-
-type Driver = {
-  id: string;
-  user?: {
-    fullName?: string | null;
-  } | null;
-};
-
-type Vehicle = {
-  id: string;
-  plateNumber: string;
-  type: string;
-  status: string;
-  driver?: {
-    user?: {
-      fullName?: string | null;
-    } | null;
-  } | null;
-};
-
-type BreakdownResponse = {
-  breakdowns: Array<{
-    id: string;
-    status: string;
-    description: string;
-    vehicle?: {
-      plateNumber?: string | null;
-    } | null;
-  }>;
-};
 
 export default function AgentFleetPage() {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [breakdowns, setBreakdowns] = useState<BreakdownResponse['breakdowns']>([]);
-  const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [plateNumber, setPlateNumber] = useState('');
-  const [make, setMake] = useState('');
-  const [model, setModel] = useState('');
-  const [year, setYear] = useState('');
-  const [type, setType] = useState('VAN');
-  const [capacityKg, setCapacityKg] = useState('');
-  const [capacityM3, setCapacityM3] = useState('');
-  const [driverId, setDriverId] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function loadFleet() {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const [vehicleResponse, breakdownResponse, driverResponse] = await Promise.all([
-        api.get<Vehicle[]>('/fleet'),
-        api.get<BreakdownResponse>('/fleet/breakdowns'),
-        api.get<Driver[]>('/drivers'),
-      ]);
-
-      setVehicles(vehicleResponse);
-      setBreakdowns(breakdownResponse.breakdowns);
-      setDrivers(driverResponse);
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Unable to load agent fleet.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void loadFleet();
-  }, []);
-
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-
-    try {
-      await api.post('/fleet', {
-        plateNumber,
-        make: make || undefined,
-        model: model || undefined,
-        year: year ? Number(year) : undefined,
-        type,
-        capacityKg: Number(capacityKg),
-        capacityM3: capacityM3 ? Number(capacityM3) : undefined,
-        driverId: driverId || undefined,
-      });
-
-      setPlateNumber('');
-      setMake('');
-      setModel('');
-      setYear('');
-      setType('VAN');
-      setCapacityKg('');
-      setCapacityM3('');
-      setDriverId('');
-      await loadFleet();
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Unable to create vehicle.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Vehicles" value={String(vehicles.length)} helper="Vehicles under this agent account." />
-        <StatCard label="Active" value={String(vehicles.filter((vehicle) => vehicle.status === 'ACTIVE').length)} helper="Ready to deploy." tone="success" />
-        <StatCard label="Breakdowns" value={String(breakdowns.filter((item) => item.status !== 'RESOLVED').length)} helper="Open vehicle incidents." tone="warning" />
+        <StatCard
+          label="Fleet rule"
+          value="No ownership"
+          helper="Agents do not add or manage owned vehicles in Zito."
+          tone="warning"
+        />
+        <StatCard
+          label="Agent focus"
+          value="Trip proposals"
+          helper="Agents work through marketplace and trip-proposal flows."
+          tone="success"
+        />
+        <StatCard
+          label="Ops visibility"
+          value="Admin-led"
+          helper="Vehicle approval, GPS setup, and onboarding stay with fleet owners and internal ops."
+          tone="info"
+        />
       </div>
 
-      {error ? (
-        <Alert title="Agent fleet error" variant="danger">
-          {error}
-        </Alert>
-      ) : null}
+      <Alert title="Agent fleet policy" variant="info">
+        Agents do not create vehicles, own vehicle rosters, or manage vehicle approval in Zito. Those steps belong to transporter, customer, courier-company, or corporate fleet owners together with internal operations.
+      </Alert>
 
-      <SurfaceCard title="Add vehicle" description="Add agent-supplied vehicles and assign available drivers from your network.">
-        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreate}>
-          <Input label="Plate number" value={plateNumber} onChange={(event) => setPlateNumber(event.target.value)} required />
-          <Input label="Make" value={make} onChange={(event) => setMake(event.target.value)} />
-          <Input label="Model" value={model} onChange={(event) => setModel(event.target.value)} />
-          <Input label="Year" type="number" value={year} onChange={(event) => setYear(event.target.value)} />
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-200">Vehicle type</span>
-            <select
-              className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
-              value={type}
-              onChange={(event) => setType(event.target.value)}
-            >
-              {VEHICLE_TYPES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Input label="Capacity (kg)" type="number" value={capacityKg} onChange={(event) => setCapacityKg(event.target.value)} required />
-          <Input label="Capacity (m3)" type="number" value={capacityM3} onChange={(event) => setCapacityM3(event.target.value)} />
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-200">Assign driver</span>
-            <select
-              className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
-              value={driverId}
-              onChange={(event) => setDriverId(event.target.value)}
-            >
-              <option value="">No driver yet</option>
-              {drivers.map((driver) => (
-                <option key={driver.id} value={driver.id}>
-                  {driver.user?.fullName ?? 'Unnamed driver'}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="md:col-span-2 xl:col-span-4">
-            <Button disabled={saving} type="submit">
-              {saving ? 'Saving vehicle...' : 'Create vehicle'}
-            </Button>
+      <SurfaceCard
+        title="Agent vehicle policy"
+        description="This workspace is now informational only for agent users."
+      >
+        <div className="space-y-4 text-sm leading-6 text-slate-300">
+          <p>
+            Agents participate in supply discovery and trip proposals. They do not
+            operate an owned-fleet workspace inside Zito and they do not attach
+            drivers or GPS to vehicles from here.
+          </p>
+          <p>
+            If capacity needs to be sourced, continue through the marketplace or
+            trip-proposal workflow and let the approved fleet owner handle vehicle
+            onboarding and driver linkage.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/agent/marketplace">
+              <Button>Open marketplace</Button>
+            </Link>
+            <Link href="/agent">
+              <Button variant="secondary">Back to agent desk</Button>
+            </Link>
           </div>
-        </form>
+        </div>
       </SurfaceCard>
-
-      <SurfaceCard title="Fleet view" description="Vehicle roster and assignment status for the agent network.">
-        {loading ? (
-          <Spinner />
-        ) : (
-          <Table
-            rows={vehicles}
-            columns={[
-              { key: 'plate', header: 'Plate', render: (vehicle) => vehicle.plateNumber },
-              { key: 'type', header: 'Type', render: (vehicle) => vehicle.type },
-              { key: 'status', header: 'Status', render: (vehicle) => formatStatus(vehicle.status) },
-              { key: 'driver', header: 'Driver', render: (vehicle) => vehicle.driver?.user?.fullName ?? 'Unassigned' },
-            ]}
-          />
-        )}
-      </SurfaceCard>
-
-      <SurfaceCard title="Breakdown watch" description="Open vehicle incidents across the agent-supplied fleet.">
-        {loading ? (
-          <Spinner />
-        ) : (
-          <Table
-            rows={breakdowns}
-            columns={[
-              { key: 'vehicle', header: 'Vehicle', render: (item) => item.vehicle?.plateNumber ?? 'Unknown vehicle' },
-              { key: 'status', header: 'Status', render: (item) => formatStatus(item.status) },
-              { key: 'description', header: 'Description', render: (item) => item.description },
-            ]}
-          />
-        )}
-      </SurfaceCard>
-
-      <FuelReportPanel
-        title="Fuel report"
-        description="Expected vs actual usage visibility for agent-owned vehicles."
-        vehicles={vehicles.map((vehicle) => ({
-          id: vehicle.id,
-          plateNumber: vehicle.plateNumber,
-        }))}
-      />
     </div>
   );
 }

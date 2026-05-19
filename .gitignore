@@ -139,6 +139,7 @@ Thumbs.db
 # =========================
 # Editor / IDE
 # =========================
+.idea/
 .vscode-test
 
 # =========================
@@ -158,6 +159,11 @@ vite.config.ts.timestamp-*
 .stylelintcache
 .grunt
 lib-cov
+g/
+m/
+outputs/chrome-preview-profile/
+zito-mobile/.gradle-home/
+zito-mobile/.gradle-local/
 
 # =========================
 # Optional (Framework Specific)

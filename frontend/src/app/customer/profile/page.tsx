@@ -79,7 +79,7 @@ export default function CustomerProfilePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {error ? (
         <Alert title="Profile preferences error" variant="danger">
           {error}
@@ -92,31 +92,31 @@ export default function CustomerProfilePage() {
         </Alert>
       ) : null}
 
-      <section className="overflow-hidden rounded-[34px] border border-white/80 bg-[linear-gradient(135deg,#e9f4ff_0%,#f5f9ff_48%,#ffffff_100%)] p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-2xl">
+      <section className="overflow-hidden rounded-[28px] border border-white/80 bg-[linear-gradient(135deg,#e9f4ff_0%,#f5f9ff_48%,#ffffff_100%)] p-4 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+        <div className="space-y-3.5">
+          <div>
             <p className="text-[11px] uppercase tracking-[0.32em] text-sky-700">Account</p>
-            <h1 className="mt-3 text-3xl font-semibold text-slate-950">
+            <h1 className="mt-2.5 text-[1.65rem] font-semibold leading-[1.15] text-slate-950">
               Keep your logistics identity, preferences, and support access in one place.
             </h1>
-            <p className="mt-3 text-sm leading-7 text-slate-600">
+            <p className="mt-2.5 text-[13px] leading-6 text-slate-600">
               This account surface is designed for quick settings, payment shortcuts, saved context, and clean logout handling.
             </p>
           </div>
 
-          <div className="rounded-[26px] bg-[#0f2340] px-5 py-5 text-white">
+          <div className="rounded-[22px] bg-[#0f2340] px-4 py-4 text-white">
             <p className="text-xs uppercase tracking-[0.24em] text-cyan-100/80">Signed in as</p>
-            <p className="mt-2 text-xl font-semibold">
+            <p className="mt-2 break-words text-lg font-semibold leading-6">
               {user.fullName ?? user.email ?? user.phone ?? user.id}
             </p>
-            <p className="mt-1 text-sm text-slate-300">
+            <p className="mt-1 break-words text-[13px] leading-6 text-slate-300">
               {user.companyName ?? user.email ?? user.phone ?? 'Customer account'}
             </p>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3">
         {[
           {
             label: 'Role',
@@ -145,32 +145,32 @@ export default function CustomerProfilePage() {
         ].map((item) => (
           <div
             key={item.label}
-            className={`rounded-[28px] border border-slate-200/90 ${item.tone} p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]`}
+            className={`rounded-[24px] border border-slate-200/90 ${item.tone} p-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)]`}
           >
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{item.label}</p>
-            <p className="mt-3 text-2xl font-semibold text-slate-950">{item.value}</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{item.helper}</p>
+            <p className="mt-2.5 text-[1.3rem] font-semibold leading-6 text-slate-950">{item.value}</p>
+            <p className="mt-2 text-[13px] leading-5 text-slate-600">{item.helper}</p>
           </div>
         ))}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_.95fr]">
-        <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+      <section className="grid gap-4">
+        <div className="rounded-[26px] border border-slate-200/90 bg-white/94 p-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-sky-100 text-sky-700">
-              <Globe2 className="h-6 w-6" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-sky-100 text-sky-700">
+              <Globe2 className="h-5 w-5" />
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
                 Preferences
               </p>
-              <h2 className="mt-1 text-2xl font-semibold text-slate-950">{t('title')}</h2>
+              <h2 className="mt-1 text-[1.45rem] font-semibold leading-8 text-slate-950">{t('title')}</h2>
             </div>
           </div>
 
-          <p className="mt-3 text-sm leading-6 text-slate-500">{t('description')}</p>
+          <p className="mt-3 text-[13px] leading-6 text-slate-500">{t('description')}</p>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div className="mt-5 grid gap-4">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-slate-700">{t('languageLabel')}</span>
               <select
@@ -213,15 +213,15 @@ export default function CustomerProfilePage() {
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+        <div className="space-y-4">
+          <div className="rounded-[26px] border border-slate-200/90 bg-white/94 p-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-emerald-100 text-emerald-700">
-                <ShieldCheck className="h-6 w-6" />
+              <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-emerald-100 text-emerald-700">
+                <ShieldCheck className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Identity</p>
-                <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+                <h2 className="mt-1 text-[1.45rem] font-semibold leading-8 text-slate-950">
                   Account details at a glance
                 </h2>
               </div>
@@ -236,22 +236,24 @@ export default function CustomerProfilePage() {
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4"
+                  className="min-w-0 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5"
                 >
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{item.label}</p>
-                  <p className="mt-2 text-sm font-medium text-slate-900">{item.value}</p>
+                  <p className="mt-2 break-words text-[13px] font-medium leading-6 text-slate-900">
+                    {item.value}
+                  </p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+          <div className="rounded-[26px] border border-slate-200/90 bg-white/94 p-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
             <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Quick access</p>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+            <h2 className="mt-1 text-[1.45rem] font-semibold leading-8 text-slate-950">
               Jump back into the customer tools you use most
             </h2>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 grid gap-3">
               {[
                 {
                   href: '/customer/bookings',
@@ -268,7 +270,7 @@ export default function CustomerProfilePage() {
                 {
                   href: '/customer/fleet',
                   label: 'Own fleet',
-                  helper: 'Manage your vehicles and customer-owned drivers',
+                  helper: 'Manage your vehicles and linked driver accounts',
                   icon: Truck,
                 },
                 {
@@ -289,13 +291,13 @@ export default function CustomerProfilePage() {
                   <Link
                     key={item.label}
                     href={item.href}
-                    className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 transition hover:border-sky-200 hover:bg-white"
+                    className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 transition hover:border-sky-200 hover:bg-white"
                   >
-                    <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#eef6ff] text-[#1b3f72]">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-[15px] bg-[#eef6ff] text-[#1b3f72]">
                       <Icon className="h-5 w-5" />
                     </div>
-                    <p className="mt-4 text-base font-semibold text-slate-950">{item.label}</p>
-                    <p className="mt-1 text-sm leading-6 text-slate-500">{item.helper}</p>
+                    <p className="mt-3 text-[15px] font-semibold text-slate-950">{item.label}</p>
+                    <p className="mt-1 text-[13px] leading-6 text-slate-500">{item.helper}</p>
                   </Link>
                 );
               })}
@@ -304,12 +306,12 @@ export default function CustomerProfilePage() {
         </div>
       </section>
 
-      <section className="rounded-[32px] border border-rose-200 bg-rose-50/70 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <section className="rounded-[26px] border border-rose-200 bg-rose-50/70 p-4 shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.28em] text-rose-500">Session</p>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-950">Log out from Account</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <h2 className="mt-1 text-[1.45rem] font-semibold leading-8 text-slate-950">Log out from Account</h2>
+            <p className="mt-2 text-[13px] leading-6 text-slate-600">
               Keep logout inside the account surface so the main customer navigation stays focused on logistics actions.
             </p>
           </div>

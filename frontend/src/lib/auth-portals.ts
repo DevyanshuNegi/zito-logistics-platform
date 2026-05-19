@@ -29,7 +29,7 @@ export const PARTNER_ROLE_OPTIONS: RoleOption[] = [
     role: 'AGENT',
     label: 'Agent',
     description:
-      'Source vehicles and loads, onboard drivers, and run commission-based supply operations.',
+      'Source loads and capacity, propose trips, and run commission-based supply operations.',
   },
   {
     role: 'TRANSPORTER',

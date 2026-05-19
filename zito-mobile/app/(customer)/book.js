@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import SearchablePicker from '../../src/components/SearchablePicker';
 import VehicleTypePicker from '../../src/components/VehicleTypePicker';
+import { CustomerAiSupportSheet } from '../../src/components/CustomerAiSupportSheet';
 import { api } from '../../src/api/client';
 import { colors, VEHICLE_TYPES, estimatePrice } from '../../src/constants/theme';
 
@@ -62,6 +63,7 @@ export default function BookScreen() {
   const [instructions, setInstructions] = useState('');
   const [scheduled, setScheduled] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
 
   const updateAddress = async (lat, lng, setter) => {
     try {
@@ -176,6 +178,10 @@ export default function BookScreen() {
           <>
             <Text style={s.stepTitle}>Select vehicle type</Text>
             <Text style={s.stepSub}>Choose the best fit for your cargo size and weight.</Text>
+            <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
+              <Text style={s.helperLabel}>Zito Assistant</Text>
+              <Text style={s.helperTitle}>Need help choosing the right customer booking path?</Text>
+            </TouchableOpacity>
             <VehicleTypePicker vehicles={VEHICLE_TYPES} selectedType={vehicleType} onSelect={setVehicle} />
             <TouchableOpacity
               style={[s.btn, !vehicleType && s.btnDisabled]}
@@ -190,6 +196,10 @@ export default function BookScreen() {
           <>
             <Text style={s.stepTitle}>Cargo and route</Text>
             <Text style={s.stepSub}>Pickup and delivery locations are required.</Text>
+            <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
+              <Text style={s.helperLabel}>Zito Assistant</Text>
+              <Text style={s.helperTitle}>Ask about pickup, drop-off, route setup, or own-fleet booking.</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setStep(1)} style={s.back}>
               <Text style={s.backText}>Back</Text>
             </TouchableOpacity>
@@ -327,6 +337,10 @@ export default function BookScreen() {
         {step === 3 ? (
           <>
             <Text style={s.stepTitle}>Review and confirm</Text>
+            <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
+              <Text style={s.helperLabel}>Zito Assistant</Text>
+              <Text style={s.helperTitle}>Ask what to review before confirming your booking.</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setStep(2)} style={s.back}>
               <Text style={s.backText}>Back</Text>
             </TouchableOpacity>
@@ -362,6 +376,34 @@ export default function BookScreen() {
           </>
         ) : null}
       </ScrollView>
+
+      <CustomerAiSupportSheet
+        visible={showAssistant}
+        onClose={() => setShowAssistant(false)}
+        screenContext="CUSTOMER_BOOKING"
+        title="Booking help"
+        description="Ask about pickup search, drop-off search, route confirmation, vehicle choice, or how customer-owned fleet booking works in the customer app."
+        quickActions={[
+          {
+            label: 'Set pickup correctly',
+            message: 'How should I set the pickup location correctly before I continue?',
+          },
+          {
+            label: 'Set drop-off correctly',
+            message: 'How should I set the drop-off location correctly before I continue?',
+          },
+          {
+            label: 'Confirm route',
+            message: 'Show me the correct customer route confirmation procedure before booking.',
+          },
+          {
+            label: 'Book with my fleet',
+            message: 'How does customer-owned fleet booking work for this trip?',
+          },
+        ]}
+        placeholder="Example: How should I confirm pickup and drop-off before I finish this booking?"
+        helpText="Ask about customer booking procedure, route setup, final review, or owned-fleet usage."
+      />
     </SafeAreaView>
   );
 }
@@ -387,6 +429,28 @@ const s = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   stepTitle: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 6 },
   stepSub: { fontSize: 13, color: colors.textMuted, marginBottom: 20 },
+  helperCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    marginBottom: 16,
+  },
+  helperLabel: {
+    color: colors.textFaint,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  helperTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 8,
+    lineHeight: 20,
+  },
   label: { fontSize: 12, color: colors.textMuted, marginBottom: 6, marginTop: 14 },
   input: {
     backgroundColor: colors.bgInput,

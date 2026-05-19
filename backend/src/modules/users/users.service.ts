@@ -94,7 +94,15 @@ const TRUCK_VERIFICATION_TYPES = new Set([
   'CONTAINER_40FT',
   'REFRIGERATED',
 ]);
-const TRUCK_PHOTO_CATEGORIES = ['DASHBOARD', 'FRONT', 'RIGHT', 'LEFT', 'BACK'] as const;
+const TRUCK_PHOTO_CATEGORIES = [
+  'NUMBER_PLATE',
+  'FRONT',
+  'RIGHT',
+  'LEFT',
+  'BACK',
+  'CHASSIS',
+  'INSURANCE',
+] as const;
 const COMPLIANCE_SUSPEND_ROLES = new Set<UserRole>([
   UserRole.DRIVER,
   UserRole.AGENT,

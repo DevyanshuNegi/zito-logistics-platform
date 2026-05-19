@@ -18,7 +18,9 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
+import { CustomerAiAssistant } from '@/components/support/CustomerAiAssistant';
 import { ApiError, api } from '@/lib/api';
+import type { CustomerAiDraft } from '@/lib/ai-support';
 import { formatDateTime, formatStatus } from '@/lib/format';
 import {
   APP_HELP_CENTERS,
@@ -125,6 +127,7 @@ export default function CustomerSupportPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [assistantNotice, setAssistantNotice] = useState<string | null>(null);
 
   async function loadSupportData() {
     setLoading(true);
@@ -198,8 +201,24 @@ export default function CustomerSupportPage() {
     (ticket) => ticket.status === 'RESOLVED' || ticket.status === 'CLOSED',
   ).length;
 
+  function handleUseAssistantDraft(draft: CustomerAiDraft) {
+    setBookingId(draft.bookingId ?? '');
+    setCategory(draft.category);
+    setPriority(draft.priority);
+    setMessage(draft.message);
+    setAssistantNotice(
+      'Zito Assistant prepared a support draft below. Review it and create the ticket when ready.',
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {assistantNotice ? (
+        <Alert title="Assistant draft ready" variant="success">
+          {assistantNotice}
+        </Alert>
+      ) : null}
+
       {error ? (
         <Alert title="Support issue" variant="danger">
           {error}
@@ -268,134 +287,138 @@ export default function CustomerSupportPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.08fr_.92fr]">
-        <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-sky-100 text-sky-700">
-              <MessageSquareText className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">New ticket</p>
-              <h2 className="mt-1 text-2xl font-semibold text-slate-950">Raise support cleanly</h2>
-            </div>
-          </div>
+        <div className="space-y-6">
+          <CustomerAiAssistant bookings={bookings} onUseDraft={handleUseAssistantDraft} />
 
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            Pick the issue type first, attach a booking only when needed, then describe the problem once. If Autobot finds a matching article, its summary goes into the ticket so the human desk can continue without asking you to repeat yourself.
-          </p>
-
-          <form className="mt-5 space-y-5" onSubmit={handleCreate}>
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Issue category</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {TICKET_CATEGORIES.map((option) => {
-                  const meta = categoryMeta[option];
-                  const Icon = meta.icon;
-                  const active = category === option;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setCategory(option)}
-                      className={[
-                        'rounded-[24px] border px-4 py-4 text-left transition',
-                        active
-                          ? 'border-[#1b3f72] bg-[#eef4ff] shadow-[0_16px_32px_rgba(27,63,114,0.10)]'
-                          : 'border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40',
-                      ].join(' ')}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${meta.accent}`}>
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-950">{meta.label}</p>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">{meta.note}</p>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+          <div className="rounded-[32px] border border-slate-200/90 bg-white/94 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-sky-100 text-sky-700">
+                <MessageSquareText className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">New ticket</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">Raise support cleanly</h2>
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-900">Linked booking</p>
-                <span className="text-xs text-slate-500">Optional for general help</span>
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setBookingId('')}
-                  className={[
-                    'rounded-[24px] border px-4 py-4 text-left transition',
-                    bookingId === ''
-                      ? 'border-[#1b3f72] bg-[#eef4ff] shadow-[0_16px_32px_rgba(27,63,114,0.10)]'
-                      : 'border-slate-200 bg-slate-50 hover:border-sky-200 hover:bg-white',
-                  ].join(' ')}
-                >
-                  <p className="text-sm font-semibold text-slate-950">General support</p>
-                  <p className="mt-1 text-xs text-slate-500">Use this when the issue is not tied to one booking.</p>
-                </button>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              Pick the issue type first, attach a booking only when needed, then describe the problem once. If Autobot finds a matching article, its summary goes into the ticket so the human desk can continue without asking you to repeat yourself.
+            </p>
 
-                {bookings.slice(0, 5).map((booking) => (
+            <form className="mt-5 space-y-5" onSubmit={handleCreate}>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Issue category</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {TICKET_CATEGORIES.map((option) => {
+                    const meta = categoryMeta[option];
+                    const Icon = meta.icon;
+                    const active = category === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setCategory(option)}
+                        className={[
+                          'rounded-[24px] border px-4 py-4 text-left transition',
+                          active
+                            ? 'border-[#1b3f72] bg-[#eef4ff] shadow-[0_16px_32px_rgba(27,63,114,0.10)]'
+                            : 'border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40',
+                        ].join(' ')}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${meta.accent}`}>
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-950">{meta.label}</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">{meta.note}</p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">Linked booking</p>
+                  <span className="text-xs text-slate-500">Optional for general help</span>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <button
-                    key={booking.id}
                     type="button"
-                    onClick={() => setBookingId(booking.id)}
+                    onClick={() => setBookingId('')}
                     className={[
                       'rounded-[24px] border px-4 py-4 text-left transition',
-                      bookingId === booking.id
+                      bookingId === ''
                         ? 'border-[#1b3f72] bg-[#eef4ff] shadow-[0_16px_32px_rgba(27,63,114,0.10)]'
                         : 'border-slate-200 bg-slate-50 hover:border-sky-200 hover:bg-white',
                     ].join(' ')}
                   >
-                    <p className="text-sm font-semibold text-slate-950">{booking.reference}</p>
-                    <p className="mt-1 text-xs text-slate-500">Attach this booking to the ticket.</p>
+                    <p className="text-sm font-semibold text-slate-950">General support</p>
+                    <p className="mt-1 text-xs text-slate-500">Use this when the issue is not tied to one booking.</p>
                   </button>
-                ))}
+
+                  {bookings.slice(0, 5).map((booking) => (
+                    <button
+                      key={booking.id}
+                      type="button"
+                      onClick={() => setBookingId(booking.id)}
+                      className={[
+                        'rounded-[24px] border px-4 py-4 text-left transition',
+                        bookingId === booking.id
+                          ? 'border-[#1b3f72] bg-[#eef4ff] shadow-[0_16px_32px_rgba(27,63,114,0.10)]'
+                          : 'border-slate-200 bg-slate-50 hover:border-sky-200 hover:bg-white',
+                      ].join(' ')}
+                    >
+                      <p className="text-sm font-semibold text-slate-950">{booking.reference}</p>
+                      <p className="mt-1 text-xs text-slate-500">Attach this booking to the ticket.</p>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Priority</p>
-              <div className="mt-3 flex flex-wrap gap-3">
-                {TICKET_PRIORITIES.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setPriority(option)}
-                    className={[
-                      'rounded-full px-4 py-2 text-sm font-medium transition',
-                      priority === option
-                        ? 'bg-[#1b3f72] text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
-                    ].join(' ')}
-                  >
-                    {formatStatus(option)}
-                  </button>
-                ))}
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Priority</p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {TICKET_PRIORITIES.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setPriority(option)}
+                      className={[
+                        'rounded-full px-4 py-2 text-sm font-medium transition',
+                        priority === option
+                          ? 'bg-[#1b3f72] text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                      ].join(' ')}
+                    >
+                      {formatStatus(option)}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <Input
-              label="What happened?"
-              textarea
-              tone="light"
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              help="Describe the issue clearly. Autobot will only suggest approved Help Center guidance from this message."
-              required
-            />
+              <Input
+                label="What happened?"
+                textarea
+                tone="light"
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                help="Describe the issue clearly. Autobot will only suggest approved Help Center guidance from this message."
+                required
+              />
 
-            <Button
-              className="rounded-[16px] bg-[#1b3f72] px-5 py-3 text-white shadow-none hover:bg-[#163561]"
-              disabled={saving}
-              type="submit"
-            >
-              {saving ? 'Creating ticket...' : 'Create ticket'}
-            </Button>
-          </form>
+              <Button
+                className="rounded-[16px] bg-[#1b3f72] px-5 py-3 text-white shadow-none hover:bg-[#163561]"
+                disabled={saving}
+                type="submit"
+              >
+                {saving ? 'Creating ticket...' : 'Create ticket'}
+              </Button>
+            </form>
+          </div>
         </div>
 
         <div className="space-y-6">

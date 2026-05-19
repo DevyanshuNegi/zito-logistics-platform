@@ -354,17 +354,32 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       headers.set('X-Idempotency-Key', options.idempotencyKey);
     }
 
-    const response = await fetch(`${getApiBaseUrl()}${normalizePath(path)}`, {
-      method,
-      headers,
-      body:
-        options.body == null
-          ? undefined
-          : isFormData
-            ? (options.body as FormData)
-            : JSON.stringify(options.body),
-      cache: 'no-store',
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${getApiBaseUrl()}${normalizePath(path)}`, {
+        method,
+        headers,
+        body:
+          options.body == null
+            ? undefined
+            : isFormData
+              ? (options.body as FormData)
+              : JSON.stringify(options.body),
+        cache: 'no-store',
+      });
+    } catch (error) {
+      const isLocalPreview =
+        typeof window !== 'undefined' &&
+        ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+      throw new ApiError(
+        isLocalPreview
+          ? 'Service unavailable. Start the backend on port 5000 and try again.'
+          : 'Unable to reach Zito right now. Please try again shortly.',
+        0,
+        error instanceof Error ? error.message : error,
+      );
+    }
 
     const contentType = response.headers.get('content-type') ?? '';
     const payload = contentType.includes('application/json')

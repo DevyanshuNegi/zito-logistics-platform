@@ -16,19 +16,21 @@ import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
 import { VEHICLE_TYPES } from '@/lib/phase-one';
 
-type Driver = {
-  id: string;
-  user?: {
-    fullName?: string | null;
-  } | null;
-};
-
 type Vehicle = {
   id: string;
   plateNumber: string;
+  chassisNumber?: string | null;
+  make?: string | null;
+  model?: string | null;
+  year?: number | null;
   type: string;
   status: string;
   verificationStatus?: string | null;
+  capacityKg: number;
+  capacityM3?: number | null;
+  insuranceCompany?: string | null;
+  insurancePolicyNumber?: string | null;
+  insuranceExpiry?: string | null;
   deviceGpsLat?: number | null;
   deviceGpsLng?: number | null;
   lastGpsAt?: string | null;
@@ -66,15 +68,17 @@ type BreakdownResponse = {
 export default function TransporterFleetPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [breakdowns, setBreakdowns] = useState<BreakdownResponse['breakdowns']>([]);
-  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [plateNumber, setPlateNumber] = useState('');
+  const [chassisNumber, setChassisNumber] = useState('');
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [year, setYear] = useState('');
   const [type, setType] = useState('VAN');
   const [capacityKg, setCapacityKg] = useState('');
   const [capacityM3, setCapacityM3] = useState('');
-  const [driverId, setDriverId] = useState('');
+  const [insuranceCompany, setInsuranceCompany] = useState('');
+  const [insurancePolicyNumber, setInsurancePolicyNumber] = useState('');
+  const [insuranceExpiry, setInsuranceExpiry] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,15 +88,13 @@ export default function TransporterFleetPage() {
     setError(null);
 
     try {
-      const [vehicleResponse, breakdownResponse, driverResponse] = await Promise.all([
+      const [vehicleResponse, breakdownResponse] = await Promise.all([
         api.get<Vehicle[]>('/fleet'),
         api.get<BreakdownResponse>('/fleet/breakdowns'),
-        api.get<Driver[]>('/drivers'),
       ]);
 
       setVehicles(vehicleResponse);
       setBreakdowns(breakdownResponse.breakdowns);
-      setDrivers(driverResponse);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to load transporter fleet.');
     } finally {
@@ -112,23 +114,29 @@ export default function TransporterFleetPage() {
     try {
       await api.post('/fleet', {
         plateNumber,
-        make: make || undefined,
-        model: model || undefined,
+        chassisNumber,
+        make,
+        model,
         year: year ? Number(year) : undefined,
         type,
         capacityKg: Number(capacityKg),
-        capacityM3: capacityM3 ? Number(capacityM3) : undefined,
-        driverId: driverId || undefined,
+        capacityM3: Number(capacityM3),
+        insuranceCompany,
+        insurancePolicyNumber,
+        insuranceExpiry,
       });
 
       setPlateNumber('');
+      setChassisNumber('');
       setMake('');
       setModel('');
       setYear('');
       setType('VAN');
       setCapacityKg('');
       setCapacityM3('');
-      setDriverId('');
+      setInsuranceCompany('');
+      setInsurancePolicyNumber('');
+      setInsuranceExpiry('');
       await loadFleet();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Unable to create vehicle.');
@@ -158,18 +166,19 @@ export default function TransporterFleetPage() {
       />
 
       <VehicleVerificationPanel
-        description="Upload the compulsory five truck photos here so internal teams can verify heavy vehicles and container units before operational approval."
+        description="Upload the compulsory number plate, front, right, left, back, chassis, and insurance camera-capture packet here so internal teams can verify heavy vehicles and container units before operational approval."
         onChange={() => loadFleet()}
         title="Vehicle verification package"
         vehicles={vehicles}
       />
 
-      <SurfaceCard title="Add vehicle" description="Quick transporter-side vehicle onboarding with the required capacity fields from the live vehicle schema.">
+      <SurfaceCard title="Add vehicle" description="Transporter fleet onboarding uses the same structured vehicle profile and approval rules as the customer and courier-company fleet workflow.">
         <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreate}>
           <Input label="Plate number" value={plateNumber} onChange={(event) => setPlateNumber(event.target.value)} required />
-          <Input label="Make" value={make} onChange={(event) => setMake(event.target.value)} />
-          <Input label="Model" value={model} onChange={(event) => setModel(event.target.value)} />
-          <Input label="Year" type="number" value={year} onChange={(event) => setYear(event.target.value)} />
+          <Input label="Chassis number" value={chassisNumber} onChange={(event) => setChassisNumber(event.target.value)} required />
+          <Input label="Make" value={make} onChange={(event) => setMake(event.target.value)} required />
+          <Input label="Model" value={model} onChange={(event) => setModel(event.target.value)} required />
+          <Input label="Year" type="number" value={year} onChange={(event) => setYear(event.target.value)} required />
           <label className="block space-y-2">
             <span className="text-sm font-medium text-slate-200">Vehicle type</span>
             <select
@@ -185,26 +194,17 @@ export default function TransporterFleetPage() {
             </select>
           </label>
           <Input label="Capacity (kg)" type="number" value={capacityKg} onChange={(event) => setCapacityKg(event.target.value)} required />
-          <Input label="Capacity (m3)" type="number" value={capacityM3} onChange={(event) => setCapacityM3(event.target.value)} />
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-200">Assign driver</span>
-            <select
-              className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
-              value={driverId}
-              onChange={(event) => setDriverId(event.target.value)}
-            >
-              <option value="">No driver yet</option>
-              {drivers.map((driver) => (
-                <option key={driver.id} value={driver.id}>
-                  {driver.user?.fullName ?? 'Unnamed driver'}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Input label="Capacity (m3)" type="number" value={capacityM3} onChange={(event) => setCapacityM3(event.target.value)} required />
+          <Input label="Insurance company" value={insuranceCompany} onChange={(event) => setInsuranceCompany(event.target.value)} required />
+          <Input label="Policy number" value={insurancePolicyNumber} onChange={(event) => setInsurancePolicyNumber(event.target.value)} required />
+          <Input label="Insurance expiry" type="date" value={insuranceExpiry} onChange={(event) => setInsuranceExpiry(event.target.value)} required />
           <div className="md:col-span-2 xl:col-span-4">
             <Button disabled={saving} type="submit">
               {saving ? 'Saving vehicle...' : 'Create vehicle'}
             </Button>
+            <p className="mt-3 text-xs text-slate-400">
+              New vehicles remain pending until the full camera-capture verification packet is reviewed, internal operations approve the unit, GPS is configured, and the vehicle becomes active for assignment.
+            </p>
           </div>
         </form>
       </SurfaceCard>
@@ -237,8 +237,8 @@ export default function TransporterFleetPage() {
       </SurfaceCard>
 
       <FleetDriverManager
-        title="Transporter-managed drivers"
-        description="Onboard transporter-owned drivers, keep their readiness visible, and place them onto the right vehicle from the same fleet."
+        title="Linked driver roster"
+        description="Link drivers who already registered in Zito Partners, then assign them to transporter vehicles after internal approval."
         ownerLabel="transporter fleet"
         vehicles={vehicles}
         onChange={() => loadFleet()}
