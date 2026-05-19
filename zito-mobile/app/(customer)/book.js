@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from 'react';
+// app/(customer)/book-modern.js — Modern Booking Screen with Interactive Map & Location Search
+// PRD 3.1 - Customer booking with modern Uber/Bolt-like UX
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Platform,
   View,
@@ -10,103 +12,113 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import SearchablePicker from '../../src/components/SearchablePicker';
+import { useRouter } from 'expo-router';
+
+import { LocationSearchInput } from '../../src/components/LocationSearchInput';
 import VehicleTypePicker from '../../src/components/VehicleTypePicker';
 import { CustomerAiSupportSheet } from '../../src/components/CustomerAiSupportSheet';
-import { api } from '../../src/api/client';
-import { colors, VEHICLE_TYPES, estimatePrice } from '../../src/constants/theme';
+import { api, extractErrorMessage } from '../../src/api/client';
+import { colors, VEHICLE_TYPES, estimatePrice, spacing, radius, shadows, typography } from '../../src/constants/theme';
+
+const { height: screenHeight } = Dimensions.get('window');
 
 let MapView = null;
 let Marker = null;
 
 if (Platform.OS !== 'web') {
-  const ReactNativeMaps = require('react-native-maps');
-  MapView = ReactNativeMaps.default;
-  Marker = ReactNativeMaps.Marker;
+  try {
+    const ReactNativeMaps = require('react-native-maps');
+    MapView = ReactNativeMaps.default;
+    Marker = ReactNativeMaps.Marker;
+  } catch (_) {
+    // Maps not available
+  }
 }
-
-const GOOGLE_MAPS_API_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_GOOGLE_MAPS_API_KEY_HERE';
 
 const DARK_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#263c3f' }] },
-  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2835' }] },
-  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
-  { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
-  { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] },
 ];
 
-export default function BookScreen() {
-  const [step, setStep] = useState(1);
-  const [vehicleType, setVehicle] = useState(null);
-  const [pickup, setPickup] = useState({ address: '', lat: null, lng: null });
+export default function BookScreenModern() {
+  const router = useRouter();
+  const [vehicleType, setVehicleType] = useState(null);
+  const [pickup, setPickup] = useState({ address: '', lat: -1.2921, lng: 36.8219 });
   const [delivery, setDelivery] = useState({ address: '', lat: null, lng: null });
-  const [cargoType, setCargo] = useState('');
-  const [weightKg, setWeight] = useState('');
+  const [cargoType, setCargoType] = useState('');
+  const [weightKg, setWeightKg] = useState('');
   const [description, setDescription] = useState('');
   const [instructions, setInstructions] = useState('');
   const [scheduled, setScheduled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
+  const [expandCargo, setExpandCargo] = useState(false);
+  const [recentLocations, setRecentLocations] = useState([]);
+  const mapRef = useRef(null);
 
-  const updateAddress = async (lat, lng, setter) => {
-    try {
-      const [result] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-      const address = result
-        ? `${result.name || result.street || ''}, ${result.city || ''}`.trim().replace(/^,/, '').trim()
-        : 'Pinned Location';
-      setter({ address: address || 'Unknown Location', lat, lng });
-    } catch (_error) {
-      setter({ address: 'Pinned Location', lat, lng });
-    }
-  };
-
+  // Get current location on mount
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
 
-      const location = await Location.getCurrentPositionAsync({});
-      updateAddress(location.coords.latitude, location.coords.longitude, setPickup);
+      try {
+        const location = await Location.getCurrentPositionAsync({});
+        const { latitude, longitude } = location.coords;
+        
+        // Reverse geocode to get address
+        try {
+          const [result] = await Location.reverseGeocodeAsync({ latitude, longitude });
+          const address = result
+            ? `${result.name || result.street || ''}, ${result.city || ''}`.trim()
+            : 'Current Location';
+          setPickup({ address, lat: latitude, lng: longitude });
+        } catch (_) {
+          setPickup({ address: 'Current Location', lat: latitude, lng: longitude });
+        }
+      } catch (_) {
+        // Use default Nairobi location
+      }
     })();
   }, []);
 
   const vehicle = VEHICLE_TYPES.find((item) => item.key === vehicleType);
   const estimate = estimatePrice(vehicleType, parseFloat(weightKg || 0));
-  const fmt = (value) => Number(value).toLocaleString();
 
-  const resetForm = () => {
-    setStep(1);
-    setVehicle(null);
-    setPickup({ address: '', lat: null, lng: null });
-    setDelivery({ address: '', lat: null, lng: null });
-    setCargo('');
-    setWeight('');
-    setDescription('');
-    setInstructions('');
-    setScheduled(false);
+  const handleSwapLocations = () => {
+    if (!delivery.lat) {
+      Alert.alert('Swap Error', 'Set delivery location first.');
+      return;
+    }
+    const temp = pickup;
+    setPickup(delivery);
+    setDelivery(temp);
   };
 
   const handleBook = async () => {
+    // Validation
+    if (!vehicle) {
+      Alert.alert('Vehicle Required', 'Please select a vehicle type.');
+      return;
+    }
+    if (!pickup.lat || !delivery.lat) {
+      Alert.alert('Locations Required', 'Please set both pickup and delivery locations.');
+      return;
+    }
+    if (!estimate || estimate <= 0) {
+      Alert.alert('Invalid Price', 'Estimated price is invalid.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await api.post('/api/v1/customer/bookings', {
+      const bookingData = await api.post('/customer/bookings', {
         serviceType: 'COURIER',
         totalPrice: estimate,
         idempotencyKey: `bk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -137,383 +149,443 @@ export default function BookScreen() {
         isScheduled: scheduled,
       });
 
+      // Add to recent locations
+      setRecentLocations([
+        ...recentLocations,
+        { address: pickup.address, lat: pickup.lat, lng: pickup.lng },
+        { address: delivery.address, lat: delivery.lat, lng: delivery.lng },
+      ].slice(-5));
+
       Alert.alert(
-        'Booking created',
-        `Reference: ${data.data?.reference}\n\nAdmin will review and assign a driver.`,
-        [{ text: 'OK', onPress: resetForm }]
+        '✅ Booking Created',
+        `Reference: ${bookingData.data?.reference}\n\nAdmin will review and assign a driver shortly.`,
+        [{ text: 'Track Booking', onPress: () => router.push('/(customer)/track') }]
       );
-    } catch (requestError) {
-      Alert.alert('Error', requestError.message);
+    } catch (err) {
+      Alert.alert('Booking Error', extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const getWeightLimit = (capacity) => {
-    if (!capacity) return Infinity;
-    const match = capacity.match(/(\d+)/);
-    return match ? parseInt(match[1], 10) * (capacity.toLowerCase().includes('ton') ? 1000 : 1) : Infinity;
-  };
-
-  const isOverweight =
-    vehicle && weightKg && parseFloat(weightKg) > getWeightLimit(vehicle.capacity);
-
-  const canContinueToReview = pickup.lat && delivery.lat && !isOverweight;
+  const isComplete = vehicleType && pickup.lat && delivery.lat && (estimate > 0);
 
   return (
     <SafeAreaView style={s.root}>
-      <View style={s.stepBar}>
-        {[1, 2, 3].map((value) => (
-          <View key={value} style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[s.dot, step >= value && s.dotActive]}>
-              <Text style={[s.dotNum, step >= value && s.dotNumActive]}>{step > value ? 'OK' : value}</Text>
-            </View>
-            {value < 3 ? <View style={[s.line, step > value && s.lineActive]} /> : null}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.flex}>
+        {/* Header */}
+        <View style={s.header}>
+          <View>
+            <Text style={s.headerLogo}>⚡</Text>
+            <Text style={s.headerTitle}>Quick Booking</Text>
           </View>
-        ))}
-      </View>
+          <TouchableOpacity onPress={() => setShowAssistant(true)} style={s.helpBtn}>
+            <Text style={s.helpText}>?</Text>
+          </TouchableOpacity>
+        </View>
 
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-        {step === 1 ? (
-          <>
-            <Text style={s.stepTitle}>Select vehicle type</Text>
-            <Text style={s.stepSub}>Choose the best fit for your cargo size and weight.</Text>
-            <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
-              <Text style={s.helperLabel}>Zito Assistant</Text>
-              <Text style={s.helperTitle}>Need help choosing the right customer booking path?</Text>
-            </TouchableOpacity>
-            <VehicleTypePicker vehicles={VEHICLE_TYPES} selectedType={vehicleType} onSelect={setVehicle} />
-            <TouchableOpacity
-              style={[s.btn, !vehicleType && s.btnDisabled]}
-              onPress={() => vehicleType && setStep(2)}
-              disabled={!vehicleType}>
-              <Text style={s.btnText}>Continue</Text>
-            </TouchableOpacity>
-          </>
-        ) : null}
+        <ScrollView
+          contentContainerStyle={s.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
 
-        {step === 2 ? (
-          <>
-            <Text style={s.stepTitle}>Cargo and route</Text>
-            <Text style={s.stepSub}>Pickup and delivery locations are required.</Text>
-            <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
-              <Text style={s.helperLabel}>Zito Assistant</Text>
-              <Text style={s.helperTitle}>Ask about pickup, drop-off, route setup, or own-fleet booking.</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setStep(1)} style={s.back}>
-              <Text style={s.backText}>Back</Text>
-            </TouchableOpacity>
+          {/* Step 1: Locations */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>📍 Where are we going?</Text>
+            
+            {/* Location Search Inputs */}
+            <View style={s.locationSearches}>
+              <LocationSearchInput
+                placeholder="Pickup location"
+                value={pickup.address}
+                onSelect={(loc) => setPickup(loc)}
+                icon="📍"
+                recentLocations={recentLocations}
+                showRecent={true}
+              />
 
-            <View style={s.mapContainer}>
-              {MapView ? (
-                <>
-                  <MapView
-                    style={s.map}
-                    customMapStyle={DARK_MAP_STYLE}
-                    region={{
-                      latitude: pickup.lat || -1.286389,
-                      longitude: pickup.lng || 36.817223,
-                      latitudeDelta: 0.05,
-                      longitudeDelta: 0.05,
-                    }}
-                    initialRegion={{
-                      latitude: pickup.lat || -1.286389,
-                      longitude: pickup.lng || 36.817223,
-                      latitudeDelta: 0.05,
-                      longitudeDelta: 0.05,
-                    }}
-                    onLongPress={(event) => {
-                      const { latitude, longitude } = event.nativeEvent.coordinate;
-                      updateAddress(latitude, longitude, setDelivery);
-                    }}>
-                    {pickup.lat ? (
-                      <Marker
-                        draggable
-                        coordinate={{ latitude: pickup.lat, longitude: pickup.lng }}
-                        pinColor={colors.primary}
-                        title="Pickup"
-                        onDragEnd={(event) =>
-                          updateAddress(
-                            event.nativeEvent.coordinate.latitude,
-                            event.nativeEvent.coordinate.longitude,
-                            setPickup
-                          )
-                        }
-                      />
-                    ) : null}
-                    {delivery.lat ? (
-                      <Marker
-                        draggable
-                        coordinate={{ latitude: delivery.lat, longitude: delivery.lng }}
-                        pinColor="#ff4444"
-                        title="Delivery"
-                        onDragEnd={(event) =>
-                          updateAddress(
-                            event.nativeEvent.coordinate.latitude,
-                            event.nativeEvent.coordinate.longitude,
-                            setDelivery
-                          )
-                        }
-                      />
-                    ) : null}
-                  </MapView>
-                  <Text style={s.mapHint}>Long press the map to set delivery and drag markers to adjust.</Text>
-                </>
-              ) : (
-                <View style={s.webMapFallback}>
-                  <Text style={s.webMapTitle}>Map preview is available on mobile devices.</Text>
-                  <Text style={s.webMapText}>
-                    Use the pickup and delivery search fields below when running the web build.
-                  </Text>
-                </View>
-              )}
-            </View>
+              {/* Swap Button */}
+              <TouchableOpacity style={s.swapBtn} onPress={handleSwapLocations}>
+                <Text style={s.swapIcon}>⇅</Text>
+              </TouchableOpacity>
 
-            <Text style={s.label}>Pickup Location *</Text>
-            <SearchablePicker
-              placeholder="Search pickup address"
-              onLocationSelect={setPickup}
-              apiKey={GOOGLE_MAPS_API_KEY}
-            />
-
-            <Text style={s.label}>Delivery Location *</Text>
-            <SearchablePicker
-              placeholder="Search delivery address"
-              onLocationSelect={setDelivery}
-              apiKey={GOOGLE_MAPS_API_KEY}
-            />
-
-            {[
-              { label: 'Cargo Type', value: cargoType, setValue: setCargo, placeholder: 'Electronics, furniture, parcels' },
-              { label: 'Weight (kg)', value: weightKg, setValue: setWeight, placeholder: 'Approximate weight', numeric: true },
-              { label: 'Description', value: description, setValue: setDescription, placeholder: 'Describe your cargo', multiline: true },
-              {
-                label: 'Special Instructions',
-                value: instructions,
-                setValue: setInstructions,
-                placeholder: 'Fragile, handle with care',
-                multiline: true,
-              },
-            ].map((field) => (
-              <View key={field.label}>
-                <Text style={s.label}>{field.label}</Text>
-                <TextInput
-                  style={[s.input, field.multiline && { height: 72 }]}
-                  value={field.value}
-                  onChangeText={field.setValue}
-                  placeholder={field.placeholder}
-                  placeholderTextColor={colors.textFaint}
-                  keyboardType={field.numeric ? 'numeric' : 'default'}
-                  multiline={!!field.multiline}
-                />
-              </View>
-            ))}
-
-            <View style={s.switchRow}>
-              <Text style={s.switchLabel}>Schedule for later</Text>
-              <Switch
-                value={scheduled}
-                onValueChange={setScheduled}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor="#fff"
+              <LocationSearchInput
+                placeholder="Delivery location"
+                value={delivery.address}
+                onSelect={(loc) => setDelivery(loc)}
+                icon="🏁"
+                recentLocations={recentLocations}
+                showRecent={true}
               />
             </View>
 
-            <TouchableOpacity
-              style={[s.btn, !canContinueToReview && s.btnDisabled]}
-              onPress={() => {
-                if (isOverweight) {
-                  Alert.alert('Weight limit exceeded', `The selected vehicle carries max ${vehicle.capacity}.`);
-                  return;
-                }
-                if (pickup.lat && delivery.lat) setStep(3);
-              }}
-              disabled={!canContinueToReview}>
-              <Text style={s.btnText}>Review booking</Text>
-            </TouchableOpacity>
-          </>
-        ) : null}
+            {/* Map Preview */}
+            {MapView && pickup.lat && delivery.lat && (
+              <View style={s.mapContainer}>
+                <MapView
+                  ref={mapRef}
+                  style={s.map}
+                  customMapStyle={DARK_MAP_STYLE}
+                  initialRegion={{
+                    latitude: (pickup.lat + delivery.lat) / 2,
+                    longitude: (pickup.lng + delivery.lng) / 2,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                  }}>
+                  <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup" />
+                  <Marker coordinate={{ latitude: delivery.lat, longitude: delivery.lng }} title="Delivery" />
+                </MapView>
+              </View>
+            )}
+          </View>
 
-        {step === 3 ? (
-          <>
-            <Text style={s.stepTitle}>Review and confirm</Text>
-            <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
-              <Text style={s.helperLabel}>Zito Assistant</Text>
-              <Text style={s.helperTitle}>Ask what to review before confirming your booking.</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setStep(2)} style={s.back}>
-              <Text style={s.backText}>Back</Text>
-            </TouchableOpacity>
+          {/* Step 2: Vehicle Type */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>🚗 Vehicle Type</Text>
+            <VehicleTypePicker
+              selectedVehicle={vehicleType}
+              onSelectVehicle={setVehicleType}
+            />
+          </View>
 
-            <View style={s.summaryCard}>
-              {[
-                ['Vehicle', vehicle?.label || vehicleType],
-                ['Pickup', pickup.address],
-                ['Delivery', delivery.address],
-                cargoType ? ['Cargo', cargoType] : null,
-                weightKg ? ['Weight', `${weightKg} kg`] : null,
-              ]
-                .filter(Boolean)
-                .map(([label, value]) => (
-                  <View key={label} style={s.summaryRow}>
-                    <Text style={s.summaryLabel}>{label}</Text>
-                    <Text style={s.summaryVal} numberOfLines={2}>
-                      {value}
-                    </Text>
-                  </View>
-                ))}
+          {/* Step 3: Cargo Details (Collapsible) */}
+          <TouchableOpacity
+            style={[s.section, s.cargoHeader]}
+            onPress={() => setExpandCargo(!expandCargo)}>
+            <View style={s.cargoHeaderContent}>
+              <Text style={s.sectionTitle}>📦 Cargo Details</Text>
+              <Text style={s.collapseIcon}>{expandCargo ? '▼' : '▶'}</Text>
             </View>
+          </TouchableOpacity>
 
+          {expandCargo && (
+            <View style={[s.section, s.sectionNoPad]}>
+              {/* Cargo Type */}
+              <View style={s.formGroup}>
+                <Text style={s.label}>Type</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="e.g., Electronics, furniture, parcels"
+                  placeholderTextColor={colors.textMuted}
+                  value={cargoType}
+                  onChangeText={setCargoType}
+                />
+              </View>
+
+              {/* Weight */}
+              <View style={s.formGroup}>
+                <Text style={s.label}>Weight (kg)</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="Approximate weight"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="decimal-pad"
+                  value={weightKg}
+                  onChangeText={setWeightKg}
+                />
+                {vehicle && weightKg && (
+                  <Text style={s.weightHint}>
+                    Capacity: {vehicle.capacity} | Status: {parseFloat(weightKg) > parseInt(vehicle.capacity) ? '⚠️ Overweight' : '✓ OK'}
+                  </Text>
+                )}
+              </View>
+
+              {/* Description */}
+              <View style={s.formGroup}>
+                <Text style={s.label}>Description</Text>
+                <TextInput
+                  style={[s.input, s.textArea]}
+                  placeholder="Additional details about the cargo"
+                  placeholderTextColor={colors.textMuted}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              {/* Special Instructions */}
+              <View style={s.formGroup}>
+                <Text style={s.label}>Special Instructions</Text>
+                <TextInput
+                  style={[s.input, s.textArea]}
+                  placeholder="e.g., Handle with care, fragile, refrigerate, etc."
+                  placeholderTextColor={colors.textMuted}
+                  value={instructions}
+                  onChangeText={setInstructions}
+                  multiline
+                  numberOfLines={2}
+                />
+              </View>
+
+              {/* Schedule */}
+              <View style={s.formGroup}>
+                <View style={s.scheduleRow}>
+                  <Text style={s.label}>Schedule for later</Text>
+                  <Switch
+                    value={scheduled}
+                    onValueChange={setScheduled}
+                    trackColor={{ false: colors.border, true: colors.primary + '50' }}
+                    thumbColor={scheduled ? colors.primary : colors.textMuted}
+                  />
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Price Estimate */}
+          {estimate > 0 && (
             <View style={s.priceCard}>
-              <Text style={s.priceLabel}>Estimated price</Text>
-              <Text style={s.priceAmt}>KES {fmt(estimate)}</Text>
-              <Text style={s.priceNote}>Final price is confirmed by admin. No hidden fees.</Text>
+              <View style={s.priceRow}>
+                <Text style={s.priceLabel}>Estimated Price:</Text>
+                <Text style={s.priceValue}>KES {estimate.toLocaleString()}</Text>
+              </View>
+              <Text style={s.priceNote}>Price may vary based on distance and demand</Text>
             </View>
+          )}
+        </ScrollView>
 
-            <TouchableOpacity style={[s.btn, loading && s.btnDisabled]} onPress={handleBook} disabled={loading}>
-              {loading ? <ActivityIndicator color={colors.bg} /> : <Text style={s.btnText}>Confirm booking</Text>}
-            </TouchableOpacity>
-          </>
-        ) : null}
-      </ScrollView>
+        {/* Sticky Book Button */}
+        <View style={s.footer}>
+          <TouchableOpacity
+            style={[s.bookBtn, !isComplete && s.bookBtnDisabled]}
+            onPress={handleBook}
+            disabled={!isComplete || loading}>
+            {loading ? (
+              <ActivityIndicator color={colors.bg} />
+            ) : (
+              <>
+                <Text style={s.bookBtnText}>Book Now</Text>
+                {estimate > 0 && <Text style={s.bookBtnPrice}>KES {estimate.toLocaleString()}</Text>}
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
 
       <CustomerAiSupportSheet
         visible={showAssistant}
         onClose={() => setShowAssistant(false)}
         screenContext="CUSTOMER_BOOKING"
-        title="Booking help"
-        description="Ask about pickup search, drop-off search, route confirmation, vehicle choice, or how customer-owned fleet booking works in the customer app."
-        quickActions={[
-          {
-            label: 'Set pickup correctly',
-            message: 'How should I set the pickup location correctly before I continue?',
-          },
-          {
-            label: 'Set drop-off correctly',
-            message: 'How should I set the drop-off location correctly before I continue?',
-          },
-          {
-            label: 'Confirm route',
-            message: 'Show me the correct customer route confirmation procedure before booking.',
-          },
-          {
-            label: 'Book with my fleet',
-            message: 'How does customer-owned fleet booking work for this trip?',
-          },
-        ]}
-        placeholder="Example: How should I confirm pickup and drop-off before I finish this booking?"
-        helpText="Ask about customer booking procedure, route setup, final review, or owned-fleet usage."
+        title="Booking Help"
+        description="Get help with vehicle selection, pricing, or booking process."
+        quickActions={['Vehicle choice', 'Pricing info', 'How to book', 'Delivery timeline']}
+        placeholder="Ask about vehicle types, pricing, or how to book."
+        helpText="Zito Assistant helps you navigate the booking process smoothly."
       />
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  stepBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 20, paddingBottom: 8 },
-  dot: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.bgCard,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dotActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  dotNum: { fontSize: 12, fontWeight: '700', color: colors.textFaint },
-  dotNumActive: { color: colors.bg },
-  line: { width: 50, height: 2, backgroundColor: colors.border },
-  lineActive: { backgroundColor: colors.primary },
-  content: { padding: 20, paddingBottom: 40 },
-  stepTitle: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 6 },
-  stepSub: { fontSize: 13, color: colors.textMuted, marginBottom: 20 },
-  helperCard: {
-    backgroundColor: colors.bgCard,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    marginBottom: 16,
-  },
-  helperLabel: {
-    color: colors.textFaint,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  helperTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 8,
-    lineHeight: 20,
-  },
-  label: { fontSize: 12, color: colors.textMuted, marginBottom: 6, marginTop: 14 },
-  input: {
-    backgroundColor: colors.bgInput,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    color: colors.text,
-    padding: 14,
-    fontSize: 14,
-  },
-  mapContainer: {
-    height: 200,
-    borderRadius: 14,
-    overflow: 'hidden',
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  map: { flex: 1 },
-  mapHint: { fontSize: 10, color: colors.textFaint, textAlign: 'center', marginTop: 4 },
-  webMapFallback: {
+  root: {
     flex: 1,
-    backgroundColor: colors.bgElevated,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    backgroundColor: colors.bg,
   },
-  webMapTitle: { fontSize: 14, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 },
-  webMapText: { fontSize: 12, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16 },
-  switchLabel: { fontSize: 14, color: colors.text },
-  btn: { backgroundColor: colors.primary, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 20 },
-  btnDisabled: { opacity: 0.4 },
-  btnText: { color: colors.bg, fontSize: 16, fontWeight: '800' },
-  back: { marginBottom: 16 },
-  backText: { color: colors.textMuted, fontSize: 14 },
-  summaryCard: {
-    backgroundColor: colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
+  flex: {
+    flex: 1,
   },
-  summaryRow: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  summaryLabel: { fontSize: 13, color: colors.textMuted, flex: 1 },
-  summaryVal: { fontSize: 13, color: colors.text, flex: 2, textAlign: 'right', marginLeft: 12 },
+  headerLogo: {
+    fontSize: 24,
+    marginBottom: spacing.sm,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  helpBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.bgCard,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  helpText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    paddingBottom: 120,
+  },
+  section: {
+    marginBottom: spacing.xl,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.md,
+  },
+  sectionNoPad: {
+    padding: 0,
+    marginTop: -spacing.xl,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  locationSearches: {
+    gap: spacing.md,
+  },
+  swapBtn: {
+    alignSelf: 'center',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: spacing.sm,
+    ...shadows.lg,
+  },
+  swapIcon: {
+    fontSize: 22,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  mapContainer: {
+    marginTop: spacing.lg,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    height: 200,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  map: {
+    flex: 1,
+  },
+  cargoHeader: {
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  cargoHeaderContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  collapseIcon: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '700',
+  },
+  formGroup: {
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  input: {
+    backgroundColor: colors.bgInput,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  textArea: {
+    minHeight: 80,
+    paddingTop: spacing.md,
+    textAlignVertical: 'top',
+  },
+  weightHint: {
+    fontSize: 12,
+    color: colors.textFaint,
+    marginTop: spacing.sm,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   priceCard: {
     backgroundColor: colors.primary + '15',
-    borderRadius: 14,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 20,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
     borderWidth: 1,
-    borderColor: colors.primary + '40',
+    borderColor: colors.primary + '30',
   },
-  priceLabel: { fontSize: 13, color: colors.textMuted, marginBottom: 6 },
-  priceAmt: { fontSize: 32, fontWeight: '900', color: colors.primary },
-  priceNote: { fontSize: 12, color: colors.textFaint, marginTop: 8, textAlign: 'center' },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  priceLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  priceValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  priceNote: {
+    fontSize: 12,
+    color: colors.textFaint,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    backgroundColor: colors.bg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  bookBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.lg,
+  },
+  bookBtnDisabled: {
+    opacity: 0.5,
+  },
+  bookBtnText: {
+    color: colors.bg,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  bookBtnPrice: {
+    color: colors.bg,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: spacing.sm,
+  },
 });

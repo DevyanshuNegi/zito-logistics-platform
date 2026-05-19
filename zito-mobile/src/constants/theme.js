@@ -1,38 +1,29 @@
-import { customerTheme } from './themes/customer';
-import { partnerTheme } from './themes/partner';
-import { adminTheme } from './themes/admin';
+/**
+ * Complete theme configuration
+ * This is self-contained with no external dependencies to prevent import errors
+ */
 
-// Get app flavor from environment variable
-const APP_FLAVOR = process.env.EXPO_PUBLIC_APP_FLAVOR || 'customer';
-
-// Get theme for current app
-const getAppTheme = () => {
-  switch (APP_FLAVOR) {
-    case 'partner':
-      return partnerTheme;
-    case 'admin':
-      return adminTheme;
-    case 'customer':
-    default:
-      return customerTheme;
-  }
-};
-
-const appTheme = getAppTheme();
-
-export const colors = {
-  primary: appTheme.primary,
-  primaryDark: appTheme.primaryDark,
-  primarySoft: appTheme.primarySoft,
+// Theme colors - COMPLETE AND ALWAYS AVAILABLE
+const themeColors = {
+  // Brand colors (defaults to customer blue)
+  primary: '#0066FF',
+  primaryDark: '#0052CC',
+  primarySoft: 'rgba(0,102,255,0.14)',
+  
+  // Background colors
   bg: '#050914',
   bgCard: '#0c1424',
   bgElevated: '#101b31',
   bgInput: '#0f1a30',
   tabBar: '#08101d',
+  
+  // Borders and text
   border: 'rgba(95,128,255,0.2)',
   text: '#f4f8ff',
   textMuted: '#9eb0ce',
   textFaint: '#677a9d',
+  
+  // Status colors
   success: '#22c55e',
   danger: '#f45d73',
   warning: '#f59e0b',
@@ -41,6 +32,9 @@ export const colors = {
   purple: '#8b5cf6',
   gold: '#c9962f',
 };
+
+// Export colors directly
+export const colors = themeColors;
 
 export const STATUS_COLORS = {
   pending: { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
@@ -88,3 +82,108 @@ export const API_URL =
   process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
 
 export const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV || 'development';
+
+/**
+ * Modern Design System Tokens
+ * Used for consistent spacing, shadows, typography, and styling
+ */
+
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  '2xl': 24,
+  '3xl': 32,
+  '4xl': 40,
+};
+
+export const radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  full: 9999,
+};
+
+export const typography = {
+  display: {
+    fontSize: 32,
+    fontWeight: '800',
+    lineHeight: 40,
+  },
+  heading: {
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 32,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 24,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  body: {
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 20,
+  },
+  bodyBold: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  caption: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 16,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 14,
+  },
+};
+
+export const shadows = {
+  none: {
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  sm: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.18,
+    shadowRadius: 1.0,
+    elevation: 1,
+  },
+  md: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 2,
+  },
+  lg: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.30,
+    shadowRadius: 4.65,
+    elevation: 4,
+  },
+  xl: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6.27,
+    elevation: 8,
+  },
+};
