@@ -364,7 +364,7 @@ export class MarketplaceService {
     actorId: string,
   ) {
     const user = await this.ensureUserRole(dto.userId, UserRole.TRANSPORTER);
-    await this.assertVehiclesExist(dto.vehicleIds ?? []);
+    await this.assertVehiclesExist(dto.vehicleIds ?? [], dto.userId);
     const existing = await this.readPartnerRecord(dto.userId);
 
     const record: MarketplacePartnerRecord = {
@@ -423,7 +423,7 @@ export class MarketplaceService {
     actorId: string,
   ) {
     const user = await this.ensureUserRole(dto.userId, UserRole.COURIER_COMPANY);
-    await this.assertVehiclesExist(dto.vehicleIds ?? []);
+    await this.assertVehiclesExist(dto.vehicleIds ?? [], dto.userId);
     const existing = await this.readPartnerRecord(dto.userId);
 
     const record: MarketplacePartnerRecord = {
@@ -479,7 +479,7 @@ export class MarketplaceService {
 
   async onboardAgent(dto: CreateMarketplaceAgentDto, actorId: string) {
     const user = await this.ensureUserRole(dto.userId, UserRole.AGENT);
-    await this.assertVehiclesExist(dto.vehicleIds ?? []);
+    await this.assertVehiclesExist(dto.vehicleIds ?? [], dto.userId);
     const existing = await this.readPartnerRecord(dto.userId);
 
     const record: MarketplacePartnerRecord = {
@@ -539,7 +539,7 @@ export class MarketplaceService {
       dto.warehouseIds && dto.warehouseIds.length > 0
         ? dto.warehouseIds
         : await this.getManagedWarehouseIds(dto.userId);
-    await this.assertWarehousesExist(warehouseIds);
+    await this.assertWarehousesExist(warehouseIds, dto.userId);
     const existing = await this.readPartnerRecord(dto.userId);
 
     const record: MarketplacePartnerRecord = {
@@ -670,6 +670,12 @@ export class MarketplaceService {
     const routeSummary = this.buildRouteSummary(booking.stops, serviceAreaHints);
     const stopSummary = this.buildStopSummary(booking.stops);
     const fleetRequirements = this.buildFleetRequirements(booking);
+    if (existing?.status === 'AWARDED') {
+      throw new BadRequestException(
+        'Marketplace opportunity has already been awarded and cannot be republished.',
+      );
+    }
+
     const record: MarketplaceOpportunityRecord = {
       bookingId: booking.id,
       bookingReference: booking.reference,
@@ -695,16 +701,16 @@ export class MarketplaceService {
       routeSummary,
       stopSummary,
       fleetRequirements,
-      bids: [],
-      awardedPartnerId: null,
-      selectedBidId: null,
-      awardedAt: null,
-      awardedBy: null,
-      commissionAmount: null,
-      commissionRatePct: null,
-      serviceFeeFlat: null,
-      premiumListingFee: null,
-      partnerNetAmount: null,
+      bids: existing?.bids ?? [],
+      awardedPartnerId: existing?.awardedPartnerId ?? null,
+      selectedBidId: existing?.selectedBidId ?? null,
+      awardedAt: existing?.awardedAt ?? null,
+      awardedBy: existing?.awardedBy ?? null,
+      commissionAmount: existing?.commissionAmount ?? null,
+      commissionRatePct: existing?.commissionRatePct ?? null,
+      serviceFeeFlat: existing?.serviceFeeFlat ?? null,
+      premiumListingFee: existing?.premiumListingFee ?? null,
+      partnerNetAmount: existing?.partnerNetAmount ?? null,
     };
 
     await this.persistOpportunityRecord(record);
@@ -1699,31 +1705,41 @@ export class MarketplaceService {
     return user;
   }
 
-  private async assertVehiclesExist(vehicleIds: string[]) {
+  private async assertVehiclesExist(vehicleIds: string[], ownerUserId: string) {
     if (vehicleIds.length === 0) {
       return;
     }
 
     const vehicles = await this.prisma.vehicle.findMany({
       where: { id: { in: vehicleIds } },
-      select: { id: true },
+      select: { id: true, ownerUserId: true },
     });
     if (vehicles.length !== vehicleIds.length) {
       throw new BadRequestException('One or more vehicle IDs were not found.');
     }
+    if (vehicles.some((vehicle) => vehicle.ownerUserId !== ownerUserId)) {
+      throw new BadRequestException(
+        'Marketplace partners can only link vehicles they own.',
+      );
+    }
   }
 
-  private async assertWarehousesExist(warehouseIds: string[]) {
+  private async assertWarehousesExist(warehouseIds: string[], managerId: string) {
     if (warehouseIds.length === 0) {
       return;
     }
 
     const warehouses = await this.prisma.warehouse.findMany({
       where: { id: { in: warehouseIds } },
-      select: { id: true },
+      select: { id: true, managerId: true },
     });
     if (warehouses.length !== warehouseIds.length) {
       throw new BadRequestException('One or more warehouse IDs were not found.');
+    }
+    if (warehouses.some((warehouse) => warehouse.managerId !== managerId)) {
+      throw new BadRequestException(
+        'Warehouse marketplace partners can only link warehouses they manage.',
+      );
     }
   }
 
@@ -1752,7 +1768,13 @@ export class MarketplaceService {
   }
 
   private async readPartnerRecords() {
-    const rows = await this.prisma.idempotencyRecord.findMany({
+    const rows = await this.prisma.marketplacePartner.findMany({
+      orderBy: { updatedAt: 'desc' },
+    });
+    const tableRecords = rows.map((row) => this.partnerRowToRecord(row));
+    const tableIds = new Set(tableRecords.map((record) => record.userId));
+
+    const legacyRows = await this.prisma.idempotencyRecord.findMany({
       where: {
         key: { startsWith: PARTNER_PREFIX },
       },
@@ -1762,13 +1784,23 @@ export class MarketplaceService {
       orderBy: { updatedAt: 'desc' },
     });
 
-    return rows
+    const legacyRecords = legacyRows
       .map((row) => this.asPartnerRecord(row.response))
-      .filter((record): record is MarketplacePartnerRecord => Boolean(record));
+      .filter((record): record is MarketplacePartnerRecord => Boolean(record))
+      .filter((record) => !tableIds.has(record.userId));
+
+    return [...tableRecords, ...legacyRecords];
   }
 
   private async readOpportunityRecords() {
-    const rows = await this.prisma.idempotencyRecord.findMany({
+    const rows = await this.prisma.marketplaceOpportunity.findMany({
+      include: { bids: { orderBy: { submittedAt: 'asc' } } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const tableRecords = rows.map((row) => this.opportunityRowToRecord(row));
+    const tableIds = new Set(tableRecords.map((record) => record.bookingId));
+
+    const legacyRows = await this.prisma.idempotencyRecord.findMany({
       where: {
         key: { startsWith: OPPORTUNITY_PREFIX },
       },
@@ -1778,61 +1810,335 @@ export class MarketplaceService {
       orderBy: { updatedAt: 'desc' },
     });
 
-    return rows
+    const legacyRecords = legacyRows
       .map((row) => this.asOpportunityRecord(row.response))
       .filter(
         (record): record is MarketplaceOpportunityRecord => Boolean(record),
-      );
+      )
+      .filter((record) => !tableIds.has(record.bookingId));
+
+    return [...tableRecords, ...legacyRecords];
   }
 
   private async readPartnerRecord(userId: string) {
-    const row = await this.prisma.idempotencyRecord.findUnique({
+    const row = await this.prisma.marketplacePartner.findUnique({
+      where: { userId },
+    });
+    if (row) {
+      return this.partnerRowToRecord(row);
+    }
+
+    const legacyRow = await this.prisma.idempotencyRecord.findUnique({
       where: { key: this.partnerKey(userId) },
       select: { response: true },
     });
-    return this.asPartnerRecord(row?.response);
+    return this.asPartnerRecord(legacyRow?.response);
   }
 
   private async readOpportunityRecord(bookingId: string) {
-    const row = await this.prisma.idempotencyRecord.findUnique({
+    const row = await this.prisma.marketplaceOpportunity.findUnique({
+      where: { bookingId },
+      include: { bids: { orderBy: { submittedAt: 'asc' } } },
+    });
+    if (row) {
+      return this.opportunityRowToRecord(row);
+    }
+
+    const legacyRow = await this.prisma.idempotencyRecord.findUnique({
       where: { key: this.opportunityKey(bookingId) },
       select: { response: true },
     });
-    return this.asOpportunityRecord(row?.response);
+    return this.asOpportunityRecord(legacyRow?.response);
   }
 
   private async persistPartnerRecord(record: MarketplacePartnerRecord) {
-    await this.prisma.idempotencyRecord.upsert({
-      where: { key: this.partnerKey(record.userId) },
+    await this.prisma.marketplacePartner.upsert({
+      where: { userId: record.userId },
       create: {
-        key: this.partnerKey(record.userId),
-        status: record.verificationStatus,
-        requestHash: record.userId,
-        response: record as Prisma.InputJsonValue,
+        userId: record.userId,
+        partnerType: record.partnerType,
+        companyName: record.companyName,
+        serviceAreas: record.serviceAreas as Prisma.InputJsonValue,
+        vehicleIds: record.vehicleIds as Prisma.InputJsonValue,
+        warehouseIds: record.warehouseIds as Prisma.InputJsonValue,
+        baseLatitude: record.baseLatitude,
+        baseLongitude: record.baseLongitude,
+        serviceRadiusKm: record.serviceRadiusKm,
+        commissionRatePct: record.commissionRatePct,
+        serviceFeeFlat: record.serviceFeeFlat,
+        premiumListing: record.premiumListing,
+        verificationStatus: record.verificationStatus,
+        verificationNote: record.verificationNote,
+        submittedBy: record.submittedBy,
+        createdAt: new Date(record.createdAt),
+        updatedAt: new Date(record.updatedAt),
+        approvedBy: record.approvedBy,
+        approvedAt: this.parseOptionalDate(record.approvedAt),
+        rejectedBy: record.rejectedBy,
+        rejectedAt: this.parseOptionalDate(record.rejectedAt),
+        suspendedBy: record.suspendedBy,
+        suspendedAt: this.parseOptionalDate(record.suspendedAt),
       },
       update: {
-        status: record.verificationStatus,
-        requestHash: record.userId,
-        response: record as Prisma.InputJsonValue,
+        partnerType: record.partnerType,
+        companyName: record.companyName,
+        serviceAreas: record.serviceAreas as Prisma.InputJsonValue,
+        vehicleIds: record.vehicleIds as Prisma.InputJsonValue,
+        warehouseIds: record.warehouseIds as Prisma.InputJsonValue,
+        baseLatitude: record.baseLatitude,
+        baseLongitude: record.baseLongitude,
+        serviceRadiusKm: record.serviceRadiusKm,
+        commissionRatePct: record.commissionRatePct,
+        serviceFeeFlat: record.serviceFeeFlat,
+        premiumListing: record.premiumListing,
+        verificationStatus: record.verificationStatus,
+        verificationNote: record.verificationNote,
+        submittedBy: record.submittedBy,
+        updatedAt: new Date(record.updatedAt),
+        approvedBy: record.approvedBy,
+        approvedAt: this.parseOptionalDate(record.approvedAt),
+        rejectedBy: record.rejectedBy,
+        rejectedAt: this.parseOptionalDate(record.rejectedAt),
+        suspendedBy: record.suspendedBy,
+        suspendedAt: this.parseOptionalDate(record.suspendedAt),
       },
     });
   }
 
   private async persistOpportunityRecord(record: MarketplaceOpportunityRecord) {
-    await this.prisma.idempotencyRecord.upsert({
-      where: { key: this.opportunityKey(record.bookingId) },
-      create: {
-        key: this.opportunityKey(record.bookingId),
-        status: record.status,
-        requestHash: record.bookingId,
-        response: record as Prisma.InputJsonValue,
-      },
-      update: {
-        status: record.status,
-        requestHash: record.bookingId,
-        response: record as Prisma.InputJsonValue,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.marketplaceOpportunity.upsert({
+        where: { bookingId: record.bookingId },
+        create: {
+          bookingId: record.bookingId,
+          bookingReference: record.bookingReference,
+          serviceType: record.serviceType,
+          partnerType: record.partnerType,
+          pricingModel: record.pricingModel,
+          status: record.status,
+          publishedBy: record.publishedBy,
+          publishedAt: new Date(record.publishedAt),
+          updatedAt: new Date(record.updatedAt),
+          expiresAt: this.parseOptionalDate(record.expiresAt),
+          currency: record.currency,
+          bookingPrice: record.bookingPrice,
+          fixedPrice: record.fixedPrice,
+          minimumBid: record.minimumBid,
+          serviceAreaHints: record.serviceAreaHints as Prisma.InputJsonValue,
+          stopPoints: record.stopPoints as Prisma.InputJsonValue,
+          routeSummary: record.routeSummary as Prisma.InputJsonValue,
+          stopSummary: record.stopSummary as Prisma.InputJsonValue,
+          fleetRequirements: record.fleetRequirements as Prisma.InputJsonValue,
+          awardedPartnerId: record.awardedPartnerId,
+          selectedBidId: record.selectedBidId,
+          awardedAt: this.parseOptionalDate(record.awardedAt),
+          awardedBy: record.awardedBy,
+          commissionAmount: record.commissionAmount,
+          commissionRatePct: record.commissionRatePct,
+          serviceFeeFlat: record.serviceFeeFlat,
+          premiumListingFee: record.premiumListingFee,
+          partnerNetAmount: record.partnerNetAmount,
+        },
+        update: {
+          bookingReference: record.bookingReference,
+          serviceType: record.serviceType,
+          partnerType: record.partnerType,
+          pricingModel: record.pricingModel,
+          status: record.status,
+          publishedBy: record.publishedBy,
+          updatedAt: new Date(record.updatedAt),
+          expiresAt: this.parseOptionalDate(record.expiresAt),
+          currency: record.currency,
+          bookingPrice: record.bookingPrice,
+          fixedPrice: record.fixedPrice,
+          minimumBid: record.minimumBid,
+          serviceAreaHints: record.serviceAreaHints as Prisma.InputJsonValue,
+          stopPoints: record.stopPoints as Prisma.InputJsonValue,
+          routeSummary: record.routeSummary as Prisma.InputJsonValue,
+          stopSummary: record.stopSummary as Prisma.InputJsonValue,
+          fleetRequirements: record.fleetRequirements as Prisma.InputJsonValue,
+          awardedPartnerId: record.awardedPartnerId,
+          selectedBidId: record.selectedBidId,
+          awardedAt: this.parseOptionalDate(record.awardedAt),
+          awardedBy: record.awardedBy,
+          commissionAmount: record.commissionAmount,
+          commissionRatePct: record.commissionRatePct,
+          serviceFeeFlat: record.serviceFeeFlat,
+          premiumListingFee: record.premiumListingFee,
+          partnerNetAmount: record.partnerNetAmount,
+        },
+      });
+
+      await Promise.all(
+        record.bids.map((bid) =>
+          tx.marketplaceBid.upsert({
+            where: { id: bid.id },
+            create: {
+              id: bid.id,
+              opportunityBookingId: record.bookingId,
+              partnerId: bid.partnerId,
+              amount: bid.amount,
+              note: bid.note,
+              submittedAt: new Date(bid.submittedAt),
+              status: bid.status,
+              counterAmount: bid.counterAmount,
+              respondedAt: this.parseOptionalDate(bid.respondedAt),
+              respondedBy: bid.respondedBy,
+            },
+            update: {
+              partnerId: bid.partnerId,
+              amount: bid.amount,
+              note: bid.note,
+              submittedAt: new Date(bid.submittedAt),
+              status: bid.status,
+              counterAmount: bid.counterAmount,
+              respondedAt: this.parseOptionalDate(bid.respondedAt),
+              respondedBy: bid.respondedBy,
+            },
+          }),
+        ),
+      );
     });
+  }
+
+  private partnerRowToRecord(row: {
+    userId: string;
+    partnerType: string;
+    companyName: string;
+    serviceAreas: Prisma.JsonValue;
+    vehicleIds: Prisma.JsonValue;
+    warehouseIds: Prisma.JsonValue;
+    baseLatitude: number | null;
+    baseLongitude: number | null;
+    serviceRadiusKm: number | null;
+    commissionRatePct: number;
+    serviceFeeFlat: number;
+    premiumListing: boolean;
+    verificationStatus: string;
+    verificationNote: string | null;
+    submittedBy: string;
+    createdAt: Date;
+    updatedAt: Date;
+    approvedBy: string | null;
+    approvedAt: Date | null;
+    rejectedBy: string | null;
+    rejectedAt: Date | null;
+    suspendedBy: string | null;
+    suspendedAt: Date | null;
+  }): MarketplacePartnerRecord {
+    return {
+      userId: row.userId,
+      partnerType: this.normalizePartnerType(row.partnerType),
+      companyName: row.companyName,
+      serviceAreas: this.asStringArray(row.serviceAreas),
+      vehicleIds: this.asStringArray(row.vehicleIds),
+      warehouseIds: this.asStringArray(row.warehouseIds),
+      baseLatitude: row.baseLatitude,
+      baseLongitude: row.baseLongitude,
+      serviceRadiusKm: row.serviceRadiusKm,
+      commissionRatePct: row.commissionRatePct,
+      serviceFeeFlat: row.serviceFeeFlat,
+      premiumListing: row.premiumListing,
+      verificationStatus: row.verificationStatus as MarketplacePartnerStatus,
+      verificationNote: row.verificationNote,
+      submittedBy: row.submittedBy,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      approvedBy: row.approvedBy,
+      approvedAt: row.approvedAt?.toISOString() ?? null,
+      rejectedBy: row.rejectedBy,
+      rejectedAt: row.rejectedAt?.toISOString() ?? null,
+      suspendedBy: row.suspendedBy,
+      suspendedAt: row.suspendedAt?.toISOString() ?? null,
+    };
+  }
+
+  private opportunityRowToRecord(row: {
+    bookingId: string;
+    bookingReference: string;
+    serviceType: ServiceType;
+    partnerType: string;
+    pricingModel: string;
+    status: string;
+    publishedBy: string;
+    publishedAt: Date;
+    updatedAt: Date;
+    expiresAt: Date | null;
+    currency: string;
+    bookingPrice: number;
+    fixedPrice: number | null;
+    minimumBid: number | null;
+    serviceAreaHints: Prisma.JsonValue;
+    stopPoints: Prisma.JsonValue;
+    routeSummary: Prisma.JsonValue;
+    stopSummary: Prisma.JsonValue;
+    fleetRequirements: Prisma.JsonValue;
+    awardedPartnerId: string | null;
+    selectedBidId: string | null;
+    awardedAt: Date | null;
+    awardedBy: string | null;
+    commissionAmount: number | null;
+    commissionRatePct: number | null;
+    serviceFeeFlat: number | null;
+    premiumListingFee: number | null;
+    partnerNetAmount: number | null;
+    bids: Array<{
+      id: string;
+      partnerId: string;
+      amount: number;
+      note: string | null;
+      submittedAt: Date;
+      status: string;
+      counterAmount: number | null;
+      respondedAt: Date | null;
+      respondedBy: string | null;
+    }>;
+  }): MarketplaceOpportunityRecord {
+    return {
+      bookingId: row.bookingId,
+      bookingReference: row.bookingReference,
+      serviceType: row.serviceType,
+      partnerType: this.normalizePartnerType(row.partnerType),
+      pricingModel: row.pricingModel as MarketplacePricingModel,
+      status: row.status as MarketplaceOpportunityStatus,
+      publishedBy: row.publishedBy,
+      publishedAt: row.publishedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      expiresAt: row.expiresAt?.toISOString() ?? null,
+      currency: row.currency,
+      bookingPrice: row.bookingPrice,
+      fixedPrice: row.fixedPrice,
+      minimumBid: row.minimumBid,
+      serviceAreaHints: this.asStringArray(row.serviceAreaHints),
+      stopPoints: this.asStopPoints(row.stopPoints),
+      routeSummary: this.asRouteSummary(row.routeSummary, row.serviceAreaHints),
+      stopSummary: this.asStopSummary(row.stopSummary, row.stopPoints),
+      fleetRequirements: this.asFleetRequirements(row.fleetRequirements),
+      bids: row.bids.map((bid) => ({
+        id: bid.id,
+        partnerId: bid.partnerId,
+        amount: bid.amount,
+        note: bid.note,
+        submittedAt: bid.submittedAt.toISOString(),
+        status: bid.status as MarketplaceBidStatus,
+        counterAmount: bid.counterAmount,
+        respondedAt: bid.respondedAt?.toISOString() ?? null,
+        respondedBy: bid.respondedBy,
+      })),
+      awardedPartnerId: row.awardedPartnerId,
+      selectedBidId: row.selectedBidId,
+      awardedAt: row.awardedAt?.toISOString() ?? null,
+      awardedBy: row.awardedBy,
+      commissionAmount: row.commissionAmount,
+      commissionRatePct: row.commissionRatePct,
+      serviceFeeFlat: row.serviceFeeFlat,
+      premiumListingFee: row.premiumListingFee,
+      partnerNetAmount: row.partnerNetAmount,
+    };
+  }
+
+  private parseOptionalDate(value: string | null) {
+    return value ? new Date(value) : null;
   }
 
   private async raisePartnerAlert(

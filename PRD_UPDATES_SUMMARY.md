@@ -1,4 +1,41 @@
 # PRD Updates — Delivery OTP Security Enhancements
+## Marketplace & Warehouse Booking Update
+**Date:** May 23, 2026
+**Status:** COMPLETE
+
+### Summary
+
+The master PRD has been updated to make the marketplace and warehouse booking requirements explicit. The warehouse flow requires warehouse partners to list warehouses online, admin to verify and approve listings, customers to book approved warehouses online, and Zito to record a default 10% warehouse-partner commission on bookings.
+
+### PRD Sections Updated
+
+- Section 10 - Warehouse System:
+  - warehouse partner listing submission
+  - admin review, approval, change request, rejection, and suspension flow
+  - customer online warehouse booking discovery
+  - listing fields for company details, VAT, documents, photos, rates, capacity, area, and location
+  - booking status lifecycle and capacity reservation rules
+  - 10% default Zito commission requirement
+
+- Section 44.20 - Marketplace / Aggregator Mode:
+  - first-class partner types: Agent, Transporter, Courier Company, Warehouse Partner
+  - partner profile controls, service areas, linked assets, approval state, premium listings, and suspension
+  - fixed-price, open-bid, and negotiation opportunity flows
+  - awarded-work commission, service fee, premium listing fee, partner net amount, and audit requirements
+  - warehouse listings as independently reviewed supply, separate from partner profile approval
+
+- Section 66.7 - Customer Booking Experience:
+  - customer-safe warehouse booking requirements
+  - approved listing facts visible to customers
+  - internal commission math hidden from customer surfaces
+  - warehouse booking does not open the transport booking form first
+
+- Backend PRD Tracker:
+  - Phase 5 status now includes active marketplace and warehouse listing/booking coverage.
+
+---
+
+## Delivery OTP Security Enhancements
 **Date:** May 6, 2026  
 **Status:** ✅ COMPLETE
 

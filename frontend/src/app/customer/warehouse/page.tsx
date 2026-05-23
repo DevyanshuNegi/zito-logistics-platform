@@ -1,381 +1,412 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { CalendarClock, MapPinned, PackageCheck, Refrigerator, ShieldCheck, Snowflake, Warehouse } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import { ApiError, api } from '@/lib/api';
+import { formatDateTime, formatMoney, formatStatus } from '@/lib/format';
 
-type WarehouseRecord = {
+type WarehouseListing = {
   id: string;
-  name: string;
-  code: string;
-  address?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  status?: string | null;
-  zones?: Array<{
-    id: string;
-    name: string;
-    code: string;
-    type?: string | null;
-    capacity?: number | null;
-  }>;
-  _count?: {
-    items?: number;
-  };
+  title: string;
+  description?: string | null;
+  companyName: string;
+  areaLabel: string;
+  address: string;
+  storageTypes: string[];
+  amenities: string[];
+  photoUrls: string[];
+  availableCapacity: number;
+  totalCapacity: number;
+  capacityUnit: string;
+  rateAmount: number;
+  rateUnit: string;
+  handlingFee: number;
+  vatApplies: boolean;
+  vatRatePct: number;
+  minimumBookingDays: number;
+};
+
+type WarehouseBooking = {
+  id: string;
+  reference: string;
+  status: string;
+  totalAmount: number;
+  commissionAmount: number;
+  partnerNetAmount: number;
+  startDate: string;
+  endDate: string;
+  listing?: { title: string; areaLabel: string } | null;
 };
 
 const storageModes = [
-  {
-    value: 'DRY',
-    label: 'Ambient / Dry',
-    description: 'Standard storage for FMCG, electronics, and general cargo.',
-    icon: Warehouse,
-  },
-  {
-    value: 'COLD',
-    label: 'Cold Store',
-    description: '2-8 C storage for dairy, pharma, and chilled goods.',
-    icon: Refrigerator,
-  },
-  {
-    value: 'FROZEN',
-    label: 'Frozen Store',
-    description: 'Deep-freeze storage for frozen food and sensitive cargo.',
-    icon: Snowflake,
-  },
-  {
-    value: 'CROSS_DOCK',
-    label: 'Cross-dock',
-    description: 'Fast inbound-to-outbound flow without long storage stays.',
-    icon: PackageCheck,
-  },
+  { value: 'ALL', label: 'All', icon: Warehouse },
+  { value: 'DRY', label: 'Dry', icon: Warehouse },
+  { value: 'COLD', label: 'Cold', icon: Refrigerator },
+  { value: 'FROZEN', label: 'Frozen', icon: Snowflake },
+  { value: 'CROSS_DOCK', label: 'Cross-dock', icon: PackageCheck },
 ] as const;
 
-function matchesStorageMode(warehouse: WarehouseRecord, mode: string) {
-  if (mode === 'ALL') {
-    return true;
-  }
-
-  return warehouse.zones?.some((zone) => {
-    const normalized = String(zone.type ?? '').toUpperCase();
-    if (mode === 'DRY') {
-      return normalized === 'DRY' || normalized === 'AMBIENT';
-    }
-    if (mode === 'COLD') {
-      return normalized.includes('COLD');
-    }
-    if (mode === 'FROZEN') {
-      return normalized.includes('FROZEN');
-    }
-    if (mode === 'CROSS_DOCK') {
-      return normalized.includes('CROSS');
-    }
-    return false;
-  });
-}
+const EMPTY_BOOKING = {
+  listingId: '',
+  storageType: 'DRY',
+  goodsDescription: '',
+  startDate: '',
+  endDate: '',
+  capacityRequested: '',
+  capacityUnit: 'SQM',
+  customerNote: '',
+};
 
 export default function CustomerWarehousePage() {
-  const [warehouses, setWarehouses] = useState<WarehouseRecord[]>([]);
+  const [listings, setListings] = useState<WarehouseListing[]>([]);
+  const [bookings, setBookings] = useState<WarehouseBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [storageType, setStorageType] = useState<'ALL' | (typeof storageModes)[number]['value']>('ALL');
+  const [success, setSuccess] = useState<string | null>(null);
   const [locationFilter, setLocationFilter] = useState('');
-  const [goodsDescription, setGoodsDescription] = useState('');
-  const [expectedDuration, setExpectedDuration] = useState('');
-  const [weight, setWeight] = useState('');
-  const [appointmentWindow, setAppointmentWindow] = useState('');
+  const [storageType, setStorageType] = useState<(typeof storageModes)[number]['value']>('ALL');
+  const [bookingForm, setBookingForm] = useState(EMPTY_BOOKING);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const query = new URLSearchParams();
+      if (locationFilter.trim()) query.set('location', locationFilter.trim());
+      if (storageType !== 'ALL') query.set('storageType', storageType);
+      const suffix = query.toString() ? `?${query.toString()}` : '';
+      const [listingResponse, bookingResponse] = await Promise.all([
+        api.get<WarehouseListing[]>(`/warehouse/listings/public${suffix}`),
+        api.get<WarehouseBooking[]>('/warehouse/bookings'),
+      ]);
+      setListings(listingResponse);
+      setBookings(bookingResponse);
+      setBookingForm((current) => ({
+        ...current,
+        listingId: current.listingId || listingResponse[0]?.id || '',
+        storageType:
+          current.storageType === 'ALL'
+            ? listingResponse[0]?.storageTypes?.[0] ?? 'DRY'
+            : current.storageType,
+      }));
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Unable to load warehouse booking options.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function loadWarehouses() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await api.get<WarehouseRecord[]>('/warehouse');
-        setWarehouses(response);
-      } catch (caught) {
-        setError(caught instanceof ApiError ? caught.message : 'Unable to load warehouse options.');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    void loadWarehouses();
+    void load();
   }, []);
 
-  const filteredWarehouses = useMemo(() => {
-    return warehouses.filter((warehouse) => {
-      const searchBlob = `${warehouse.name} ${warehouse.code} ${warehouse.address ?? ''}`.toLowerCase();
-      const matchesLocation = !locationFilter.trim() || searchBlob.includes(locationFilter.trim().toLowerCase());
-      const matchesMode = matchesStorageMode(warehouse, storageType);
-      return matchesLocation && matchesMode;
-    });
-  }, [locationFilter, storageType, warehouses]);
+  const selectedListing = useMemo(
+    () => listings.find((listing) => listing.id === bookingForm.listingId) ?? listings[0] ?? null,
+    [bookingForm.listingId, listings],
+  );
+
+  const estimate = useMemo(() => {
+    if (!selectedListing || !bookingForm.startDate || !bookingForm.endDate || !bookingForm.capacityRequested) {
+      return null;
+    }
+
+    const start = new Date(bookingForm.startDate);
+    const end = new Date(bookingForm.endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      return null;
+    }
+
+    const days = Math.max(
+      selectedListing.minimumBookingDays,
+      Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)),
+    );
+    const baseAmount = Number(bookingForm.capacityRequested) * selectedListing.rateAmount * days;
+    const taxableAmount = baseAmount + selectedListing.handlingFee;
+    const vatAmount = selectedListing.vatApplies ? taxableAmount * (selectedListing.vatRatePct / 100) : 0;
+    return {
+      days,
+      baseAmount,
+      vatAmount,
+      totalAmount: taxableAmount + vatAmount,
+    };
+  }, [bookingForm.capacityRequested, bookingForm.endDate, bookingForm.startDate, selectedListing]);
+
+  async function submitBooking(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const booking = await api.post<WarehouseBooking>('/warehouse/bookings', {
+        listingId: bookingForm.listingId,
+        storageType: bookingForm.storageType,
+        goodsDescription: bookingForm.goodsDescription,
+        startDate: bookingForm.startDate,
+        endDate: bookingForm.endDate,
+        capacityRequested: Number(bookingForm.capacityRequested),
+        capacityUnit: bookingForm.capacityUnit,
+        customerNote: bookingForm.customerNote || undefined,
+      });
+      setSuccess(`Warehouse booking ${booking.reference} submitted online.`);
+      setBookingForm({
+        ...EMPTY_BOOKING,
+        listingId: selectedListing?.id ?? '',
+        storageType: selectedListing?.storageTypes?.[0] ?? 'DRY',
+        capacityUnit: selectedListing?.capacityUnit ?? 'SQM',
+      });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Unable to create warehouse booking.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
-    <div className="space-y-3.5">
-      {error ? (
-        <Alert title="Warehouse options issue" variant="danger">
-          {error}
-        </Alert>
-      ) : null}
+    <div className="space-y-4">
+      {error ? <Alert title="Warehouse booking issue" variant="danger">{error}</Alert> : null}
+      {success ? <Alert title="Warehouse booking submitted" variant="success">{success}</Alert> : null}
 
       <section className="overflow-hidden rounded-[24px] border border-[#d7e0ec] bg-[linear-gradient(135deg,#06101f_0%,#0f1b31_100%)] p-4 text-white shadow-[0_12px_30px_rgba(6,16,31,0.22)]">
-        <div className="space-y-3.5">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/72">
-              Warehouse booking
-            </p>
-            <h1 className="mt-1 text-[1.62rem] font-bold leading-[1.15]">Choose storage the modern way</h1>
-            <p className="mt-2.5 text-[13px] leading-6 text-slate-300">
-              Storage should not open the transport booking flow. Start by selecting the storage mode,
-              inbound timing, and goods profile, then review eligible warehouses and capacity options.
-            </p>
-          </div>
-
-          <div className="rounded-[18px] bg-white/8 px-4 py-3.5 shadow-[0_10px_30px_rgba(15,23,42,0.16)] backdrop-blur">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/72">
-              Customer promise
-            </p>
-            <p className="mt-2 text-base font-extrabold">Warehouse-first flow</p>
-            <p className="mt-2 text-[13px] leading-6 text-slate-300">
-              Storage procedure is visible here. Final commercial review still stays with Zito operations.
-            </p>
-          </div>
-        </div>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/72">
+          Warehouse booking
+        </p>
+        <h1 className="mt-1 text-[1.65rem] font-bold leading-[1.15]">Find and book approved warehouses online</h1>
+        <p className="mt-2.5 max-w-3xl text-[13px] leading-6 text-slate-300">
+          Browse admin-approved warehouse listings by location, storage type, rates, capacity, VAT, and partner details.
+          Your booking is sent directly to the warehouse partner, with Zito commission recorded behind the scenes.
+        </p>
       </section>
 
       <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-        <div className="mb-3.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-            Storage options
-          </p>
-          <h2 className="mt-1 text-[1.05rem] font-semibold leading-6 text-[#1a1a2e]">
-            Select the warehouse service you need
-          </h2>
+        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+          <Input
+            label="Find warehouse by location"
+            tone="light"
+            value={locationFilter}
+            onChange={(event) => setLocationFilter(event.target.value)}
+            placeholder="Industrial Area, Mombasa, Kisumu..."
+          />
+          <div className="flex items-end">
+            <Button type="button" className="w-full rounded-[14px]" onClick={() => void load()}>
+              Search
+            </Button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="mt-4 flex gap-2 overflow-x-auto">
           {storageModes.map((mode) => {
             const Icon = mode.icon;
             const active = storageType === mode.value;
-
             return (
               <button
                 key={mode.value}
                 type="button"
                 onClick={() => setStorageType(mode.value)}
                 className={[
-                  'rounded-[20px] border p-4 text-left transition',
+                  'inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition',
                   active
-                    ? 'border-transparent bg-gradient-to-br from-cyan-500/14 via-blue-500/12 to-violet-500/12 shadow-[0_10px_24px_rgba(59,130,246,0.14)]'
-                    : 'border-[#d7e0ec] bg-white hover:border-[#93c5fd] hover:bg-[#f8fbff]',
+                    ? 'border-[#1b3f72] bg-[#eef4ff] text-[#1b3f72]'
+                    : 'border-[#d7e0ec] bg-white text-[#64748b] hover:border-[#93c5fd]',
                 ].join(' ')}
               >
-                <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#eef4ff] text-[#1b3f72]">
-                  <Icon className="h-[18px] w-[18px]" />
-                </div>
-                <p className="mt-3 text-[15px] font-semibold leading-6 text-[#1a1a2e]">{mode.label}</p>
-                <p className="mt-1 text-[13px] leading-6 text-[#64748b]">{mode.description}</p>
+                <Icon className="h-4 w-4" />
+                {mode.label}
               </button>
             );
           })}
         </div>
       </section>
 
-      <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-        <div className="mb-3.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-            Request details
-          </p>
-          <h2 className="mt-1 text-[1.05rem] font-semibold leading-6 text-[#1a1a2e]">
-            Prepare the warehouse request cleanly
-          </h2>
-          <p className="mt-1 text-[13px] leading-6 text-[#64748b]">
-            These are the customer-facing warehouse booking details defined in the PRD.
-          </p>
-        </div>
-
-        <div className="grid gap-4">
-          <Input
-            label="Preferred location"
-            tone="light"
-            value={locationFilter}
-            onChange={(event) => setLocationFilter(event.target.value)}
-            placeholder="Search city, estate, industrial area, or warehouse code"
-            help="Used to narrow warehouse options before final selection."
-          />
-          <Input
-            label="Inbound appointment"
-            tone="light"
-            type="datetime-local"
-            value={appointmentWindow}
-            onChange={(event) => setAppointmentWindow(event.target.value)}
-            help="Inbound date and time used for warehouse slot planning."
-          />
-          <Input
-            label="Goods description"
-            tone="light"
-            value={goodsDescription}
-            onChange={(event) => setGoodsDescription(event.target.value)}
-            placeholder="Palletized FMCG, pharma cartons, frozen stock, machinery..."
-          />
-          <Input
-            label="Expected storage duration"
-            tone="light"
-            value={expectedDuration}
-            onChange={(event) => setExpectedDuration(event.target.value)}
-            placeholder="3 days, 2 weeks, 1 month"
-          />
-          <Input
-            label="Weight / volume summary"
-            tone="light"
-            value={weight}
-            onChange={(event) => setWeight(event.target.value)}
-            placeholder="Weight, pallet count, cubic meters, or units"
-            help="Customer-facing intake only. Detailed commercial logic stays internal."
-          />
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {[
-            'Storage type',
-            'Goods description',
-            'Inbound date and time',
-            'Expected storage duration',
-            'Weight and/or volume',
-            'Special handling and insurance when needed',
-          ].map((item) => (
-            <div
-              key={item}
-              className="rounded-[16px] bg-[#f8fbff] px-3.5 py-3 text-[13px] font-medium leading-5 text-[#1a1a2e]"
-            >
-              {item}
+      <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
+        <div className="space-y-4">
+          {loading ? (
+            <div className="flex justify-center rounded-[22px] border border-[#d7e0ec] bg-white py-10">
+              <Spinner />
             </div>
-          ))}
+          ) : listings.length === 0 ? (
+            <div className="rounded-[22px] border border-dashed border-[#d7e0ec] bg-white px-4 py-8 text-center">
+              <MapPinned className="mx-auto h-6 w-6 text-[#1b3f72]" />
+              <p className="mt-3 text-sm font-semibold text-[#1a1a2e]">No approved warehouses match yet</p>
+              <p className="mt-1 text-xs text-[#64748b]">Try another location or storage type.</p>
+            </div>
+          ) : (
+            listings.map((listing) => (
+              <button
+                key={listing.id}
+                type="button"
+                onClick={() =>
+                  setBookingForm((current) => ({
+                    ...current,
+                    listingId: listing.id,
+                    storageType: listing.storageTypes[0] ?? current.storageType,
+                    capacityUnit: listing.capacityUnit,
+                  }))
+                }
+                className={[
+                  'w-full rounded-[22px] border bg-white p-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition',
+                  selectedListing?.id === listing.id ? 'border-[#1b3f72]' : 'border-[#d7e0ec] hover:border-[#93c5fd]',
+                ].join(' ')}
+              >
+                <div className="grid gap-4 md:grid-cols-[150px_1fr]">
+                  <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-[16px] bg-[#eef4ff] text-[#1b3f72]">
+                    {listing.photoUrls?.[0] ? (
+                      <img src={listing.photoUrls[0]} alt={listing.title} className="h-full w-full object-cover" />
+                    ) : (
+                      <Warehouse className="h-8 w-8" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                          {listing.companyName}
+                        </p>
+                        <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">{listing.title}</h2>
+                        <p className="mt-1 text-sm leading-6 text-[#64748b]">{listing.areaLabel} / {listing.address}</p>
+                      </div>
+                      <span className="rounded-full bg-[#dcfce7] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#15803d]">
+                        Approved
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                      <div className="rounded-[14px] bg-[#f8fbff] px-3 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">Rate</p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{formatMoney(listing.rateAmount, 'KES')}</p>
+                        <p className="text-[11px] text-[#64748b]">/{listing.rateUnit}</p>
+                      </div>
+                      <div className="rounded-[14px] bg-[#f8fbff] px-3 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">Capacity</p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{listing.availableCapacity}</p>
+                        <p className="text-[11px] text-[#64748b]">{listing.capacityUnit} available</p>
+                      </div>
+                      <div className="rounded-[14px] bg-[#f8fbff] px-3 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">VAT</p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{listing.vatApplies ? `${listing.vatRatePct}%` : 'No'}</p>
+                      </div>
+                      <div className="rounded-[14px] bg-[#f8fbff] px-3 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">Min</p>
+                        <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">{listing.minimumBookingDays} days</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {listing.storageTypes.map((item) => (
+                        <span key={item} className="rounded-full border border-[#d1dcf0] bg-white px-3 py-1 text-[11px] font-semibold text-[#1b3f72]">
+                          {formatStatus(item)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            ))
+          )}
         </div>
+
+        <form onSubmit={submitBooking} className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+          <div className="mb-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">Book online</p>
+            <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">
+              {selectedListing?.title ?? 'Choose a warehouse'}
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-[#64748b]">
+              Partner pays Zito 10% commission after confirmed booking.
+            </p>
+          </div>
+
+          <div className="grid gap-4">
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-700">Warehouse</span>
+              <select
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                value={bookingForm.listingId}
+                onChange={(event) => setBookingForm((current) => ({ ...current, listingId: event.target.value }))}
+                required
+              >
+                {listings.map((listing) => (
+                  <option key={listing.id} value={listing.id}>{listing.title}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-slate-700">Storage type</span>
+              <select
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                value={bookingForm.storageType}
+                onChange={(event) => setBookingForm((current) => ({ ...current, storageType: event.target.value }))}
+              >
+                {(selectedListing?.storageTypes ?? ['DRY']).map((item) => (
+                  <option key={item} value={item}>{formatStatus(item)}</option>
+                ))}
+              </select>
+            </label>
+            <Input label="Goods description" tone="light" value={bookingForm.goodsDescription} onChange={(event) => setBookingForm((current) => ({ ...current, goodsDescription: event.target.value }))} required />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Start date" tone="light" type="date" value={bookingForm.startDate} onChange={(event) => setBookingForm((current) => ({ ...current, startDate: event.target.value }))} required />
+              <Input label="End date" tone="light" type="date" value={bookingForm.endDate} onChange={(event) => setBookingForm((current) => ({ ...current, endDate: event.target.value }))} required />
+            </div>
+            <div className="grid grid-cols-[1fr_92px] gap-3">
+              <Input label="Capacity needed" tone="light" type="number" min="0.01" step="0.01" value={bookingForm.capacityRequested} onChange={(event) => setBookingForm((current) => ({ ...current, capacityRequested: event.target.value }))} required />
+              <Input label="Unit" tone="light" value={bookingForm.capacityUnit} onChange={(event) => setBookingForm((current) => ({ ...current, capacityUnit: event.target.value }))} />
+            </div>
+            <Input label="Customer note" tone="light" textarea rows={3} value={bookingForm.customerNote} onChange={(event) => setBookingForm((current) => ({ ...current, customerNote: event.target.value }))} />
+          </div>
+
+          <div className="mt-4 rounded-[18px] bg-[#f8fbff] px-4 py-4">
+            <div className="flex items-center gap-2 text-[#1b3f72]">
+              <CalendarClock className="h-4 w-4" />
+              <p className="text-sm font-semibold">Booking estimate</p>
+            </div>
+            {estimate ? (
+              <div className="mt-3 grid gap-2 text-sm text-[#475569]">
+                <p>Duration: {estimate.days} days</p>
+                <p>Storage: {formatMoney(estimate.baseAmount, 'KES')}</p>
+                <p>VAT: {formatMoney(estimate.vatAmount, 'KES')}</p>
+                <p className="font-semibold text-[#1a1a2e]">Customer total: {formatMoney(estimate.totalAmount, 'KES')}</p>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-[#64748b]">Choose dates and capacity to calculate the total.</p>
+            )}
+          </div>
+
+          <Button disabled={saving || listings.length === 0} type="submit" className="mt-4 w-full rounded-[14px]">
+            <ShieldCheck className="mr-2 h-4 w-4" />
+            {saving ? 'Submitting...' : 'Book warehouse online'}
+          </Button>
+        </form>
       </section>
 
       <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-              Eligible warehouses
-            </p>
-            <h2 className="mt-1 text-[1.05rem] font-semibold leading-6 text-[#1a1a2e]">
-              Warehouse options near your request
-            </h2>
-          </div>
-          <span className="rounded-full bg-[#f1f5fb] px-3 py-1 text-[11px] font-semibold text-[#1b3f72]">
-            {filteredWarehouses.length} options
-          </span>
-        </div>
-
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Spinner />
-          </div>
-        ) : filteredWarehouses.length === 0 ? (
-          <div className="rounded-[18px] border border-dashed border-[#d7e0ec] bg-[#f8fbff] px-4 py-6 text-center">
-            <MapPinned className="mx-auto h-6 w-6 text-[#1b3f72]" />
-            <p className="mt-3 text-sm font-semibold text-[#1a1a2e]">No warehouse options match yet</p>
-            <p className="mt-1 text-xs leading-5 text-[#64748b]">
-              Adjust the storage mode or location filter and try again.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {filteredWarehouses.map((warehouse) => {
-              const zoneTypes = Array.from(
-                new Set((warehouse.zones ?? []).map((zone) => String(zone.type ?? 'DRY').replaceAll('_', ' '))),
-              );
-
-              return (
-                <div
-                  key={warehouse.id}
-                  className="rounded-[22px] border border-[#d7e0ec] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-                        {warehouse.code}
-                      </p>
-                      <h3 className="mt-1 text-[1.02rem] font-semibold leading-6 text-[#1a1a2e]">
-                        {warehouse.name}
-                      </h3>
-                      <p className="mt-1 text-[13px] leading-6 text-[#64748b]">
-                        {warehouse.address || 'Address will be confirmed by Zito operations.'}
-                      </p>
-                    </div>
-
-                    <span className="rounded-full bg-[#dcfce7] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#15803d]">
-                      {warehouse.status ?? 'ACTIVE'}
-                    </span>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">My warehouse bookings</p>
+        <div className="mt-3 grid gap-3">
+          {bookings.length === 0 ? (
+            <p className="text-sm text-[#64748b]">No warehouse bookings yet.</p>
+          ) : (
+            bookings.map((booking) => (
+              <div key={booking.id} className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-[#1a1a2e]">{booking.reference}</p>
+                    <p className="text-sm text-[#64748b]">{booking.listing?.title ?? 'Warehouse booking'}</p>
+                    <p className="text-xs text-[#64748b]">{formatDateTime(booking.startDate)} to {formatDateTime(booking.endDate)}</p>
                   </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="rounded-[16px] bg-white px-3 py-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">
-                        Zones
-                      </p>
-                      <p className="mt-1 text-base font-semibold text-[#1a1a2e]">{warehouse.zones?.length ?? 0}</p>
-                    </div>
-                    <div className="rounded-[16px] bg-white px-3 py-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">
-                        Stored items
-                      </p>
-                      <p className="mt-1 text-base font-semibold text-[#1a1a2e]">{warehouse._count?.items ?? 0}</p>
-                    </div>
-                    <div className="rounded-[16px] bg-white px-3 py-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">
-                        Access
-                      </p>
-                      <p className="mt-1 text-base font-semibold text-[#1a1a2e]">By review</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {zoneTypes.length ? (
-                      zoneTypes.map((zoneType) => (
-                        <span
-                          key={zoneType}
-                          className="rounded-full border border-[#d1dcf0] bg-white px-3 py-1 text-[11px] font-semibold text-[#1b3f72]"
-                        >
-                          {zoneType}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="rounded-full border border-[#d1dcf0] bg-white px-3 py-1 text-[11px] font-semibold text-[#1b3f72]">
-                        Zone types pending
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-2">
-                    <Link
-                      href="/customer/support"
-                      className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(59,130,246,0.16)]"
-                    >
-                      <CalendarClock className="h-4 w-4" />
-                      Request warehouse review
-                    </Link>
-                    <Link
-                      href="/customer/bookings/new"
-                      className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[#0f172a] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1e293b]"
-                    >
-                      <ShieldCheck className="h-4 w-4" />
-                      Need transport too?
-                    </Link>
-                  </div>
+                  <span className="rounded-full bg-[#eef4ff] px-3 py-1 text-xs font-semibold text-[#1b3f72]">
+                    {formatStatus(booking.status)}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-        )}
+                <p className="mt-2 text-sm font-semibold text-[#1a1a2e]">{formatMoney(booking.totalAmount, 'KES')}</p>
+              </div>
+            ))
+          )}
+        </div>
       </section>
     </div>
   );

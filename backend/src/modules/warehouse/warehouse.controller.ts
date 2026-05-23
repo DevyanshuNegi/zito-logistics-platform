@@ -15,10 +15,14 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
+  CreateWarehouseBookingDto,
   CreateWarehouseBinDto,
   CreateWarehouseDto,
+  CreateWarehouseListingDto,
   CreateWarehouseRackDto,
   CreateWarehouseZoneDto,
+  ReviewWarehouseListingDto,
+  UpdateWarehouseBookingStatusDto,
   UpdateWarehouseDto,
 } from './dto/warehouse.dto';
 
@@ -56,6 +60,93 @@ export class WarehouseController {
       viewerUserId: req.user.id,
       agencyId,
     });
+  }
+
+  @Roles('CUSTOMER', 'CORPORATE')
+  @Get('listings/public')
+  listApprovedListings(
+    @Query('location') location?: string,
+    @Query('storageType') storageType?: string,
+  ) {
+    return this.warehouseService.listApprovedListings({ location, storageType });
+  }
+
+  @Roles('WAREHOUSE_PARTNER')
+  @Post('partner/listings')
+  createPartnerListing(@Body() data: CreateWarehouseListingDto, @Req() req: any) {
+    return this.warehouseService.createListing(req.user.id, data);
+  }
+
+  @Roles('WAREHOUSE_PARTNER')
+  @Get('partner/listings')
+  listPartnerListings(@Req() req: any) {
+    return this.warehouseService.listPartnerListings(req.user.id);
+  }
+
+  @Roles('WAREHOUSE_PARTNER')
+  @Get('partner/bookings')
+  listPartnerBookings(@Req() req: any) {
+    return this.warehouseService.listPartnerBookings(req.user.id);
+  }
+
+  @Roles('WAREHOUSE_PARTNER')
+  @Patch('partner/bookings/:id/status')
+  updatePartnerBookingStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() data: UpdateWarehouseBookingStatusDto,
+    @Req() req: any,
+  ) {
+    return this.warehouseService.updateBookingStatus(id, data, {
+      userId: req.user.id,
+      role: 'WAREHOUSE_PARTNER',
+    });
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Get('admin/listings')
+  listAdminListings(@Query('status') status?: string) {
+    return this.warehouseService.listAdminListings({ status });
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('admin/listings/:id/review')
+  reviewListing(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() data: ReviewWarehouseListingDto,
+    @Req() req: any,
+  ) {
+    return this.warehouseService.reviewListing(id, data, req.user.id);
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Get('admin/bookings')
+  listAdminBookings() {
+    return this.warehouseService.listAdminBookings();
+  }
+
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Patch('admin/bookings/:id/status')
+  updateAdminBookingStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() data: UpdateWarehouseBookingStatusDto,
+    @Req() req: any,
+  ) {
+    return this.warehouseService.updateBookingStatus(id, data, {
+      userId: req.user.id,
+      role: req.user.activeRole ?? req.user.role,
+    });
+  }
+
+  @Roles('CUSTOMER', 'CORPORATE')
+  @Post('bookings')
+  createBooking(@Body() data: CreateWarehouseBookingDto, @Req() req: any) {
+    return this.warehouseService.createBooking(req.user.id, data);
+  }
+
+  @Roles('CUSTOMER', 'CORPORATE')
+  @Get('bookings')
+  listCustomerBookings(@Req() req: any) {
+    return this.warehouseService.listCustomerBookings(req.user.id);
   }
 
   @Roles(

@@ -8,6 +8,7 @@ const navItems = [
   { href: '/admin/workforce', label: 'Workforce' },
   { href: '/admin/courier-companies', label: 'Courier Control' },
   { href: '/admin/warehouse-partners', label: 'Warehouse Control' },
+  { href: '/admin/warehouse-listings', label: 'Warehouse Listings' },
   { href: '/admin/alerts', label: 'Alerts' },
   { href: '/admin/notifications', label: 'Notifications' },
   { href: '/admin/system-health', label: 'System Health' },

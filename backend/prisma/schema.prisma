@@ -719,9 +719,88 @@ model Warehouse {
   zones      WarehouseZone[]
   items      InventoryItem[]
   rtoReturns RtoReturn[]
+  listings   WarehouseListing[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model WarehouseListing {
+  id                 String   @id @default(uuid())
+  warehouseId        String
+  warehouse          Warehouse @relation(fields: [warehouseId], references: [id])
+  partnerId          String
+  companyName        String
+  companyEmail       String?
+  companyPhone       String?
+  vatNumber          String?
+  vatRatePct         Float    @default(0)
+  vatApplies         Boolean  @default(false)
+  title              String
+  description        String?
+  areaLabel          String
+  address            String
+  latitude           Float?
+  longitude          Float?
+  serviceRadiusKm    Float?
+  storageTypes       Json
+  amenities          Json
+  photoUrls          Json
+  documentUrls       Json
+  totalCapacity      Float
+  availableCapacity  Float
+  capacityUnit       String   @default("SQM")
+  rateAmount         Float
+  rateUnit           String   @default("DAY")
+  handlingFee        Float    @default(0)
+  minimumBookingDays Int      @default(1)
+  status             String   @default("PENDING_REVIEW")
+  reviewNote         String?
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  bookings WarehouseBooking[]
+
+  @@index([partnerId, status])
+  @@index([areaLabel, status])
+  @@index([warehouseId])
+}
+
+model WarehouseBooking {
+  id                  String   @id @default(uuid())
+  reference           String   @unique
+  listingId           String
+  listing             WarehouseListing @relation(fields: [listingId], references: [id])
+  customerId          String
+  partnerId           String
+  status              String   @default("REQUESTED")
+  storageType         String
+  goodsDescription    String
+  startDate           DateTime
+  endDate             DateTime
+  capacityRequested   Float
+  capacityUnit        String   @default("SQM")
+  baseAmount          Float
+  handlingFee         Float    @default(0)
+  vatAmount           Float    @default(0)
+  totalAmount         Float
+  commissionRatePct   Float    @default(10)
+  commissionAmount    Float
+  partnerNetAmount    Float
+  customerNote        String?
+  partnerNote         String?
+  adminNote           String?
+  acceptedAt          DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([customerId, status])
+  @@index([partnerId, status])
+  @@index([listingId])
 }
 
 model WarehouseZone {
@@ -1146,4 +1225,86 @@ model IdempotencyRecord {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   expiresAt   DateTime? // Optional: for automatic cleanup of old records
+}
+
+model MarketplacePartner {
+  userId             String   @id
+  partnerType        String
+  companyName        String
+  serviceAreas       Json
+  vehicleIds         Json
+  warehouseIds       Json
+  baseLatitude       Float?
+  baseLongitude      Float?
+  serviceRadiusKm    Float?
+  commissionRatePct  Float    @default(12)
+  serviceFeeFlat     Float    @default(0)
+  premiumListing     Boolean  @default(false)
+  verificationStatus String   @default("PENDING_REVIEW")
+  verificationNote   String?
+  submittedBy        String
+  approvedBy         String?
+  approvedAt         DateTime?
+  rejectedBy         String?
+  rejectedAt         DateTime?
+  suspendedBy        String?
+  suspendedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([partnerType, verificationStatus])
+  @@index([updatedAt])
+}
+
+model MarketplaceOpportunity {
+  bookingId            String           @id
+  bookingReference     String
+  serviceType          ServiceType
+  partnerType          String
+  pricingModel         String
+  status               String           @default("OPEN")
+  publishedBy          String
+  publishedAt          DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  expiresAt            DateTime?
+  currency             String           @default("KES")
+  bookingPrice         Float            @default(0)
+  fixedPrice           Float?
+  minimumBid           Float?
+  serviceAreaHints     Json
+  stopPoints           Json
+  routeSummary         Json
+  stopSummary          Json
+  fleetRequirements    Json
+  awardedPartnerId     String?
+  selectedBidId        String?
+  awardedAt            DateTime?
+  awardedBy            String?
+  commissionAmount     Float?
+  commissionRatePct    Float?
+  serviceFeeFlat       Float?
+  premiumListingFee    Float?
+  partnerNetAmount     Float?
+  bids                 MarketplaceBid[]
+
+  @@index([partnerType, status])
+  @@index([publishedAt])
+  @@index([expiresAt])
+}
+
+model MarketplaceBid {
+  id                   String                 @id
+  opportunityBookingId String
+  opportunity          MarketplaceOpportunity @relation(fields: [opportunityBookingId], references: [bookingId], onDelete: Cascade)
+  partnerId            String
+  amount               Float
+  note                 String?
+  submittedAt          DateTime               @default(now())
+  status               String                 @default("PENDING")
+  counterAmount        Float?
+  respondedAt          DateTime?
+  respondedBy          String?
+
+  @@index([opportunityBookingId, status])
+  @@index([partnerId, status])
 }

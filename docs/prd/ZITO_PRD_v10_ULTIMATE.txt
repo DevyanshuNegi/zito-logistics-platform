@@ -758,6 +758,31 @@ Geo-located warehouses with coverage radius
 Capacity management with real-time availability
 Slot booking for inbound and outbound operations
 Multi-agency warehouse sharing supported
+Warehouse Listing & Online Booking Flow:
+- warehouse partners must be able to submit customer-facing warehouse listings from the partner workspace
+- warehouse listings must remain separate from operational warehouse, zone, rack, bin, and inventory records so warehouse operations are not disrupted by marketplace publishing
+- each listing must be linked to a managed warehouse and to the submitting warehouse partner
+- warehouse partners may only list warehouses they manage or are explicitly authorized to operate
+- listing submission must capture company details, authorized contact information, VAT/tax details, warehouse title, description, area, address, latitude, longitude, service radius, storage types, amenities, photos, documents, total capacity, available capacity, capacity unit, rate amount, rate unit, handling fee, and minimum booking duration
+- required warehouse documents should include business registration, warehouse ownership or lease evidence, insurance where applicable, fire/safety certificate where required, and tax/VAT certificate where VAT applies
+- listing photos should show external access, loading area, storage area, safety equipment, cold-chain area where applicable, and other customer-relevant warehouse condition evidence
+- listing status must support at minimum pending_review, approved, rejected, changes_requested, and suspended
+- approved listings become visible to customers; rejected, suspended, and pending listings must not appear in customer booking discovery
+- admin and super admin must be able to review, approve, reject, request changes, or suspend warehouse listings from an internal control surface
+- admin review must check company details, documents, rates, capacity, location, storage types, photos, VAT setup, and operational suitability before approval
+- customers must have a dedicated Warehouse Booking entry below or beside the main booking options; selecting warehouse must not open the transport booking form first
+- customer warehouse discovery must support approved listing browse/search by location, storage type, rate, capacity, amenities, and availability signals
+- customer warehouse cards must show partner/company name, warehouse title, area, address, storage types, available capacity, rate, handling fee, VAT treatment, photos, and approval status
+- customer booking must capture listing, storage type, goods description, start date, end date, capacity requested, capacity unit, and customer note
+- system must calculate customer-visible warehouse booking amount from capacity requested, duration, listing rate, handling fee, and VAT where applicable
+- system must record Zito commission on warehouse bookings at 10 percent by default, retained from the warehouse partner settlement
+- commission must be calculated on storage and handling value before VAT unless a contract explicitly overrides the commission basis
+- warehouse booking status must support requested, accepted, rejected, goods_received, in_storage, ready_for_pickup, completed, and cancelled
+- warehouse partners must be able to view and update their own warehouse bookings without seeing other partners' bookings
+- admin and super admin must be able to monitor all warehouse listings, bookings, commission amounts, partner net amounts, and booking statuses
+- completed warehouse bookings must feed finance, invoice, settlement, and commission ledgers
+- warehouse booking capacity reservation must not exceed approved listing available capacity
+- customer-facing warehouse booking must remain online and self-service while still allowing admin oversight for approval, disputes, suspension, and commercial audit
 11. 📦 Inventory System
 Parcel States
 received → stored → sorted → dispatched → delivered → missing → damaged
@@ -1624,16 +1649,29 @@ Verification & approval system
 Operations:
 Booking acceptance by partners
 Courier-company acceptance and bidding for courier work
+Warehouse partner listing submission and online customer warehouse booking
 Service availability by location
 Pricing:
 Fixed pricing
 Bidding system
 Rate negotiation
+Warehouse storage rates, handling fees, VAT treatment, and partner commission
 Control:
 Performance monitoring
 Suspension capability
 Policy enforcement
 Admin and Super Admin must both be able to onboard, approve, suspend, price, and publish opportunities to Agent, Transporter, Courier Company, and Warehouse Partner marketplace supply from the internal marketplace control surface
+Marketplace Partner Control:
+- Agent, Transporter, Courier Company, and Warehouse Partner are first-class marketplace partner types
+- partner profiles must support service areas, commission rate, service fee, premium listing mode, linked assets, approval status, and suspension state
+- warehouse partner profiles must support linked managed warehouses, but warehouse public listings must be reviewed independently from the partner profile
+- approved partners may see matching marketplace opportunities; pending, rejected, or suspended partners must not accept or bid on opportunities
+- admin and super admin must be able to publish booking opportunities as fixed-price, open-bid, or negotiation opportunities
+- approved partners must be able to accept fixed-price opportunities or submit bids for open-bid and negotiation opportunities
+- admin and super admin must be able to accept, reject, or counter bids
+- awarded marketplace work must record commission amount, service fee, premium listing fee where applicable, partner net amount, and award audit fields
+- marketplace matching must use partner type, service areas, optional base location, optional service radius, and relevant fleet or warehouse constraints
+- marketplace review and performance alerts must be visible to internal operations
 Revenue Model:
 Commission per transaction
 Service fees
@@ -3044,6 +3082,11 @@ Rules:
 - customer booking review/confirm must avoid tutorial blocks, internal-policy notes, and economic explanations; it should show only the route recap, selected vehicle or service, stop contacts, customer-visible quote, edit actions, and final confirm CTA
 - if an instant quote is not available, customer booking review/confirm must show a rate-under-review state instead of a pricing failure; the customer can still submit the booking request while admin and marketplace supply confirm the final rate behind the scenes
 - customer-facing Storage / Warehouse entry must never open the normal transport booking form; it must open a warehouse-options and discovery flow with storage type, inbound timing, goods profile, and eligible warehouse choices first
+- customer-facing Warehouse Booking must show only approved warehouse listings and must allow online booking from the warehouse discovery page
+- warehouse discovery must expose customer-safe listing facts: warehouse title, partner/company, area, address, storage types, capacity, rate, handling fee, VAT treatment, photos, and approval state
+- warehouse booking review must calculate and show customer total from requested capacity, booking duration, listing rate, handling fee, and VAT where applicable
+- customer surfaces must not show Zito commission math; commission remains an internal partner-settlement and admin-finance control
+- warehouse partner listing creation must stay in the warehouse partner workspace, while listing approval and suspension stay in admin/internal workflows
 - customer AI support must never expose hidden pricing logic, margin logic, county-rate logic, surge formulas, or admin-only commercial controls; it explains procedure and surfaces live customer-safe facts only
 - interim free-map implementation is allowed using OpenStreetMap tiles / embed plus free geocoding, provided the UI still behaves like a premium mobile service flow
 - if owned-fleet capability is enabled for the customer role, customer home or account must expose a clear Own Fleet entry so vehicle and driver management is discoverable without admin assistance

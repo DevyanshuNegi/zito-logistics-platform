@@ -3,6 +3,9 @@ import { PortalShell } from '@/components/layout/PortalShell';
 
 const navItems = [
   { href: '/warehouse/dashboard', label: 'Dashboard' },
+  { href: '/warehouse/listings', label: 'Listings' },
+  { href: '/warehouse/bookings', label: 'Bookings' },
+  { href: '/warehouse/marketplace', label: 'Marketplace' },
   { href: '/warehouse/bins', label: 'Bins' },
   { href: '/warehouse/inventory', label: 'Inventory' },
   { href: '/warehouse/scan', label: 'Scan' },

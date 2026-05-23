@@ -186,6 +186,7 @@ export default function AdminMarketplacePage() {
   const [savingPartner, setSavingPartner] = useState(false);
   const [savingOpportunity, setSavingOpportunity] = useState(false);
   const [monitoring, setMonitoring] = useState(false);
+  const [busyBidId, setBusyBidId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -384,6 +385,40 @@ export default function AdminMarketplacePage() {
       );
     } finally {
       setMonitoring(false);
+    }
+  }
+
+  async function handleBidAction(
+    bookingId: string,
+    bidId: string,
+    action: 'ACCEPT' | 'REJECT' | 'COUNTER',
+  ) {
+    const counterAmount =
+      action === 'COUNTER' ? window.prompt('Counter amount in KES') : null;
+    if (action === 'COUNTER' && (!counterAmount || Number(counterAmount) <= 0)) {
+      setError('Enter a valid counter amount before sending the counter offer.');
+      return;
+    }
+
+    setBusyBidId(bidId);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await api.patch(`/marketplace/opportunities/${bookingId}/bids/${bidId}`, {
+        action,
+        counterAmount: action === 'COUNTER' ? Number(counterAmount) : undefined,
+      });
+      setSuccess(`Marketplace bid ${formatStatus(action.toLowerCase())}.`);
+      await loadPage();
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : 'Unable to update marketplace bid.',
+      );
+    } finally {
+      setBusyBidId(null);
     }
   }
 
@@ -847,6 +882,40 @@ export default function AdminMarketplacePage() {
                         <p>
                           {formatMoney(bid.amount, 'KES')} · {formatStatus(bid.status)}
                         </p>
+                        {opportunity.status === 'OPEN' && bid.status !== 'ACCEPTED' ? (
+                          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                            <Button
+                              className="w-full"
+                              disabled={busyBidId === bid.id}
+                              onClick={() =>
+                                void handleBidAction(opportunity.bookingId, bid.id, 'ACCEPT')
+                              }
+                              variant="secondary"
+                            >
+                              Accept
+                            </Button>
+                            <Button
+                              className="w-full"
+                              disabled={busyBidId === bid.id}
+                              onClick={() =>
+                                void handleBidAction(opportunity.bookingId, bid.id, 'COUNTER')
+                              }
+                              variant="ghost"
+                            >
+                              Counter
+                            </Button>
+                            <Button
+                              className="w-full"
+                              disabled={busyBidId === bid.id}
+                              onClick={() =>
+                                void handleBidAction(opportunity.bookingId, bid.id, 'REJECT')
+                              }
+                              variant="danger"
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     ))
                   )}

@@ -356,5 +356,301 @@ export class WarehouseService {
       zones,
     };
   }
+
+  async createListing(partnerId: string, data: any) {
+    const warehouse = await this.prisma.warehouse.findUnique({
+      where: { id: data.warehouseId },
+      select: { id: true, managerId: true },
+    });
+
+    if (!warehouse) {
+      throw new NotFoundException('Warehouse not found');
+    }
+    if (warehouse.managerId !== partnerId) {
+      throw new BadRequestException(
+        'Warehouse partners can only list warehouses they manage',
+      );
+    }
+    if (data.availableCapacity > data.totalCapacity) {
+      throw new BadRequestException(
+        'Available capacity cannot be greater than total capacity',
+      );
+    }
+
+    return this.prisma.warehouseListing.create({
+      data: {
+        warehouseId: data.warehouseId,
+        partnerId,
+        companyName: data.companyName,
+        companyEmail: data.companyEmail,
+        companyPhone: data.companyPhone,
+        vatNumber: data.vatNumber,
+        vatApplies: data.vatApplies ?? false,
+        vatRatePct: data.vatApplies ? data.vatRatePct ?? 16 : 0,
+        title: data.title,
+        description: data.description,
+        areaLabel: data.areaLabel,
+        address: data.address,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        serviceRadiusKm: data.serviceRadiusKm,
+        storageTypes: data.storageTypes,
+        amenities: data.amenities ?? [],
+        photoUrls: data.photoUrls ?? [],
+        documentUrls: data.documentUrls ?? [],
+        totalCapacity: data.totalCapacity,
+        availableCapacity: data.availableCapacity,
+        capacityUnit: data.capacityUnit ?? 'SQM',
+        rateAmount: data.rateAmount,
+        rateUnit: data.rateUnit ?? 'DAY',
+        handlingFee: data.handlingFee ?? 0,
+        minimumBookingDays: data.minimumBookingDays ?? 1,
+        status: 'PENDING_REVIEW',
+        reviewNote: null,
+        reviewedAt: null,
+        reviewedBy: null,
+      },
+      include: this.listingInclude(),
+    });
+  }
+
+  async listPartnerListings(partnerId: string) {
+    return this.prisma.warehouseListing.findMany({
+      where: { partnerId },
+      include: this.listingInclude(),
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async listApprovedListings(filters: { location?: string; storageType?: string } = {}) {
+    const location = filters.location?.trim();
+    const storageType = filters.storageType?.trim();
+
+    const listings = await this.prisma.warehouseListing.findMany({
+      where: {
+        status: 'APPROVED',
+        ...(location
+          ? {
+              OR: [
+                { title: { contains: location, mode: 'insensitive' } },
+                { areaLabel: { contains: location, mode: 'insensitive' } },
+                { address: { contains: location, mode: 'insensitive' } },
+                { companyName: { contains: location, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      include: this.listingInclude(),
+      orderBy: [{ updatedAt: 'desc' }],
+    });
+
+    if (!storageType || storageType === 'ALL') {
+      return listings;
+    }
+
+    return listings.filter((listing) =>
+      this.asStringArray(listing.storageTypes).some(
+        (item) => item.toUpperCase() === storageType.toUpperCase(),
+      ),
+    );
+  }
+
+  async listAdminListings(filters: { status?: string } = {}) {
+    return this.prisma.warehouseListing.findMany({
+      where: filters.status ? { status: filters.status } : {},
+      include: this.listingInclude(),
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async reviewListing(id: string, data: any, reviewerId: string) {
+    const listing = await this.prisma.warehouseListing.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Warehouse listing not found');
+    }
+
+    return this.prisma.warehouseListing.update({
+      where: { id },
+      data: {
+        status: data.status,
+        reviewNote: data.note ?? null,
+        reviewedAt: new Date(),
+        reviewedBy: reviewerId,
+      },
+      include: this.listingInclude(),
+    });
+  }
+
+  async createBooking(customerId: string, data: any) {
+    const listing = await this.prisma.warehouseListing.findUnique({
+      where: { id: data.listingId },
+    });
+
+    if (!listing || listing.status !== 'APPROVED') {
+      throw new NotFoundException('Approved warehouse listing not found');
+    }
+
+    const startDate = new Date(data.startDate);
+    const endDate = new Date(data.endDate);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      throw new BadRequestException('Invalid booking dates');
+    }
+    if (endDate <= startDate) {
+      throw new BadRequestException('End date must be after start date');
+    }
+    if (data.capacityRequested > listing.availableCapacity) {
+      throw new BadRequestException('Requested capacity is not available');
+    }
+
+    const millisecondsPerDay = 24 * 60 * 60 * 1000;
+    const durationDays = Math.max(
+      listing.minimumBookingDays,
+      Math.ceil((endDate.getTime() - startDate.getTime()) / millisecondsPerDay),
+    );
+    const baseAmount = this.round(
+      data.capacityRequested * listing.rateAmount * durationDays,
+    );
+    const handlingFee = this.round(listing.handlingFee);
+    const taxableAmount = baseAmount + handlingFee;
+    const vatAmount = listing.vatApplies
+      ? this.round(taxableAmount * (listing.vatRatePct / 100))
+      : 0;
+    const totalAmount = this.round(taxableAmount + vatAmount);
+    const commissionRatePct = 10;
+    const commissionAmount = this.round(taxableAmount * (commissionRatePct / 100));
+    const partnerNetAmount = this.round(totalAmount - commissionAmount);
+
+    return this.prisma.warehouseBooking.create({
+      data: {
+        reference: await this.generateWarehouseBookingReference(),
+        listingId: listing.id,
+        customerId,
+        partnerId: listing.partnerId,
+        storageType: data.storageType,
+        goodsDescription: data.goodsDescription,
+        startDate,
+        endDate,
+        capacityRequested: data.capacityRequested,
+        capacityUnit: data.capacityUnit ?? listing.capacityUnit,
+        baseAmount,
+        handlingFee,
+        vatAmount,
+        totalAmount,
+        commissionRatePct,
+        commissionAmount,
+        partnerNetAmount,
+        customerNote: data.customerNote,
+      },
+      include: this.bookingInclude(),
+    });
+  }
+
+  async listCustomerBookings(customerId: string) {
+    return this.prisma.warehouseBooking.findMany({
+      where: { customerId },
+      include: this.bookingInclude(),
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async listPartnerBookings(partnerId: string) {
+    return this.prisma.warehouseBooking.findMany({
+      where: { partnerId },
+      include: this.bookingInclude(),
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async listAdminBookings() {
+    return this.prisma.warehouseBooking.findMany({
+      include: this.bookingInclude(),
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async updateBookingStatus(
+    id: string,
+    data: any,
+    actor: { userId: string; role: string },
+  ) {
+    const booking = await this.prisma.warehouseBooking.findUnique({
+      where: { id },
+      select: { id: true, partnerId: true },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Warehouse booking not found');
+    }
+    if (
+      actor.role === 'WAREHOUSE_PARTNER' &&
+      booking.partnerId !== actor.userId
+    ) {
+      throw new BadRequestException(
+        'Warehouse partners can only update their own bookings',
+      );
+    }
+
+    return this.prisma.warehouseBooking.update({
+      where: { id },
+      data: {
+        status: data.status,
+        partnerNote: actor.role === 'WAREHOUSE_PARTNER' ? data.note : undefined,
+        adminNote: actor.role !== 'WAREHOUSE_PARTNER' ? data.note : undefined,
+        acceptedAt: data.status === 'ACCEPTED' ? new Date() : undefined,
+        completedAt: data.status === 'COMPLETED' ? new Date() : undefined,
+        cancelledAt: data.status === 'CANCELLED' ? new Date() : undefined,
+      },
+      include: this.bookingInclude(),
+    });
+  }
+
+  private listingInclude() {
+    return {
+      warehouse: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          status: true,
+        },
+      },
+      _count: {
+        select: {
+          bookings: true,
+        },
+      },
+    };
+  }
+
+  private bookingInclude() {
+    return {
+      listing: {
+        include: this.listingInclude(),
+      },
+    };
+  }
+
+  private asStringArray(value: Prisma.JsonValue) {
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string')
+      : [];
+  }
+
+  private round(value: number) {
+    return Number(value.toFixed(2));
+  }
+
+  private async generateWarehouseBookingReference(): Promise<string> {
+    const reference = `WH-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const existing = await this.prisma.warehouseBooking.findUnique({
+      where: { reference },
+      select: { id: true },
+    });
+    return existing ? this.generateWarehouseBookingReference() : reference;
+  }
 }
 
