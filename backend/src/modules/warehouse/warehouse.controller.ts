@@ -67,8 +67,17 @@ export class WarehouseController {
   listApprovedListings(
     @Query('location') location?: string,
     @Query('storageType') storageType?: string,
+    @Query('latitude') latitude?: string,
+    @Query('longitude') longitude?: string,
+    @Query('radiusKm') radiusKm?: string,
   ) {
-    return this.warehouseService.listApprovedListings({ location, storageType });
+    return this.warehouseService.listApprovedListings({
+      location,
+      storageType,
+      latitude: latitude ? Number(latitude) : undefined,
+      longitude: longitude ? Number(longitude) : undefined,
+      radiusKm: radiusKm ? Number(radiusKm) : undefined,
+    });
   }
 
   @Roles('WAREHOUSE_PARTNER')

@@ -38,8 +38,9 @@ export class StaffService {
     const staff = await this.prisma.staff.create({
       data: {
         userId: dto.userId,
-        agencyId,
+        agencyId: agencyId || undefined,
         role: dto.role,
+        department: 'OPERATIONS', // Default department; can be customized via DTO later
         isActive: true,
       },
     });

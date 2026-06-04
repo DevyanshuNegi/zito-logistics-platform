@@ -10,12 +10,15 @@ import { RolesGuard } from './guards/roles.guard';
 import { SessionStateService } from './session-state.service';
 import { SessionGuard } from '../../common/guards/session.guard';
 import { ReauthGuard } from '../../common/guards/reauth.guard';
+import { TwilioOtpProvider } from './otp/twilio.provider';
+import { TestOtpProvider } from './otp/test.provider';
+import { FirebaseOtpProvider } from './otp/firebase.provider';
 
 @Module({
   imports: [
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'zito-secure-secret-key',
+      secret: process.env.JWT_SECRET as string,
       signOptions: { expiresIn: '1h' },
     }),
   ],
@@ -25,6 +28,9 @@ import { ReauthGuard } from '../../common/guards/reauth.guard';
     PrismaService,
     JwtStrategy,
     OtpService,
+    TwilioOtpProvider,
+    TestOtpProvider,
+    FirebaseOtpProvider,
     RolesGuard,
     SessionStateService,
     SessionGuard,

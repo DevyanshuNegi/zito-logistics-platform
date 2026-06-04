@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Header, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -33,5 +33,15 @@ export class SystemHealthController {
   @ApiOperation({ summary: 'Evaluate system-health thresholds and raise internal alerts (PRD §44.11)' })
   runChecks() {
     return this.systemHealthService.runChecks();
+  }
+
+  @Get('system-health/metrics')
+  @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+  @ApiBearerAuth('JWT')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Prometheus-compatible API metrics snapshot for admins' })
+  metrics() {
+    return this.systemHealthService.metrics();
   }
 }

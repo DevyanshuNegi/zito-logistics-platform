@@ -39,6 +39,7 @@ type SessionUser = {
   fullName?: string | null;
   companyName?: string | null;
   role: string;
+  status?: string | null;
   staffScope?: string | null;
   staffDepartment?: string | null;
   staffAgencyName?: string | null;
@@ -75,6 +76,7 @@ type OtpPasswordGateResponse = {
 type OtpVerificationResponse = LoginSuccessResponse | OtpPasswordGateResponse;
 
 type LoginStep = 'contact' | 'otp' | 'password';
+type AuthFlowKey = 'phone' | 'email' | 'otp' | 'password';
 
 type ErrorData = {
   status?: string;
@@ -88,6 +90,12 @@ type WebOtpCredential = Credential & {
   code?: string;
 };
 
+function getPostLoginPath(user: SessionUser) {
+  return user.status && user.status !== 'ACTIVE'
+    ? '/complete-verification'
+    : getRoleHomePath(user.role, user.staffScope);
+}
+
 function extractErrorData(error: ApiError): ErrorData {
   const details = error.details as { data?: ErrorData } | undefined;
   return details?.data ?? {};
@@ -97,6 +105,81 @@ function isPasswordGateResponse(
   response: OtpVerificationResponse,
 ): response is OtpPasswordGateResponse {
   return response.data != null && 'requiresPassword' in response.data;
+}
+
+function emptyFlowErrors(): Record<AuthFlowKey, string | null> {
+  return {
+    phone: null,
+    email: null,
+    otp: null,
+    password: null,
+  };
+}
+
+function contextAwareErrorMessage(message: string, flow: AuthFlowKey) {
+  const normalized = message.toLowerCase();
+
+  if (flow === 'phone') {
+    if (normalized.includes('network') || normalized.includes('unavailable')) {
+      return 'Network issue. Please try phone OTP again.';
+    }
+    if (normalized.includes('too many') || normalized.includes('attempt')) {
+      return message;
+    }
+    if (normalized.includes('expired')) {
+      return 'OTP expired. Request a new phone OTP.';
+    }
+    if (normalized.includes('otp') || normalized.includes('code')) {
+      return 'OTP failed. Request a new phone OTP.';
+    }
+    return 'Invalid phone number.';
+  }
+
+  if (flow === 'email') {
+    if (normalized.includes('network') || normalized.includes('unavailable')) {
+      return 'Network issue. Please try email sign-in again.';
+    }
+    if (normalized.includes('too many') || normalized.includes('attempt')) {
+      return message;
+    }
+    if (normalized.includes('password')) {
+      return 'Invalid email or password.';
+    }
+    if (normalized.includes('otp') || normalized.includes('code')) {
+      return 'Email OTP failed. Request a new code.';
+    }
+    return 'Invalid email.';
+  }
+
+  if (flow === 'otp') {
+    if (normalized.includes('expired')) {
+      return 'OTP expired. Request a new code.';
+    }
+    if (normalized.includes('too many') || normalized.includes('attempt')) {
+      return message;
+    }
+    if (normalized.includes('network') || normalized.includes('unavailable')) {
+      return 'Network issue. Please try again.';
+    }
+    return 'OTP failed. Check the latest code and try again.';
+  }
+
+  if (normalized.includes('network') || normalized.includes('unavailable')) {
+    return 'Network issue. Please try email sign-in again.';
+  }
+  return 'Invalid password.';
+}
+
+function LoadingLabel({ children }: { children: string }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+      />
+      {children}
+    </span>
+  );
 }
 
 function loginFooter(portalKind: PortalKind) {
@@ -186,7 +269,10 @@ function LoginPageScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [debugOtp, setDebugOtp] = useState<string | null>(null);
+  const [flowErrors, setFlowErrors] = useState<Record<AuthFlowKey, string | null>>(
+    emptyFlowErrors,
+  );
   const [approvalStatus, setApprovalStatus] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [requestingOtp, setRequestingOtp] = useState(false);
@@ -195,7 +281,6 @@ function LoginPageScreen() {
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [resendRemaining, setResendRemaining] = useState<number | null>(null);
-  const [debugOtp, setDebugOtp] = useState<string | null>(null);
   const otpInputRef = useRef<HTMLInputElement | null>(null);
   const autoSubmittedOtpRef = useRef('');
 
@@ -203,6 +288,10 @@ function LoginPageScreen() {
     findCountryCodeOptionByIsoCode(countryOptionCode) ??
     findCountryCodeOptionByDialCode(DEFAULT_COUNTRY_CODE);
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
+  const isEmailValid = useMemo(
+    () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail),
+    [normalizedEmail],
+  );
   const normalizedDialCode = useMemo(
     () => normalizeCountryCode(selectedCountryOption?.dialCode ?? DEFAULT_COUNTRY_CODE),
     [selectedCountryOption],
@@ -219,7 +308,7 @@ function LoginPageScreen() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace(getRoleHomePath(user.role, user.staffScope));
+      router.replace(getPostLoginPath(user));
     }
   }, [loading, router, user]);
 
@@ -230,7 +319,7 @@ function LoginPageScreen() {
     }
 
     setInfoMessage(sessionNotice);
-    setError(null);
+    setFlowErrors(emptyFlowErrors());
   }, []);
 
   useEffect(() => {
@@ -244,7 +333,7 @@ function LoginPageScreen() {
     }
 
     setInfoMessage('Your session expired. Please sign in again.');
-    setError(null);
+    setFlowErrors(emptyFlowErrors());
   }, []);
 
   useEffect(() => {
@@ -297,10 +386,44 @@ function LoginPageScreen() {
   }, [loading, otpSession, user]);
 
   function clearTransientState() {
-    setError(null);
+    setFlowErrors(emptyFlowErrors());
     setApprovalStatus(null);
     setInfoMessage(null);
     setAttemptsRemaining(null);
+    setDebugOtp(null);
+  }
+
+  function clearFlowError(flow: AuthFlowKey) {
+    setFlowErrors((current) => ({ ...current, [flow]: null }));
+  }
+
+  function setFlowError(flow: AuthFlowKey, message: string) {
+    setFlowErrors((current) => ({
+      ...current,
+      [flow]: contextAwareErrorMessage(message, flow),
+    }));
+  }
+
+  function resetVerificationState({ clearServerLock = true } = {}) {
+    clearOtp();
+    setOtp('');
+    setPassword('');
+    setDebugOtp(null);
+    setAttemptsRemaining(null);
+    setResendRemaining(null);
+    autoSubmittedOtpRef.current = '';
+    if (clearServerLock) {
+      setCooldownRemaining(0);
+    }
+  }
+
+  function resetContactEditState(flow: 'phone' | 'email') {
+    clearFlowError(flow);
+    clearFlowError('otp');
+    clearFlowError('password');
+    setApprovalStatus(null);
+    setInfoMessage(null);
+    resetVerificationState();
   }
 
   function saveApprovalDraft(identifier: string, status?: string | null) {
@@ -316,10 +439,10 @@ function LoginPageScreen() {
     });
   }
 
-  function applyApiError(error: ApiError, identifier: string) {
+  function applyApiError(error: ApiError, identifier: string, flow: AuthFlowKey) {
     const data = extractErrorData(error);
     const status = data.status ?? null;
-    setError(error.message);
+    setFlowError(flow, error.message);
     setApprovalStatus(status);
     setAttemptsRemaining(
       typeof data.attemptsRemaining === 'number' ? data.attemptsRemaining : null,
@@ -338,14 +461,25 @@ function LoginPageScreen() {
   }
 
   async function requestOtp() {
+    const contactFlow: AuthFlowKey = mode === 'phone_otp' ? 'phone' : 'email';
+    clearOtp();
     clearTransientState();
+    setOtp('');
+    setPassword('');
+    autoSubmittedOtpRef.current = '';
     setRequestingOtp(true);
+    setDebugOtp(null);
 
     try {
       const response = await api.post<OtpRequestResponse>('/auth/login', {
         contact: currentContact,
         method: 'otp',
       });
+
+      // Capture debug OTP for development (only returned in dev mode)
+      if (response.data.debugOtp) {
+        setDebugOtp(response.data.debugOtp);
+      }
 
       saveOtpSession({
         tempToken: response.data.temp_token,
@@ -364,7 +498,6 @@ function LoginPageScreen() {
       setStep('otp');
       setOtp('');
       setPassword('');
-      setDebugOtp(response.data.debugOtp ?? null);
       setCooldownRemaining(secondsUntil(response.data.resendAvailableAt));
       setResendRemaining(
         typeof response.data.resendRemaining === 'number'
@@ -374,9 +507,9 @@ function LoginPageScreen() {
       setInfoMessage(`A 6-digit code has been sent to ${maskContact(response.data.contact)}.`);
     } catch (caught) {
       if (caught instanceof ApiError) {
-        applyApiError(caught, currentContact);
+        applyApiError(caught, currentContact, contactFlow);
       } else {
-        setError('Unable to send a login code right now.');
+        setFlowError(contactFlow, 'Unable to send a login code right now.');
       }
     } finally {
       setRequestingOtp(false);
@@ -385,21 +518,34 @@ function LoginPageScreen() {
 
   async function handleContactSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (requestingOtp || !canSubmitContact) {
+      return;
+    }
     await requestOtp();
   }
 
   async function handleResendCode() {
+    if (requestingOtp || cooldownRemaining > 0) {
+      return;
+    }
+    clearFlowError('otp');
+    setOtp('');
+    autoSubmittedOtpRef.current = '';
     await requestOtp();
   }
 
   async function submitOtpCode(code: string) {
+    if (verifyingOtp || code.length !== 6) {
+      return;
+    }
+
     if (!otpSession) {
-      setError('Your login session expired. Request a fresh code.');
+      setFlowError('otp', 'Your login session expired. Request a fresh code.');
       setStep('contact');
       return;
     }
 
-    setError(null);
+    clearFlowError('otp');
     setApprovalStatus(null);
     setVerifyingOtp(true);
 
@@ -443,6 +589,7 @@ function LoginPageScreen() {
           fullName: response.data.user.fullName,
           companyName: response.data.user.companyName,
           role: response.data.user.role,
+          status: response.data.user.status,
           staffScope: response.data.user.staffScope,
           staffDepartment: response.data.user.staffDepartment,
           staffAgencyName: response.data.user.staffAgencyName,
@@ -456,12 +603,12 @@ function LoginPageScreen() {
           ? `This account belongs in ${getPortalConfig(getPortalKindForRole(response.data.user.role, response.data.user.staffScope)).productName}. Redirecting now.`
           : null,
       );
-      router.replace(getRoleHomePath(response.data.user.role, response.data.user.staffScope));
+      router.replace(getPostLoginPath(response.data.user));
     } catch (caught) {
       if (caught instanceof ApiError) {
-        applyApiError(caught, otpSession.contact);
+        applyApiError(caught, otpSession.contact, 'otp');
       } else {
-        setError('OTP verification failed.');
+        setFlowError('otp', 'OTP verification failed.');
       }
     } finally {
       setVerifyingOtp(false);
@@ -470,18 +617,25 @@ function LoginPageScreen() {
 
   async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (verifyingOtp || !canVerifyOtp) {
+      return;
+    }
     await submitOtpCode(otp);
   }
 
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingPassword || !canSubmitPassword) {
+      return;
+    }
+
     if (!otpSession) {
-      setError('Your login session expired. Start again.');
+      setFlowError('password', 'Your login session expired. Start again.');
       setStep('contact');
       return;
     }
 
-    setError(null);
+    clearFlowError('password');
     setApprovalStatus(null);
     setSubmittingPassword(true);
 
@@ -503,6 +657,7 @@ function LoginPageScreen() {
           fullName: response.data.user.fullName,
           companyName: response.data.user.companyName,
           role: response.data.user.role,
+          status: response.data.user.status,
           staffScope: response.data.user.staffScope,
           staffDepartment: response.data.user.staffDepartment,
           staffAgencyName: response.data.user.staffAgencyName,
@@ -516,12 +671,12 @@ function LoginPageScreen() {
           ? `This account belongs in ${getPortalConfig(getPortalKindForRole(response.data.user.role, response.data.user.staffScope)).productName}. Redirecting now.`
           : null,
       );
-      router.replace(getRoleHomePath(response.data.user.role, response.data.user.staffScope));
+      router.replace(getPostLoginPath(response.data.user));
     } catch (caught) {
       if (caught instanceof ApiError) {
-        applyApiError(caught, otpSession.contact);
+        applyApiError(caught, otpSession.contact, 'password');
       } else {
-        setError('Unable to complete email sign-in right now.');
+        setFlowError('password', 'Unable to complete email sign-in right now.');
       }
     } finally {
       setSubmittingPassword(false);
@@ -529,13 +684,9 @@ function LoginPageScreen() {
   }
 
   function resetToContactStep(nextMode: LoginMode = mode) {
-    clearOtp();
     setStep('contact');
     setMode(nextMode);
-    setOtp('');
-    setPassword('');
-    setCooldownRemaining(0);
-    setResendRemaining(null);
+    resetVerificationState();
     clearTransientState();
   }
 
@@ -547,22 +698,6 @@ function LoginPageScreen() {
 
     otpInputRef.current?.focus();
   }, [step]);
-
-  useEffect(() => {
-    if (step !== 'otp' || otp.length !== 6 || verifyingOtp) {
-      if (otp.length !== 6) {
-        autoSubmittedOtpRef.current = '';
-      }
-      return;
-    }
-
-    if (autoSubmittedOtpRef.current === otp) {
-      return;
-    }
-
-    autoSubmittedOtpRef.current = otp;
-    void submitOtpCode(otp);
-  }, [otp, step, verifyingOtp]);
 
   useEffect(() => {
     if (step !== 'otp' || otpSession?.mode !== 'phone_otp' || typeof window === 'undefined') {
@@ -597,8 +732,7 @@ function LoginPageScreen() {
         }
 
         setOtp(code);
-        setInfoMessage('OTP captured from SMS. Verifying now.');
-        void submitOtpCode(code);
+        setInfoMessage('OTP captured from SMS. Review it, then tap Verify code.');
       })
       .catch(() => undefined);
 
@@ -609,10 +743,14 @@ function LoginPageScreen() {
   const maskedVerificationTarget = verificationTarget ? maskContact(verificationTarget) : '';
   const canSubmitContact =
     mode === 'phone_otp'
-      ? normalizedDialCode.length > 1 && normalizedLocalPhone.length >= 6
-      : normalizedEmail.length > 0;
+      ? normalizedDialCode.length > 1 && normalizedLocalPhone.length >= 7
+      : isEmailValid;
   const canVerifyOtp = otp.length === 6;
   const canSubmitPassword = password.trim().length >= 6;
+  const contactFlow: AuthFlowKey = mode === 'phone_otp' ? 'phone' : 'email';
+  const contactError = flowErrors[contactFlow];
+  const otpError = flowErrors.otp;
+  const passwordError = flowErrors.password;
 
   return (
     <AuthShell
@@ -636,9 +774,7 @@ function LoginPageScreen() {
                   : 'text-slate-300 hover:bg-slate-800/70',
               ].join(' ')}
               onClick={() => {
-                clearTransientState();
-                setMode('phone_otp');
-                setPassword('');
+                resetToContactStep('phone_otp');
               }}
             >
               Phone OTP
@@ -652,8 +788,7 @@ function LoginPageScreen() {
                   : 'text-slate-300 hover:bg-slate-800/70',
               ].join(' ')}
               onClick={() => {
-                clearTransientState();
-                setMode('email_otp');
+                resetToContactStep('email_otp');
               }}
             >
               Email
@@ -666,9 +801,9 @@ function LoginPageScreen() {
             </Alert>
           ) : null}
 
-          {error ? (
+          {contactError ? (
             <Alert variant={approvalStatus ? 'warning' : 'danger'} title="Sign-in blocked">
-              {error}
+              {contactError}
             </Alert>
           ) : null}
 
@@ -690,7 +825,10 @@ function LoginPageScreen() {
                 <CountryCodeSelect
                   label="Country code"
                   value={countryOptionCode}
-                  onChange={setCountryOptionCode}
+                  onChange={(nextCode) => {
+                    setCountryOptionCode(nextCode);
+                    resetContactEditState('phone');
+                  }}
                   compact
                 />
               </div>
@@ -699,7 +837,10 @@ function LoginPageScreen() {
                   label="Phone number"
                   placeholder="9876543210"
                   value={phoneNumber}
-                  onChange={(event) => setPhoneNumber(normalizePhoneNumber(event.target.value))}
+                  onChange={(event) => {
+                    setPhoneNumber(normalizePhoneNumber(event.target.value));
+                    resetContactEditState('phone');
+                  }}
                   autoComplete="tel-national"
                   inputMode="numeric"
                   required
@@ -712,14 +853,17 @@ function LoginPageScreen() {
               type="email"
               placeholder="name@example.com"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                resetContactEditState('email');
+              }}
               autoComplete="username"
               required
             />
           )}
 
           <Button className="w-full" disabled={requestingOtp || !canSubmitContact} type="submit">
-            {requestingOtp ? 'Sending code...' : 'Continue'}
+            {requestingOtp ? <LoadingLabel>Sending code...</LoadingLabel> : 'Continue'}
           </Button>
         </form>
       ) : null}
@@ -732,9 +876,9 @@ function LoginPageScreen() {
             </Alert>
           ) : null}
 
-          {error ? (
+          {otpError ? (
             <Alert title="Verification failed" variant="danger">
-              {error}
+              {otpError}
             </Alert>
           ) : null}
 
@@ -763,24 +907,6 @@ function LoginPageScreen() {
             </button>
           </div>
 
-          <Input
-            label="6-digit code"
-            ref={otpInputRef}
-            placeholder="123456"
-            value={otp}
-            onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
-            maxLength={6}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            className="text-center text-2xl font-semibold tracking-[0.45em]"
-            help={
-              otpSession?.mode === 'email_otp'
-                ? 'After OTP verification, email users continue to password confirmation.'
-                : 'Use the latest code sent to your phone.'
-            }
-            required
-          />
-
           {debugOtp ? (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-amber-200">
@@ -792,6 +918,29 @@ function LoginPageScreen() {
               </p>
             </div>
           ) : null}
+
+          <Input
+            label="6-digit code"
+            ref={otpInputRef}
+            placeholder="123456"
+            value={otp}
+            onChange={(event) => {
+              setOtp(event.target.value.replace(/\D/g, '').slice(0, 6));
+              clearFlowError('otp');
+              setApprovalStatus(null);
+              setInfoMessage(null);
+            }}
+            maxLength={6}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            className="text-center text-2xl font-semibold tracking-[0.45em]"
+            help={
+              otpSession?.mode === 'email_otp'
+                ? 'After OTP verification, email users continue to password confirmation.'
+                : 'Use the latest code sent to your phone.'
+            }
+            required
+          />
 
           <div className="rounded-3xl border border-slate-700/40 bg-slate-900/55 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -820,7 +969,7 @@ function LoginPageScreen() {
                 {cooldownRemaining > 0
                   ? `Resend in ${cooldownRemaining}s`
                   : requestingOtp
-                    ? 'Sending...'
+                    ? <LoadingLabel>Sending...</LoadingLabel>
                     : 'Resend OTP'}
               </Button>
             </div>
@@ -828,7 +977,7 @@ function LoginPageScreen() {
 
           <div className="grid gap-3">
             <Button className="w-full" disabled={verifyingOtp || !canVerifyOtp} type="submit">
-              {verifyingOtp ? 'Verifying...' : 'Verify code'}
+              {verifyingOtp ? <LoadingLabel>Verifying...</LoadingLabel> : 'Verify code'}
             </Button>
           </div>
         </form>
@@ -842,9 +991,9 @@ function LoginPageScreen() {
             </Alert>
           ) : null}
 
-          {error ? (
+          {passwordError ? (
             <Alert title="Password required" variant="danger">
-              {error}
+              {passwordError}
             </Alert>
           ) : null}
 
@@ -870,7 +1019,11 @@ function LoginPageScreen() {
             type="password"
             placeholder="Enter your email password"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              clearFlowError('password');
+              setApprovalStatus(null);
+            }}
             autoComplete="current-password"
             help="Email users complete sign-in with password after OTP."
             required
@@ -881,7 +1034,7 @@ function LoginPageScreen() {
             disabled={submittingPassword || !canSubmitPassword}
             type="submit"
           >
-            {submittingPassword ? 'Signing in...' : 'Sign in'}
+            {submittingPassword ? <LoadingLabel>Signing in...</LoadingLabel> : 'Sign in'}
           </Button>
         </form>
       ) : null}

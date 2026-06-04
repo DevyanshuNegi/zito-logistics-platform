@@ -112,7 +112,7 @@ export function getStoredSession(): StoredSessionSnapshot {
   }
 
   const accessToken = window.localStorage.getItem(ACCESS_TOKEN_KEY);
-  const refreshToken = window.localStorage.getItem(REFRESH_TOKEN_KEY);
+  const refreshToken = null;
   const userRaw = window.localStorage.getItem(USER_KEY);
 
   return {
@@ -125,11 +125,7 @@ export function getStoredSession(): StoredSessionSnapshot {
 export function persistSession(session: StoredSession) {
   if (!canUseStorage()) return;
   window.localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
-  if (session.refreshToken) {
-    window.localStorage.setItem(REFRESH_TOKEN_KEY, session.refreshToken);
-  } else {
-    window.localStorage.removeItem(REFRESH_TOKEN_KEY);
-  }
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
   window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
 }
 

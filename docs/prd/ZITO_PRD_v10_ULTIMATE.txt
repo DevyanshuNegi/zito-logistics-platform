@@ -51,7 +51,89 @@ Network Effects (Competitive Moat):
 - More shippers → More demand → More transporters attracted
 - Result: Winner-take-most market dynamics (first to scale dominates)
 
-1.B DESIGN PRINCIPLES (Modern App Standard - May 13 Update)
+1.B BUSINESS OPERATING MODEL (Critical Strategic Clarity - May 28 Update)
+
+ZITO is an INFRASTRUCTURE & COORDINATION PLATFORM. Clarity on what ZITO controls vs. what Partners control:
+
+WHAT ZITO CONTROLS & MANAGES:
+✓ Marketplace orchestration (matching supply + demand)
+✓ Technology platform (software, APIs, real-time systems)
+✓ Payment coordination (settlements, commission handling)
+✓ Compliance layer (KYC, verification, audit trail)
+✓ Performance tracking (ratings, reputation, trust)
+✓ Visibility systems (GPS, tracking, analytics)
+✓ Incident coordination (escalation, support routing)
+✓ Data aggregation (insights, reporting, BI)
+✓ Network governance (rules, enforcement, disputes)
+
+WHAT PARTNERS CONTROL & MANAGE:
+✓ Vehicle ownership (trucks, vans, containers)
+✓ Driver employment (hiring, payroll, benefits)
+✓ Operational logistics (route planning, fuel, maintenance)
+✓ Fleet maintenance (repairs, inspections, compliance)
+✓ Driver schedules (shifts, availability, assignments)
+✓ Insurance (vehicle, cargo, liability)
+✓ Customer support for their services
+✓ Regulatory compliance for their operations
+
+PARTNER TYPES ON PLATFORM:
+
+1. TRANSPORTERS (Long-haul fleet operators)
+   - Own multiple trucks (FTL, PTL capacity)
+   - Employ own drivers
+   - Manage own fleet + maintenance
+   - ZITO role: Provide load matching + marketplace + payment coordination
+
+2. COURIER COMPANIES (Last-mile delivery networks)
+   - Own delivery vehicles (bikes, vans, 4x4s)
+   - Employ delivery personnel
+   - Manage own territories/routes
+   - ZITO role: Provide booking aggregation + tracking + settlement
+
+3. WAREHOUSE OPERATORS (Storage & fulfillment)
+   - Own warehouse facilities
+   - Employ warehouse staff
+   - Manage inventory, picking, packing
+   - ZITO role: Provide booking + inventory tracking + compliance
+
+4. TRANSPORTER FLEETS (Large fleet enterprises)
+   - Own 50+ vehicles
+   - Employ multiple drivers
+   - Run internal dispatch operations
+   - ZITO role: Provide external load matching + inter-fleet coordination
+
+KEY DISTINCTION:
+
+ZITO ENABLES but does NOT PERFORM:
+
+❌ Does NOT employ drivers
+❌ Does NOT own vehicles
+❌ Does NOT manage individual driver shifts
+❌ Does NOT handle driver payroll internally
+❌ Does NOT repair vehicles
+❌ Does NOT manage fuel allocation
+❌ Does NOT run internal warehouse operations
+❌ Does NOT compete with partners (DHL, Aramex, Safaricom, etc.)
+
+ZITO PROVIDES PLATFORM FEATURES FOR:
+
+✓ Partners to track their driver activity (without being employer)
+✓ Partners to settle earnings to drivers (settlement layer, not payroll)
+✓ Partners to monitor fuel efficiency (analytics, not theft detection)
+✓ Partners to coordinate incident response (coordination layer, not operations)
+✓ Partners to manage customer relationships (visibility layer)
+✓ Partners to scale operations (matchmaking + automation)
+
+WHY THIS MODEL WORKS:
+
+1. CAPITAL EFFICIENCY: No fleet investment needed = 70-90% software margins
+2. RISK TRANSFER: Partners bear operational risk, not ZITO
+3. SCALABILITY: Add partners, not assets = unlimited scaling
+4. EXPERTISE FOCUS: ZITO = matching + coordination, Partners = execution
+5. DEFENSIBILITY: Network effects + data + trust (not just delivery speed)
+6. INVESTOR VALUE: SaaS/platform company (valued at 10-50x revenue) vs. operator (3-5x)
+
+1.C DESIGN PRINCIPLES (Modern App Standard - May 13 Update)
 
 ZITO mobile apps MUST have best-in-class design and modern features:
 
@@ -641,13 +723,410 @@ Verification Control Rules:
 Role-Based Verification Matrix:
 - Customer: phone OTP, email OTP or password completion path, National ID or Passport, and manual review only where policy, fraud risk, or regulated service requires it
 - Corporate / Agent / Transporter / Courier Company / Warehouse Partner: company registration evidence, KRA PIN / tax identity where billing or contracting applies, authorized signatory ID, and approval of the business profile before activation
-- Driver: National ID, Driving License, live driver photo or selfie for identity confirmation, expiry tracking, and approval before the driver can become dispatch-eligible
+- Driver: National ID, Driving License, and live-camera-only driver photo or selfie for identity confirmation, expiry tracking, and approval before the driver can become dispatch-eligible; gallery uploads are not acceptable for driver identity verification
 - Transporter and Courier Company: both organization verification and operational verification must exist; company approval alone is not enough to make vehicles or drivers eligible for live dispatch
 - Fleet-capable accounts must verify every managed vehicle and every managed driver separately before those assets can be used on bookings
 Kenya Logistics Verification Context:
 - Kenya logistics, import, export, and cross-border operations are document-led and multi-agency; Zito must not model verification as a simple one-file upload
 - where the booking type touches import, export, container, rail, port, ICD, or regulated cargo flow, the platform must support trade-document verification checkpoints in addition to user KYC
 - compliance teams must be able to review and hold a shipment, user, or vehicle because of missing documentation, customs state, permit state, inspection expiry, or mismatch between uploaded records and the actual asset
+
+4.A PRD GOVERNANCE: DOCUMENTATION BEFORE IMPLEMENTATION
+PRD_V10_ULTIMATE is the single source of truth for approved product behavior.
+Any approved feature, workflow, architecture, security, UI/UX, onboarding, business-logic, or compliance change must be documented in PRD_V10_ULTIMATE before the implementation is considered complete.
+Mandatory change-control process:
+1. Discuss proposed change and identify impacted modules.
+2. Approve the intended behavior, scope, exclusions, and acceptance criteria.
+3. Update PRD_V10_ULTIMATE with the approved behavior.
+4. Implement the feature or workflow exactly against the PRD.
+5. Test the impacted module and all relevant edge cases.
+6. Lock the stable module only after PRD, code, and testing are aligned.
+No implementation should remain undocumented. Any feature implemented without a PRD update is incomplete.
+
+4.B AUTHENTICATION UPDATES: REGISTRATION VERIFICATION
+Registration must not immediately activate an account. Registration creates a pending account and starts the verification workflow.
+Mobile OTP verification during registration:
+- every registration must capture a valid mobile number with editable country code and local phone number
+- the system must send a one-time password to the registered mobile number
+- the user must verify the mobile OTP before the account can proceed to KYC submission
+- invalid, expired, or exhausted OTP attempts must block progression until retry policy allows a new OTP or an admin-supported recovery path is used
+Email OTP / email verification during registration:
+- where an email is supplied, the system must verify ownership through email OTP or equivalent email-verification link
+- email verification must be completed before final account activation
+- if a user has no email where policy permits phone-only registration, account activation must still require mobile verification and KYC approval
+OTP resend and cooldown rules:
+- OTP resend must enforce cooldown to prevent repeated requests
+- OTP records must expire after the configured validity window
+- repeated failed verification attempts must lock the OTP target temporarily
+- resend count, attempts remaining, expiry time, and lock state must be represented in API responses where safe for the user experience
+- OTP errors must be context-aware; phone-flow errors must not show email/password errors, and email-flow errors must not leak stale phone errors
+Registration verification workflow:
+- registration state must be isolated from login state
+- changing phone or email during registration must clear old OTP state for that target
+- the registration flow must preserve enough local/session state for users to resume after refresh without bypassing verification
+- successful mobile and email verification only means contact ownership is verified; it does not mean KYC or account approval is complete
+
+4.C KYC & VERIFICATION SYSTEM
+KYC workflow for all user types:
+- all user types must support a KYC profile with required documents derived from role, country, service scope, and compliance policy
+- KYC upload must happen after contact verification and before admin approval
+- users must be able to review their submitted KYC packet before final submission
+- KYC submission must move the account to pending review or under review; upload alone cannot activate any account
+Document upload system:
+- document upload must support required document type, issuing country, document/reference number where applicable, issue date, expiry date where applicable, and file evidence
+- KYC upload must be camera-first for identity and verification evidence; the primary user action must open live camera capture rather than a generic file picker
+- document evidence must support image/PDF only where policy allows; live-camera-only evidence must not allow gallery/library upload
+- sensitive KYC images such as National ID, Passport, driving license, driver selfie/photo, authorized signatory ID, and business-document evidence required for verification must include capture-source metadata
+- where a KYC requirement is marked live-camera-only, the backend must reject uploads that do not declare an approved live-camera capture source and capture timestamp
+- uploaded files must be linked to user, role, document type, upload timestamp, and review state
+- documents must be stored in secure private storage in production, with signed/authorized access for review
+Verification statuses:
+- NOT_STARTED: user has not begun KYC
+- CONTACT_VERIFICATION_PENDING: mobile/email verification incomplete
+- KYC_PENDING: KYC documents not fully submitted
+- PENDING_REVIEW: KYC packet submitted and awaiting admin review
+- UNDER_REVIEW: admin/compliance review in progress
+- RESUBMISSION_REQUIRED: one or more required documents rejected or missing
+- VERIFIED: required KYC has been approved
+- ACTIVE: account activated after verification and approval
+- REJECTED: account or KYC packet rejected according to policy
+- SUSPENDED: account disabled due to expiry, compliance, fraud, admin action, or policy
+Approval and rejection workflows:
+- admin or super admin must review documents at document level first
+- approval must capture reviewer identity, timestamp, document status, and notes where applicable
+- rejection must capture reviewer identity, timestamp, mandatory rejection reason, and resubmission instructions
+- account verification status must be recalculated from the reviewed document set
+- activation must remain separate from verification and must require authorized internal action or approved activation automation
+Resubmission logic:
+- rejected or expired documents must be resubmittable without deleting the audit trail of the previous submission
+- resubmission must create a new document version or review record linked to the original requirement
+- users must see which document failed, why it failed, and what must be uploaded again
+- resubmission must return the affected requirement to pending review or under review
+Admin verification controls:
+- admin and super admin must have a Verification Control desk for customer KYC, driver KYC, partner KYC, fleet verification, document review, rejection handling, expiry monitoring, and resubmission tracking
+- the desk must allow filtering by role, status, document type, overdue review, expiry risk, rejected items, and resubmission-required items
+- the desk must expose approve, reject, request resubmission, suspend, activate, and audit-history actions according to RBAC
+- every verification decision must be written to immutable audit logs
+
+4.D USER-TYPE KYC REQUIREMENTS
+Individual customer KYC:
+- verified mobile number
+- verified email where supplied or where policy requires email
+- National ID or Passport where required by service type, fraud policy, regulated cargo, or payment/contracting policy
+- address/contact verification where required by risk policy
+Corporate customer KYC:
+- verified authorized contact mobile number
+- verified authorized contact email
+- company legal name
+- business registration certificate
+- KRA PIN / tax identity where billing, invoicing, or contracting applies
+- authorized signatory National ID or Passport
+- company address and billing contact details
+- contract or credit approval documents where account credit is requested
+Driver KYC:
+- verified mobile number
+- verified email where supplied or required
+- National ID
+- driving license with number, class, issue/expiry date, and issuing authority
+- live-camera-only driver photo or selfie for identity verification
+- vehicle assignment eligibility only after driver KYC is verified and account is active
+- expiry monitoring for driving license and other mandatory driver documents
+Transporter KYC:
+- verified authorized contact mobile number
+- verified authorized contact email
+- company legal name
+- business registration certificate
+- KRA PIN / tax identity
+- authorized signatory National ID or Passport
+- operating permits/licenses where applicable
+- fleet ownership or operating authority evidence where applicable
+- every managed vehicle must pass separate vehicle verification before dispatch eligibility
+Courier company KYC:
+- verified authorized contact mobile number
+- verified authorized contact email
+- company legal name
+- business registration certificate
+- KRA PIN / tax identity
+- authorized signatory National ID or Passport
+- courier/last-mile operating permits where applicable
+- coverage/service-area declaration
+- owned or managed delivery vehicles must pass separate verification before dispatch eligibility
+Warehouse partner KYC:
+- verified authorized contact mobile number
+- verified authorized contact email
+- company legal name
+- business registration certificate
+- KRA PIN / tax identity
+- authorized signatory National ID or Passport
+- warehouse site address, ownership/lease or operating authority evidence
+- warehouse photos, capacity declaration, and compliance/insurance documents where applicable
+- warehouse partner approval must be separate from warehouse-site readiness approval
+
+4.E SECURITY UPDATES FOR AUTH, KYC, AND VERIFICATION
+Secure file uploads:
+- uploads must enforce authentication and authorization
+- users may upload only documents for their own profile unless an admin/system workflow explicitly allows otherwise
+- upload endpoints must restrict file size, file type, and required metadata
+- production document storage must use private object storage; public unauthenticated URLs are forbidden for sensitive KYC files
+File validation rules:
+- allowed MIME types must be enforced server-side and not trusted only from the browser
+- file extension, MIME type, and content sniffing must be consistent with configured policy
+- verification images required as live-camera-only evidence must accept only fresh camera capture from the approved UI path
+- malware scanning or quarantine workflow is required before external go-live for sensitive uploads
+Encrypted sensitive storage:
+- secrets must live in environment/secret-management systems, not source code
+- OTP values must be hashed or provider-managed; plain OTP storage is forbidden
+- sensitive KYC metadata must be stored with database and storage encryption enabled in production
+- access to sensitive documents must be logged and permission-controlled
+OTP rate limiting:
+- OTP send and verify endpoints must enforce cooldown, attempt limits, temporary locks, and abuse monitoring
+- rate limits must apply per contact target and per client/IP where appropriate
+- OTP verification must not reveal whether a different account exists beyond approved UX/security messages
+Account activation restrictions:
+- inactive, pending, rejected, suspended, or resubmission-required accounts must not access protected workspaces
+- login may authenticate contact ownership, but protected workspace access requires ACTIVE account status and valid session token
+- admin activation must require verified KYC or explicit approved exception with audit reason
+- expired mandatory documents may trigger automatic suspension according to policy and must appear in the verification control desk
+
+4.F ONBOARDING FLOW: REQUIRED STATE MACHINE
+The approved onboarding flow is:
+1. Registration
+2. Mobile verification
+3. Email verification
+4. KYC upload
+5. Review & submit
+6. Admin approval
+7. Account activation
+Detailed onboarding rules:
+- Registration collects role, name/company details, mobile number, email where applicable, and password.
+- Mobile verification confirms ownership of the registered phone number.
+- Email verification confirms ownership of the registered email where supplied or required.
+- KYC upload collects all role-required documents and evidence.
+- Review & submit lets the user confirm the KYC packet before locking it for review.
+- Admin approval reviews document-level evidence and account-level readiness.
+- Account activation is the final state that grants protected workspace access.
+The product must never skip KYC upload, admin approval, or account activation only because registration, mobile verification, or email verification succeeded.
+
+4.G ENTERPRISE SECURITY ARCHITECTURE & PRODUCTION READINESS
+Security architecture baseline:
+- ZITO production must follow a defense-in-depth model aligned to OWASP ASVS, OWASP Top 10 access-control guidance, and secure file-upload controls.
+- The backend is the authoritative trust boundary for authentication, authorization, payments, KYC, fleet verification, dispatch, tracking, and account activation.
+- Frontend and mobile validation are usability aids only; every critical rule must be enforced server-side.
+- Every API that reads or mutates a business object must enforce both role authorization and object-level ownership or scope checks.
+- Sensitive workflows must be auditable: login, OTP, password reset, KYC upload, KYC review, fleet verification, payment initiation, payment confirmation, refund, reversal, wallet mutation, dispatch acceptance/rejection, live tracking access, and admin account changes.
+
+Authentication and session requirements:
+- Production JWT secrets must be provided only through managed secret storage; fallback/default JWT secrets are forbidden in deployed environments.
+- Access tokens must be short-lived and refresh tokens must be rotated, revocable, and stored server-side or in secure HttpOnly cookies where applicable.
+- Browser storage of long-lived refresh tokens is not production-approved because XSS can expose tokens.
+- Session validation must reject unknown session IDs in production; validation must not silently create a session record from a presented JWT.
+- OTP send, resend, verification, password reset, and login attempts must have contact-level and IP/device-level throttling.
+- Admin, refund, payout, role-change, force-logout, KYC approval, and account activation actions must require re-authentication or step-up approval.
+
+API and RBAC requirements:
+- RBAC must be enforced on every protected controller, and role checks must be paired with object-scope checks for customer, driver, transporter, courier company, warehouse partner, corporate, agency staff, admin, and super admin users.
+- Public endpoints must be explicitly documented and must not expose sensitive object details.
+- Payment, booking, wallet, featured-listing, subscription, dispatch, and document-review mutations must require server-enforced idempotency.
+- Errors returned to clients must be context-aware and must not expose stack traces, provider secrets, SQL details, internal IDs beyond the requested object, or cross-flow auth state.
+- Swagger/API docs must be disabled or access-controlled in staging and production.
+
+KYC, document, and vehicle evidence security:
+- Production KYC and vehicle evidence must be stored in private object storage with encryption at rest, signed short-lived read URLs, and no unauthenticated public paths.
+- Uploaded files must be validated by declared MIME type, detected file signature, extension allowlist, size limit, and malware/AV scanning before review.
+- Live-camera-only evidence must include capture source, capture timestamp, user ID, document type, and submission context in structured metadata.
+- KYC images, driver live photos, vehicle photos, insurance evidence, permit evidence, POD images, invoices, and waybills must not be served from public static local upload directories in production.
+- Rejected or resubmitted documents must preserve immutable audit history while preventing ordinary users from viewing other users' documents.
+
+Payment and financial security:
+- Payment initiation must verify the authenticated user is allowed to pay the booking or invoice target.
+- Payment lookup, retry, refund, reversal, escrow, wallet, disbursement, featured-listing, and subscription operations must enforce owner/admin scope.
+- Provider callbacks must be authenticated or verified with provider signatures, source allowlists, shared secrets, or equivalent M-Pesa control before state mutation.
+- Wallet and ledger updates must be transactional, idempotent, immutable, and reconciled against provider references.
+- Duplicate payment, invoice overpayment, escrow bypass, refund abuse, and replay attacks must be covered by automated tests before go-live.
+
+Real-time tracking security:
+- WebSocket connections must authenticate the user before joining rooms.
+- Drivers may only publish GPS for their own driver profile and assigned active bookings.
+- Customers may only subscribe to tracking rooms for bookings they own or are authorized to view.
+- Admin live map rooms must require admin/super-admin authorization.
+- GPS updates must be rate-limited and checked for impossible movement, spoofing indicators, and booking-state validity.
+
+Infrastructure and deployment hardening:
+- Production must require HTTPS/TLS, secure CORS origin allowlists, managed secrets, least-privilege database credentials, private storage permissions, backup and restore tests, centralized logs, alerting, and monitored health checks.
+- CI/CD must include dependency audit, secret scanning, type/build checks, unit tests, integration tests, migration checks, and security regression tests.
+- Production deployments must not run with development OTP exposure, test redirects, simulated payment providers, public debug logs, or local-only provider fallbacks.
+- Database access must use least privilege, TLS, encrypted backups, migration review, and point-in-time recovery where supported.
+- Rate limiting, WAF/DDoS protection, request-size limits, and upload-size limits are mandatory for public production.
+
+Audit logging and monitoring:
+- Audit logs must capture actor ID, target ID, action, timestamp, IP address, device/user-agent, request correlation ID, result, and approval reason where applicable.
+- Security monitoring must alert on brute force, OTP abuse, repeated payment failures, refund spikes, role changes, account activation spikes, suspicious login, high-volume uploads, GPS anomalies, and unauthorized access attempts.
+- Audit logs must be tamper-resistant and retained according to compliance and finance requirements.
+
+Production readiness checklist:
+- No critical or high unresolved security findings.
+- All sensitive uploads private, encrypted, signed, validated, and malware-scanned.
+- JWT/session/refresh-token storage and revocation production-approved.
+- RBAC and object ownership tests pass for all user types.
+- Payment idempotency, callback verification, wallet integrity, and reconciliation tests pass.
+- WebSocket authentication and tracking authorization tests pass.
+- Rate limiting and abuse controls enabled for auth, OTP, uploads, payments, and public APIs.
+- Production secrets, CORS, HTTPS, backups, monitoring, and incident response runbooks verified.
+- PRD, API docs, test cases, and deployment runbook updated before module lock.
+
+4.H PHASE 1 SECURITY HARDENING LOCK RULES
+The pre-production security stabilization phase must enforce the following implementation rules before public launch:
+- Payment APIs must verify booking, invoice, escrow, payment, wallet, featured-listing, and subscription ownership before returning or mutating data.
+- Admin and super-admin may override finance scope; agency staff may only access finance records within their agency scope.
+- WebSocket tracking must authenticate the socket with JWT before joining any room.
+- Customers may only join booking tracking rooms for their own bookings unless an approved admin or agency scope applies.
+- Drivers may only join their own driver room and may only publish GPS for their assigned active bookings.
+- Admin live-map rooms must reject non-admin users.
+- M-Pesa callback endpoints must verify an approved callback secret and optional provider source allowlist before any payment state mutation in production.
+- Production must not serve KYC, vehicle, insurance, permit, POD, invoice, or waybill uploads from a public static local directory.
+- Camera evidence uploads must validate MIME type, file size, and actual file signature before storage or review.
+- Refresh tokens must not be persisted in browser localStorage.
+- Unknown server-side session IDs must be rejected during JWT validation.
+- Financial mutations, booking mutations, and wallet-impacting actions must require idempotency keys and must be audit logged.
+- Auth, OTP, upload, payment, and public API routes must have rate limits suitable for production abuse prevention.
+- Backend password creation and reset must require at least 8 characters with uppercase, lowercase, and number characters; special characters remain recommended.
+- Production startup must fail fast if JWT secrets are weak, access and refresh secrets match, M-Pesa callback verification is missing, production CORS includes localhost, rate-limit variables are absent, or M-Pesa is left in sandbox mode.
+
+4.I OTP PROVIDER ABSTRACTION AND TEST OTP MODE
+OTP provider architecture:
+- OTP delivery must be abstracted behind a provider layer so ZITO can switch between test, Twilio Verify, and future providers without changing auth controllers, frontend OTP screens, or user-facing auth flow.
+- Twilio Verify remains the production-ready SMS OTP provider and must not be removed.
+- The provider switch must be environment-driven through OTP_MODE.
+- Supported OTP modes:
+  - OTP_MODE=test: internal QA mode, no real SMS sent, configured TEST_OTP_CODE is accepted.
+  - OTP_MODE=twilio: Twilio Verify SMS provider.
+  - OTP_MODE=firebase: future-ready placeholder; must fail clearly until implemented.
+  - unset/local fallback: local development fallback for non-production developer flows.
+Test OTP mode policy:
+- TEST OTP MODE exists only to avoid SMS cost during internal QA and local development.
+- TEST_OTP_CODE must be configurable and must default only in non-production.
+- TEST OTP MODE must preserve OTP expiry, resend cooldown, resend limits, failed-attempt tracking, and lockout rules.
+- TEST OTP MODE must not change frontend UX, resend countdown behavior, loading states, or API contracts.
+Production OTP restrictions:
+- NODE_ENV=production with OTP_MODE=test is forbidden and must block application startup.
+- NODE_ENV=production with OTP_MODE=firebase is forbidden until the provider is implemented and approved.
+- production must use Twilio Verify or another approved live OTP provider with real delivery and provider health monitoring.
+Provider failover strategy:
+- Provider failures must be surfaced as OTP delivery/provider errors, not as invalid credentials.
+- Failover to another live provider may be added only after audit, rate-limit, logging, and compliance controls match Twilio mode.
+- No production failover may silently fall back to test OTP mode.
+OTP environment handling and logging:
+- OTP logs must mask destination values and must not log plaintext OTPs in production.
+- Test mode may expose TEST_OTP_CODE only through controlled internal QA documentation, never in production responses.
+- OTP verification and delivery failures must be audit/security observable without leaking sensitive code values.
+Authentication stabilization and session lifecycle:
+- The OTP login lifecycle is: phone/email input -> provider-selected OTP dispatch -> latest OTP record created with TTL/cooldown metadata -> temp OTP JWT issued -> OTP verification against the same normalized contact -> optional email-password completion -> session record creation -> access JWT generation -> frontend session persistence -> status-aware redirect.
+- In OTP_MODE=test, configured TEST_OTP_CODE, defaulting to 123456 only outside production, must verify successfully for phone and email login without Twilio, SMS cost, or provider fallback conflicts.
+- Test OTP mode must still create and expire OTP records, invalidate older resend records, enforce resend cooldown, enforce maximum resend count, track failed attempts, and lock repeated failures.
+- Twilio must never be invoked when OTP_MODE=test. Twilio may be enabled only when OTP_MODE=twilio or when explicitly configured as an approved live provider outside local test mode.
+- Non-suspended users may authenticate during onboarding. PENDING, VERIFIED, and REJECTED users receive a limited session that can access profile and verification routes only; ACTIVE users receive normal module access.
+- SUSPENDED users must be blocked before OTP dispatch and before session creation.
+- Every access JWT must include a server-backed session id and user status. JWT validation must reject missing/invalidated/expired sessions and must not create dashboard access for incomplete users.
+- Frontend OTP state must be flow-isolated. Switching phone/email, changing the OTP target, retrying login, or resending OTP must clear stale errors and use only the latest temp token/contact pair.
+- Auth debugging logs in development may show provider mode and masked destination only. Production logs must never expose OTP values, auth tokens, refresh tokens, or full phone/email identifiers.
+- Pending-review login logic must redirect incomplete users to Complete Verification, not dashboards. Pending Approval is shown only after required KYC documents are uploaded/submitted.
+Corrected test OTP flow and stale-state prevention:
+- Starting a fresh phone or email OTP request must clear any previous OTP session, previous OTP input, previous verification error, previous password-gate state, auto-submit marker, cooldown state that belongs to another contact, and stale local auth/session data for the same flow.
+- The OTP screen may open only after /auth/login returns a valid temp_token, contact, expiry, and resend metadata. The frontend must not call /auth/verify-otp before the user submits a 6-digit code or a valid browser WebOTP credential is received for the same contact/session.
+- TEST OTP MODE must never depend on a provider-generated external SID/status. The backend must still create a local OTP row for expiry/cooldown tracking, but verification must accept TEST_OTP_CODE through the test provider when OTP_MODE=test.
+- When a resend occurs, the previous active OTP row for that contact must be expired and only the newest temp token/contact pair may be used by the frontend.
+- Frontend error messages must be context-aware: OTP send failure is a delivery/request problem, while OTP verification failure is a code/session problem. A send failure must not be shown as "OTP failed" before the OTP screen opens.
+- Development auth debugging may log state transitions such as OTP_REQUEST_STARTED, OTP_REQUEST_ACCEPTED, OTP_VERIFY_STARTED, OTP_VERIFY_ACCEPTED, SESSION_CREATED, and AUTH_REDIRECT_SELECTED with masked contact and no token/code values.
+
+4.K CURRENT-LOCATION-FIRST PICKUP EXPERIENCE
+Pickup location selection must behave like modern mobility and delivery applications such as Uber, Bolt, Glovo, and Google Maps while remaining suitable for logistics operations.
+Current-location-first rule:
+- When a booking pickup page opens, the frontend should request browser/mobile location permission where available.
+- If permission is granted, the system must detect GPS coordinates, estimate accuracy, reverse geocode the nearest readable area/address, and place "Use Current Location" at the top of pickup suggestions.
+- The current-location suggestion must include the resolved address or nearest area, for example: "Use Current Location - Westlands, Nairobi, Kenya".
+- Selecting current location must auto-fill pickup details, center the map on the coordinates, drop the pickup pin, and allow the user to adjust the pin manually before submitting.
+Pickup suggestion priority:
+- Pickup suggestions must be ordered as: 1. Current GPS location, 2. Nearby locations, 3. Recent pickup locations, 4. Popular destinations, 5. Manual search results.
+- Manual search must continue to work even when GPS is unavailable or denied.
+Permission and fallback handling:
+- While GPS is loading, the UI must show a mobile-friendly loading state or shimmer for the current-location suggestion.
+- If permission is denied, unavailable, inaccurate, or times out, the UI must show a graceful message and continue autocomplete/manual entry without blocking booking.
+- Location errors must not break pricing, booking submission, RBAC, or backend APIs.
+Reverse geocoding policy:
+- Reverse geocoding may use browser coordinates with existing frontend map/geocoding utilities where available.
+- If an exact address cannot be resolved, the UI must fall back to a readable "Current location" label with coordinates retained internally.
+Mobile-first booking UX:
+- The current-location quick action must be visually prominent, touch-friendly, and accessible.
+- GPS detection should be fast, cancellable by user navigation, and must not repeatedly nag for permission after denial in the same page session.
+- No sensitive location data may be logged in plaintext outside controlled development diagnostics.
+
+4.L MODERN SUPER-APP BOOKING EXPERIENCE
+ZITO booking UX must feel like a modern African logistics super app, inspired by Uber, Bolt, Glovo, Uber Eats, Careem, and premium mobility products while preserving enterprise logistics rules.
+Booking experience principles:
+- Booking must be map-first, search-first, and mobile-first. The first visual focus must be a live map surface with a bottom-sheet interaction layer and a large "Where to?" search action, not an admin-style form.
+- Desktop modal/dialog booking search is not acceptable for the customer route flow. Location search must use a mobile bottom sheet that feels app-native on phones and remains bottom-anchored on desktop.
+- The route lifecycle is: auto-detect pickup -> show current location -> ask "Where to?" -> search/select destination -> preview route -> choose service/vehicle -> show price/rate state -> add contacts/details -> confirm booking.
+- Pickup and drop-off selection must use a bottom-sheet/modal pattern with large touch-friendly rows, current location first, saved/recent/popular locations, and manual search as the fallback.
+- Location search should feel smooth and fast, with clear loading states, graceful permission denial, and no blocking if GPS or reverse geocoding fails.
+Map-first architecture:
+- Route map/preview must be visually integrated into the booking surface, with pickup/drop markers, live route context, drag/click pin adjustment, and clear route status overlays.
+- Map adjustment is an advanced refinement action; search and current-location selection remain the primary route-entry path.
+- The map must remain visually primary during route setup. Forms, helper text, quick-action cards, route-rule cards, and explanatory panels must not dominate the first booking screen.
+Mobile-first design system:
+- Booking UI must avoid admin panels, cramped cards, tiny buttons, excessive borders, and dense form-first layouts.
+- Primary actions must be thumb-friendly, visually prominent, and readable on Android and iPhone screens.
+- Visual hierarchy should use clean typography, large search surfaces, rounded bottom sheets, soft shadows, restrained gradients, minimal copy, and smooth transitions.
+Service selection UX:
+- Service cards for Courier, PTL, FTL, Warehouse, Express/Scheduled, and freight options must show icon, timing/ETA, cargo fit, and pricing/rate state where available.
+- Vehicle/service selection must not change the pricing engine; it only improves discoverability and perceived speed.
+Performance and stability:
+- UX modernization must not modify booking APIs, pricing logic, RBAC, KYC/onboarding flows, or backend architecture.
+- Map and search surfaces must remain responsive and must not introduce blocking external calls outside existing geocode/map usage.
+- Booking logic remains stable only when route selection, vehicle selection, quote calculation, and booking submission continue to build and run after UI changes.
+
+4.J UNIVERSAL ONBOARDING AND ROLE-BASED KYC ARCHITECTURE
+Universal onboarding rule:
+- Every user role must pass through the same verification lifecycle before protected dashboard/module access is granted.
+- The universal lifecycle is: Registration -> Mobile OTP verification -> Email verification where email is supplied or required -> Login -> Role detection -> Role-based KYC wizard -> Document upload -> Submit for review -> Under review -> Approval/resubmission/rejection -> Dashboard access after activation.
+- KYC onboarding, document upload, approval workflow, account restrictions, and admin review must apply to individual customers, corporate customers, drivers, transporters, courier companies, warehouse partners, agents/brokers, agency users, and any future externally onboarded role.
+- Pending approval is not the first post-login verification screen. Users with incomplete KYC must be routed to Complete Verification first.
+Universal login rule:
+- After login, the platform must detect role and verification state before redirecting to any workspace.
+- If role-required KYC is incomplete, the user must be redirected to Complete Verification.
+- If all required KYC is uploaded and submitted but not approved, the user must be redirected to Pending Approval / Under Review.
+- If KYC is rejected or resubmission is required, the user must be redirected to Complete Verification with document-level rejection reasons and resubmission instructions.
+- Only active and approved users may access protected role workspaces.
+Role-based KYC document requirements:
+- Individual customer: National ID or Passport; selfie/profile photo.
+- Corporate customer: company registration; tax/VAT/KRA certificate; authorized person ID; company details and billing/contact details.
+- Driver: National ID; driving license; PSV/transport permits where applicable; live-camera-only profile photo.
+- Transporter: company registration; tax/VAT/KRA certificate; vehicle documents; insurance; driver assignment details.
+- Courier company: company registration; operating license; fleet details; insurance where applicable.
+- Warehouse partner: warehouse ownership or lease proof; compliance certificates; company registration; operating permits where applicable.
+- Agent / broker: National ID; business proof; address/contact verification.
+Dynamic KYC document engine:
+- The backend must expose role-based KYC requirements derived from role, country, business type, service scope, and compliance policy.
+- The frontend KYC wizard must load requirements dynamically instead of hardcoding a corporate-only checklist.
+- The engine must validate missing documents, rejected documents, expired documents, resubmission-required documents, and submitted documents per role.
+- The KYC status model must support DRAFT, INCOMPLETE, READY_TO_SUBMIT, SUBMITTED, UNDER_REVIEW, RESUBMISSION_REQUIRED, REJECTED, VERIFIED, and ACTIVE.
+Account restriction logic:
+- Incomplete users must not access bookings, payments, operations, dispatch, live tracking controls, finance modules, fleet activation, marketplace actions, or warehouse operations.
+- Limited profile and verification pages may remain accessible so the user can complete KYC and view review status.
+- Backend APIs must enforce restrictions server-side; frontend redirects are a convenience layer only.
+Pending approval page rule:
+- Pending approval may only appear after all role-required documents have been uploaded and the KYC packet has been submitted successfully.
+- Users who have not submitted all required KYC must never be sent directly to Pending Approval.
+Role-based admin review flow:
+- Admin verification controls must filter by role, KYC state, document type, rejection reason, resubmission state, expiry risk, and submission date.
+- Admins must review KYC by role type and approve, reject, request resubmission, add remarks, and view audit history.
+- Review decisions must be document-level first, then account-level status must be recalculated from the role-required document set.
+KYC lifecycle management:
+- Users may save KYC drafts before final submission.
+- Upload previews must be shown before submission where safe.
+- Rejected/resubmitted documents must preserve history and create a new review cycle.
+- The KYC wizard must be mobile responsive and support camera-first uploads for live-photo or identity evidence.
+Security requirements:
+- KYC uploads must use private secure storage, signed access URLs, MIME validation, file-signature validation, file size restrictions, upload rate limiting, encrypted sensitive metadata, and immutable audit trails.
 5. 🗺️ Location System
 All addresses require map-based selection (lat/lng mandatory)
 No manual-only text entry permitted
@@ -661,6 +1140,261 @@ Landmark / nearby reference
 Rules:
 Address must be complete before booking confirmation
 System should assist users with address suggestions where possible
+
+5.1 CUSTOMER PRICING & QUOTATION MODEL
+
+Philosophy:
+ZITO is not a simple courier app only. Large logistics movements require operational review, load understanding, route validation, and market negotiation. Therefore:
+✅ Some services use automated pricing
+✅ Some services use quotation/request workflow  
+✅ Final commercial control remains with Admin/Operations
+
+SERVICE-SPECIFIC PRICING MODELS
+
+1️⃣ COURIER — FULLY AUTOMATED PRICING
+
+Customer enters:
+- Pickup location
+- Dropoff location
+- Weight
+- Parcel size
+- Delivery speed
+
+System automatically calculates:
+- Estimated delivery cost
+- ETA
+- Vehicle type
+- Surge adjustments
+
+Customer can:
+✅ Book instantly
+✅ Pay instantly
+✅ Track immediately
+
+Best for:
+- Documents
+- Small parcels
+- Same-day delivery
+- Standard courier jobs
+
+Implementation:
+- Real-time pricing engine returns quote immediately
+- No operational review required
+- Payment processed on booking confirmation
+- Dispatch begins automatically after payment
+
+2️⃣ PTL (PARTIAL LOAD) — SEMI-AUTOMATED WITH OPERATIONAL REVIEW
+
+Customer enters:
+- Pickup/dropoff
+- Cargo type
+- Weight/volume
+- Preferred delivery date
+- Special handling requirements
+
+System provides:
+✅ Estimated price range
+✅ Shared-load options
+✅ Tentative ETA
+
+Final allocation may require:
+- Operations review
+- Load consolidation
+- Space availability  
+- Transporter approval
+
+Customer Flow:
+Request → Estimated Quote → Review → Confirmation → Payment → Dispatch
+
+Implementation:
+- System returns estimated price range (with variance ±10-20%)
+- Booking created but marked as "pending_operations_review"
+- Operations team confirms capacity and assigns transporter
+- Final price may adjust based on consolidation
+- Payment collected after final confirmation
+
+3️⃣ FTL (FULL TRUCK LOAD) — MANUAL QUOTATION MODEL
+
+FTL MUST NOT use direct instant pricing initially. Reason:
+- Real market pricing fluctuates heavily based on:
+  - Cargo type
+  - Weight
+  - Route
+  - Fuel market
+  - Truck availability
+  - Return load probability
+  - Border/customs complexity
+  - Risk level
+  - Urgency
+  - Loading/offloading requirements
+
+Correct FTL Flow
+
+STEP 1 — CUSTOMER SUBMITS REQUEST
+Customer enters:
+✅ Pickup location
+✅ Delivery location
+✅ Cargo details
+✅ Weight/volume
+✅ Truck preference
+✅ Special handling requirements
+✅ Delivery deadline
+✅ Photos/documents if needed
+
+Status: Request created → Pending Operations Review
+
+STEP 2 — REQUEST GOES TO OPERATIONS
+Internal Admin/Operations team reviews:
+✅ Cargo details
+✅ Route
+✅ Vehicle requirement
+✅ Market pricing
+✅ Transporter availability
+✅ Risk/compliance
+✅ Margin opportunity
+
+Booking status: Operations Review
+
+STEP 3 — ADMIN FINALIZES QUOTE
+Admin can:
+✅ Create custom quotation
+✅ Negotiate pricing
+✅ Assign transporter
+✅ Add special conditions
+✅ Adjust margins
+✅ Define validity period (24-72 hours)
+
+STEP 4 — CUSTOMER RECEIVES OFFER
+Customer sees in-app notification:
+✅ Final quotation
+✅ Vehicle type
+✅ ETA
+✅ Terms & conditions
+✅ Validity duration
+✅ Payment terms (per invoice, prepayment, installment)
+
+Booking status: Quote Pending Customer Decision
+
+Customer can:
+✅ Accept
+✅ Reject
+✅ Request revision
+✅ Contact support
+
+STEP 5 — BOOKING ACTIVATION
+Only after acceptance:
+✅ Booking confirmed
+✅ Invoice generated
+✅ Payment initiated (if prepayment required)
+✅ Dispatch process starts
+✅ Booking status: Active
+
+Implementation:
+- FTL bookings created with status: "PENDING_QUOTE"
+- Customer receives notification with quote details
+- Admin panel shows "awaiting customer decision" status
+- Quote expires after configured validity period (default: 48 hours)
+- If customer doesn't respond, booking transitions to "EXPIRED"
+- Customer can extend quote if still available
+
+4️⃣ WAREHOUSE — MOSTLY FIXED CONFIGURABLE PRICING
+
+Customer enters:
+- Warehouse location
+- Storage type (pallet, bin, climate-controlled, etc.)
+- Goods description
+- Start date
+- End date
+- Capacity needed
+
+System provides:
+✅ Fixed pricing based on warehouse listing
+✅ Calculated from: capacity × duration × rate + handling + VAT
+✅ Immediate quote
+✅ No operational review required (unless fraud flags)
+
+Customer can:
+✅ Book instantly
+✅ Pay instantly
+✅ Access immediately
+
+Implementation:
+- Warehouse partner sets rate cards for each storage type
+- System auto-calculates based on: (capacity_requested × duration_days × listing_rate) + handling_fee + VAT
+- No operational markup; direct warehouse transaction
+- Booking confirmed immediately on payment
+
+5️⃣ CONTAINER / RAIL — MANUAL OR SEMI-MANUAL QUOTATION
+
+Customer enters:
+- Corridor/route
+- Container size (20ft, 40ft)
+- Cargo details
+- Pickup/delivery nodes
+- Customs documentation status
+- Urgency
+
+System provides:
+✅ Estimated range (if corridor is active)
+✅ OR "Quote Pending" (if corridor requires custom pricing)
+
+Final quote requires:
+- Operations review
+- Customs readiness assessment
+- Rail/port availability check
+- Partner capacity confirmation
+
+Customer Flow (Semi-Manual):
+Request → Estimated Range OR Quote Pending → Admin Review → Quote Offer → Customer Decision → Booking Activation
+
+PRICING VISIBILITY RULES
+
+Customer SHOULD see:
+✅ "Estimated from KES X" (for Courier/PTL)
+✅ Market-based indicators
+✅ Request quotation CTA
+✅ Final quoted price (for FTL/Container)
+✅ Validity period countdown
+
+Customer SHOULD NOT see:
+❌ Internal rate cards
+❌ Margin calculations
+❌ Transporter payout
+❌ Admin pricing tools
+❌ Negotiation controls
+❌ Supplier costs
+❌ Cost breakdowns (only final total)
+
+ADMIN PRICING AUTHORITY
+
+Only authorized internal roles (Admin, Super Admin, Head Office Staff) can:
+✅ Finalize FTL pricing
+✅ Override PTL pricing
+✅ Apply discounts
+✅ Add manual surcharges
+✅ Approve negotiated contracts
+✅ Change operational pricing
+✅ Extend quote validity
+✅ Create custom quotations
+
+QUOTE STATUS LIFECYCLE
+
+Booking status flow for quotation services (FTL, Container, Rail):
+
+created
+  ↓
+searching (admin operations review)
+  ↓
+quote_pending (awaiting customer decision)
+  ├─ [customer accepts] → assigned
+  ├─ [customer rejects] → cancelled
+  ├─ [quote expires] → expired
+  └─ [customer requests revision] → searching
+  ↓
+assigned (transporter/provider assigned)
+  ↓
+... rest of lifecycle (accepted, picked, in_transit, delivered, completed)
+
 6. 🚚 Booking Engine
 Lifecycle
 created → searching → assigned → accepted → arrived → picked → in_transit → arrived_at_destination → delivery_verification → delivered → completed → cancelled
@@ -747,8 +1481,8 @@ Fleet Verification & Physical Evidence:
   - rejected
   - resubmission_required
 - replacing any previously reviewed truck photo must return that photo and the overall vehicle verification status to pending_review until the new image is reviewed
-- photos should be current and captured as near to verification time as operationally possible; where device capability permits, capture timestamp and location metadata
-- customer, transporter, courier-company, corporate, and agent fleet onboarding should prefer fresh camera capture over gallery reuse; operational review must treat the packet as the latest physical condition evidence for the asset
+- photos must be current and captured from the live device camera during the verification flow; where device capability permits, capture timestamp and location metadata
+- customer, transporter, courier-company, corporate, driver-owned, and agent fleet onboarding must use camera-only capture for vehicle photo evidence and live driver photos; gallery reuse, imported images, and manually supplied photo URLs are not acceptable for verification evidence
 - rejected vehicle photos must produce a resubmission_required state with explicit reviewer notes describing what is missing, unclear, or inconsistent
 - smaller vehicles may use a policy-defined reduced image package, but truck verification always requires the 7 compulsory views above
 10. Warehouse System
@@ -763,7 +1497,9 @@ Warehouse Listing & Online Booking Flow:
 - warehouse listings must remain separate from operational warehouse, zone, rack, bin, and inventory records so warehouse operations are not disrupted by marketplace publishing
 - each listing must be linked to a managed warehouse and to the submitting warehouse partner
 - warehouse partners may only list warehouses they manage or are explicitly authorized to operate
-- listing submission must capture company details, authorized contact information, VAT/tax details, warehouse title, description, area, address, latitude, longitude, service radius, storage types, amenities, photos, documents, total capacity, available capacity, capacity unit, rate amount, rate unit, handling fee, and minimum booking duration
+- listing submission must capture company details, authorized contact information, VAT/tax details, warehouse title, description, area, address, map-selected location, service radius, storage types, amenities, photos, documents, total capacity, available capacity, capacity unit, rate amount, rate unit, handling fee, and minimum booking duration
+- warehouse location UX must be map-first: partners search a place, select a result, use current location, or drop/drag a pin; raw latitude and longitude must be stored internally but not presented as normal user input fields
+- map provider must remain replaceable; OpenStreetMap/Nominatim may be used during development, while Google Maps can be enabled after deployment without changing the warehouse listing workflow
 - required warehouse documents should include business registration, warehouse ownership or lease evidence, insurance where applicable, fire/safety certificate where required, and tax/VAT certificate where VAT applies
 - listing photos should show external access, loading area, storage area, safety equipment, cold-chain area where applicable, and other customer-relevant warehouse condition evidence
 - listing status must support at minimum pending_review, approved, rejected, changes_requested, and suspended
@@ -772,6 +1508,7 @@ Warehouse Listing & Online Booking Flow:
 - admin review must check company details, documents, rates, capacity, location, storage types, photos, VAT setup, and operational suitability before approval
 - customers must have a dedicated Warehouse Booking entry below or beside the main booking options; selecting warehouse must not open the transport booking form first
 - customer warehouse discovery must support approved listing browse/search by location, storage type, rate, capacity, amenities, and availability signals
+- customer warehouse discovery must include a map/list experience with clickable approved warehouse pins, selected listing sync, near-me search, and configurable radius filtering
 - customer warehouse cards must show partner/company name, warehouse title, area, address, storage types, available capacity, rate, handling fee, VAT treatment, photos, and approval status
 - customer booking must capture listing, storage type, goods description, start date, end date, capacity requested, capacity unit, and customer note
 - system must calculate customer-visible warehouse booking amount from capacity requested, duration, listing rate, handling fee, and VAT where applicable
@@ -781,7 +1518,9 @@ Warehouse Listing & Online Booking Flow:
 - warehouse partners must be able to view and update their own warehouse bookings without seeing other partners' bookings
 - admin and super admin must be able to monitor all warehouse listings, bookings, commission amounts, partner net amounts, and booking statuses
 - completed warehouse bookings must feed finance, invoice, settlement, and commission ledgers
+- warehouse listing submission, admin listing review, warehouse booking creation, and warehouse booking status changes must publish enterprise events with correlation/audit fallback
 - warehouse booking capacity reservation must not exceed approved listing available capacity
+- warehouse booking creation must reserve approved listing capacity atomically, and rejected, cancelled, or completed warehouse bookings must release reserved capacity exactly once
 - customer-facing warehouse booking must remain online and self-service while still allowing admin oversight for approval, disputes, suspension, and commercial audit
 11. 📦 Inventory System
 Parcel States
@@ -1261,6 +2000,255 @@ Examples:
 Rate card updates
 SLA changes
 Surge pricing logic updates
+29.A ENTERPRISE TECHNICAL ARCHITECTURE
+Target:
+The platform must evolve from a feature-rich logistics product into an enterprise-grade, cloud-native, event-ready logistics operating system. The objective is not to add random features, but to define clear platform architecture, modular boundaries, operational resilience, and investor-grade scalability.
+
+Architecture Style:
+ZITO shall follow a Modular Monolith -> Microservices Evolution architecture.
+The first production architecture should remain a modular backend with strong service boundaries, shared operational consistency, and event-ready modules. The platform must not start with unnecessary microservice sprawl. Services may be extracted gradually only when scale, team ownership, compliance, performance, or deployment independence requires it.
+
+Core Logical Services:
+- Identity Service: authentication, OTP, RBAC, sessions, token revocation, user identity, and access control.
+- Booking Service: shipment lifecycle, booking creation, booking status, customer booking history, and cancellation rules.
+- Dispatch Service: assignment engine, manual override, priority scoring, route assignment, fairness logic, and partner allocation.
+- Tracking Service: GPS ingestion, trip state, ETA visibility, proof of delivery, and live shipment tracking.
+- Fleet Service: partner vehicle registry, vehicle compliance, capacity, documents, driver-vehicle assignment, and fleet status.
+- Warehouse Service: warehouse onboarding, listings, rates, capacity, area, photos, location, documents, availability, inventory, and storage bookings.
+- Payment Service: customer payments, escrow, payment verification, refunds, payouts, and settlement state.
+- Billing Service: invoices, tax/VAT handling, platform commission, partner billing, warehouse commission, and financial documents.
+- Notification Service: SMS, email, push, OTP delivery, transactional alerts, escalation notifications, and delivery status messages.
+- Compliance Service: KYC, partner verification, warehouse verification, document expiry, compliance flags, and approval workflows.
+- Analytics Service: reporting, BI, operational dashboards, route profitability, marketplace performance, and finance metrics.
+- Audit Service: immutable activity logs, event auditability, user action trails, compliance history, and dispute evidence.
+- Support Service: support tickets, AI/autobot assist, escalation desk routing, SLA pressure, and human handoff.
+- Marketplace Service: partner matching, opportunity broadcast, bid flow, partner reputation, and marketplace governance.
+- Pricing Engine: dynamic pricing, rate cards, corridor logic, surge, fuel adjustments, discounts, and margin-safe quote generation.
+- AI Engine: dispatch intelligence, ETA prediction, fraud detection, demand forecasting, pricing intelligence, and optimization models.
+
+API Gateway Layer:
+The platform must expose all public and internal traffic through an API gateway layer before reaching core services. Acceptable gateway options include Kong, NGINX Gateway, or AWS API Gateway.
+Gateway responsibilities:
+- JWT validation and session enforcement.
+- Rate limiting per user, tenant, role, IP, and API class.
+- Request tracing and correlation IDs.
+- API versioning and backward-compatible deprecation policies.
+- Tenant isolation and agency/partner scoping.
+- Centralized request logging, abuse detection, and WAF integration.
+
+Internal vs Public APIs:
+The platform must separate API surfaces clearly:
+- Customer APIs: booking, tracking, payments, invoices, support, marketplace visibility, warehouse booking, and customer profile flows.
+- Partner APIs: transporter, agent, courier company, warehouse partner, fleet, listings, bids, payouts, and compliance flows.
+- Internal Admin APIs: operations control, finance, compliance, support, analytics, audit, pricing, marketplace governance, and manual override.
+- System Event APIs: event ingestion, webhook handling, internal service events, payment callbacks, notification callbacks, and integration events.
+
+29.B EVENT-DRIVEN ARCHITECTURE
+Target:
+ZITO must operate as an event-driven platform for high-volume logistics, finance, warehouse, marketplace, and compliance workflows. Events must support asynchronous processing, auditability, retries, and future distributed service extraction.
+
+Event Bus:
+Initial implementation may use RabbitMQ for reliable queues and operational simplicity. At higher scale, Kafka may be introduced for high-throughput event streaming, replay, analytics, and distributed consumers.
+
+Core System Events:
+Booking Events:
+- BookingCreated
+- BookingAssigned
+- BookingCancelled
+- BookingCompleted
+
+Payment Events:
+- PaymentInitiated
+- PaymentVerified
+- EscrowReleased
+- RefundProcessed
+
+Driver Events:
+- DriverOnline
+- DriverArrived
+- DriverNoShow
+
+Tracking Events:
+- TripStarted
+- GPSUpdated
+- TripDelayed
+- PODUploaded
+
+Warehouse Events:
+- InventoryReceived
+- InventoryMoved
+- InventoryDispatched
+
+Retry and Failure Strategy:
+- Events must support retry queues with exponential backoff.
+- Failed events must be moved to dead-letter queues after retry exhaustion.
+- Failed-event recovery tools must allow authorized operators to inspect, replay, or cancel failed events.
+- Event consumers must enforce idempotency so duplicate delivery never creates duplicate bookings, payments, payouts, invoices, inventory moves, scans, or trip transitions.
+- Event processing must preserve correlation IDs across booking, payment, dispatch, tracking, support, and audit flows.
+
+Event Auditability:
+All critical events must be immutable, replayable, timestamped, and linked to actor, tenant, source system, and correlation ID.
+Mandatory audit-grade events include finance, escrow, payout, refund, compliance approval, booking cancellation, dispute, warehouse inventory movement, partner suspension, payout hold, fraud flag, and manual override events.
+
+29.C AI AND INTELLIGENCE LAYER
+Target:
+AI must be treated as a governed intelligence layer, not only as scattered feature mentions. AI must improve dispatch quality, ETA accuracy, fraud detection, pricing, demand forecasting, support routing, and operational decision-making while preserving human override and auditability.
+
+AI Modules:
+AI Dispatch Engine:
+- Selects the best transporter, driver, or partner using ETA, proximity, compliance status, acceptance reliability, vehicle capacity, utilization, route fit, historical success, and customer SLA.
+- Supports manual override and explains major assignment reasons to authorized operations users.
+
+AI ETA Prediction:
+- Uses GPS history, route history, traffic signals, weather signals, historical delays, corridor patterns, loading time, warehouse dwell time, and driver/partner behavior.
+- Provides confidence score and continuously compares predicted ETA against actual delivery performance.
+
+AI Fraud Detection:
+- Detects fake GPS, route deviation, duplicate scans, suspicious payouts, repeated failed delivery patterns, unusual cancellation behavior, abnormal refund patterns, and inconsistent proof of delivery.
+- Generates risk scores, evidence summaries, and escalation recommendations for compliance and operations teams.
+
+AI Pricing Engine:
+- Supports dynamic pricing using route demand, fuel trends, vehicle scarcity, corridor congestion, seasonality, SLA urgency, warehouse capacity pressure, and marketplace supply.
+- Must never expose hidden margin logic, platform-fee logic, or admin-only commercial controls to customers or partners.
+
+AI Demand Forecasting:
+- Predicts future route demand, warehouse congestion, agency capacity pressure, seasonal volume spikes, vehicle shortages, and marketplace partner requirements.
+- Feeds capacity planning, warehouse planning, rate-card review, staffing, and marketplace partner acquisition.
+
+AI Feedback Loop:
+Models must improve from delivery success, actual ETA, customer ratings, partner ratings, dispute outcomes, fraud investigation results, support outcomes, cancellation history, and no-show history.
+
+AI Governance:
+- AI decisions must include explainability suitable for internal review.
+- Human override must be available for dispatch, fraud, pricing, support routing, and compliance decisions.
+- Confidence scoring must be visible to authorized internal users where AI affects operations.
+- AI-generated recommendations and automated actions must be audit logged.
+- Enterprise customers must be able to understand when AI influenced a decision that affects SLA, billing, compliance, or dispute handling.
+
+29.D CLOUD AND INFRASTRUCTURE ARCHITECTURE
+Target:
+ZITO infrastructure must be cloud-native, scalable, observable, secure, and ready for B2B SaaS operations across multiple agencies, partners, enterprise customers, corridors, and countries.
+
+Cloud Stack:
+Compute:
+- Docker for consistent runtime packaging.
+- ECS initially for managed container operations.
+- Kubernetes may be introduced later when service count, scaling patterns, or platform team maturity require it.
+
+Database and Storage:
+- PostgreSQL as the primary OLTP database.
+- Redis for cache, sessions, rate limits, queues, and short-lived operational state.
+- TimescaleDB or partitioned time-series tables for GPS and high-volume tracking history.
+- S3-compatible object storage for KYC documents, POD images, warehouse photos, invoices, waybills, compliance files, and support attachments.
+
+Database Strategy:
+OLTP Database:
+- Main transactional database for bookings, users, payments, dispatch, compliance, support, marketplace, warehouse, and billing records.
+
+Analytics Database:
+- Separate analytics/BI warehouse must be introduced as reporting volume grows.
+- Acceptable options include ClickHouse initially or BigQuery later for managed large-scale analytics.
+
+GPS Data Strategy:
+- The main OLTP database must not become the long-term store for billions of GPS rows.
+- GPS history must use TimescaleDB, partitioned tables, or a dedicated time-series/event store.
+- Recent GPS state may be cached for live tracking, while historical GPS data should feed analytics, ETA models, dispute evidence, and route optimization.
+
+Observability Stack:
+Monitoring:
+- Prometheus for metrics collection.
+- Grafana for operational dashboards and alert visibility.
+
+Error Tracking:
+- Sentry for backend, frontend, and mobile error capture.
+
+Logs:
+- ELK Stack or Loki for centralized logs, search, retention, and incident review.
+
+Distributed Tracing:
+- OpenTelemetry for tracing requests across API gateway, backend modules, queues, event consumers, payment callbacks, notification delivery, and AI services.
+
+Implementation Status (May 28, 2026):
+- Backend now propagates X-Correlation-Id, X-Request-Id, and X-Tenant-Id through request context.
+- Admin system-health dashboard includes API failure rate, latency, database, Redis, queue, telemetry, and observability readiness.
+- Admin-only Prometheus-compatible metrics endpoint is available for in-process API metrics.
+- Full external Prometheus/Grafana/Sentry/Loki/OpenTelemetry infrastructure remains a deployment-stage item.
+
+DevOps Pipeline:
+- CI/CD must validate linting, tests, builds, migrations, and deployment artifacts.
+- Deployments must support rollback.
+- Blue-green deployment should be supported for critical production releases.
+- Feature flags must protect risky features, phased rollouts, and enterprise customer-specific enablement.
+- Staging must mirror production integrations as closely as practical, including database, Redis, payment sandbox, SMS sandbox, and test data.
+
+Security Architecture:
+Secrets Management:
+- Production secrets must use AWS Secrets Manager, Vault, or equivalent managed secret storage.
+- Secrets must not be committed to source control or exposed in client bundles.
+
+Device Security:
+- Mobile apps should support rooted-device detection, app integrity checks, secure token storage, and suspicious device/session detection.
+- Token revocation must be supported for stolen devices, staff exits, partner suspension, and suspected compromise.
+
+Infrastructure Security:
+- WAF for API and web protection.
+- IDS/IPS or managed threat detection for infrastructure monitoring.
+- DDoS mitigation for public endpoints.
+- Network segmentation between public APIs, internal services, databases, queues, and admin surfaces.
+
+Multi-Tenant Strategy:
+ZITO must support B2B SaaS-style segmentation:
+- tenant isolation for enterprise customers
+- agency isolation for branch operations
+- partner isolation for transporters, agents, courier companies, and warehouse partners
+- enterprise segregation for data access, reporting, billing, SLA, and audit views
+- tenant-aware RBAC, audit logs, invoices, analytics, and support queues
+
+Search Architecture:
+Enterprise users require fast search across booking search, invoice search, container search, waybill search, customer search, partner search, support ticket search, and OCR/document search.
+Preferred search platform: Elasticsearch or OpenSearch.
+
+Data Engineering Strategy:
+Data Pipelines:
+- operational DB feeds ETL/ELT pipelines
+- event bus feeds analytics streams
+- analytics warehouse powers BI dashboards
+- reporting layer provides finance, operations, marketplace, customer behavior, warehouse utilization, and route profitability views
+
+Business Intelligence Dashboards:
+- finance dashboard
+- operations dashboard
+- marketplace dashboard
+- customer behavior dashboard
+- route profitability dashboard
+- warehouse utilization dashboard
+- partner performance dashboard
+- compliance risk dashboard
+
+Marketplace Trust Engine:
+Partner Reputation System:
+Partner score must be calculated from delivery success, disputes, delays, fraud flags, customer ratings, compliance history, no-show history, cancellation behavior, payout risk, and document freshness.
+
+Automated Penalties:
+The platform must support policy-driven suspension, visibility reduction, payout hold, risk scoring, manual review requirements, and reduced marketplace priority.
+
+Dispatch Decision Engine:
+Dispatch must be governed by configurable decision logic covering priority scoring, assignment weights, surge balancing, utilization balancing, fairness logic, SLA urgency, vehicle suitability, compliance eligibility, route/corridor fit, manual override rules, and marketplace partner availability.
+
+Architecture Upgrade Outcome:
+- Business Model: World-Class
+- Marketplace Strategy: Investor-Grade
+- Technical Architecture: Enterprise-Grade
+- Event Architecture: Distributed Scalable
+- AI Architecture: Advanced
+- Infrastructure: Cloud-Native
+- Security: Enterprise
+- Analytics: BI-Ready
+- Marketplace Governance: Strong
+- Scalability: Excellent
+
+Architecture Governance:
+At this stage, PRD quality must prioritize consistency, modularity, and architecture clarity over endless feature additions. Future additions should deepen platform reliability, service boundaries, security, analytics, governance, and operational maturity rather than expanding scope without architectural discipline.
 30. 🔄 Backup & Disaster Recovery
 Automated daily database backups with 30-day retention
 Point-in-time recovery (PITR) for PostgreSQL
@@ -1440,45 +2428,139 @@ A module is not complete until backend, web/admin, mobile/ops touchpoints, notif
 Happy path, failure path, permission checks, and data validation must all pass before release
 Deferred items must be explicitly tagged to a later release and must not silently block launch scope
 44. Advanced Operations & Control Layer (Mandatory)
-44.1 DRIVER SHIFT & ATTENDANCE SYSTEM
-Data Fields:
-shift_id
-driver_id
-shift_start_time
-shift_end_time
-total_hours
-trip_hours
-idle_hours
-attendance_status
-Rules:
-Driver must START SHIFT before going online
-No booking allowed without an active shift
-44.2 DRIVER PAYROLL ENGINE
-Capabilities:
-Trip-based earnings calculation
-Hourly / daily salary model
-Incentive calculation
-Penalty deduction
-Automated payout calculation engine
-44.3 FUEL MANAGEMENT SYSTEM
-Data Fields:
-vehicle_id
-trip_id
-fuel_expected
-fuel_actual
-fuel_cost
-variance
-Features:
-Fuel logs per trip
-Abnormal fuel usage alerts
-Fuel theft detection
-44.4 VEHICLE BREAKDOWN & RESCUE FLOW
-Flow:
-driver_report_issue → alert_agency → assign_backup_vehicle → load_transfer → trip_continue
-Features:
-Breakdown reporting option in driver app
-Automatic escalation to agency
-Backup vehicle/driver assignment
+
+44.1 PARTNER DRIVER ACTIVITY TRACKING (Platform Visibility for Partner Operations)
+
+Purpose: ZITO provides visibility for partners to monitor their own driver activity. Partners employ and manage drivers. ZITO provides tracking infrastructure.
+
+Data Fields (Tracked by ZITO, Managed by Partner):
+- driver_id (partner's driver)
+- partner_id (transporter or courier company)
+- activity_session_id (online/offline time block)
+- session_start_time (when driver came online)
+- session_end_time (when driver went offline)
+- trips_completed (count during session)
+- earnings_during_session (from ZITO platform)
+- idle_time (time between jobs)
+- active_delivery_time (actual trip time)
+- efficiency_score (trips per hour, for partner insights)
+
+Partner Controls (Their Operations):
+- Driver hiring and employment
+- Shift scheduling and availability
+- Break requirements and rest periods
+- Performance expectations
+- Compensation model (salary vs. trip-based vs. hybrid)
+- Incentives and penalties
+
+ZITO Provides:
+- Real-time visibility dashboard for partner
+- Historical logs for partner's payroll system
+- Earnings data (for partner to settle to driver)
+- Export for partner integration
+- No enforcement: Partner manages driver directly
+
+44.2 PARTNER EARNINGS & SETTLEMENT (Platform Settlement Coordination)
+
+Purpose: ZITO calculates trip-based earnings and settles to partners. Partners determine their own driver compensation.
+
+ZITO Settlement Calculation:
+- Booking fare (shipper pays ZITO)
+- ZITO commission deduction (stated upfront)
+- Partner net amount (what partner receives from ZITO)
+
+Partner's Driver Compensation (Partner's Internal System):
+- How much partner pays driver for each trip
+- Hourly rate, incentive bonuses, performance penalties
+- Tax deductions, benefits, contributions
+- Final take-home amount to driver
+
+ZITO's Role:
+- Calculate and execute settlement to partner account
+- Transparent commission breakdown
+- Export for partner's accounting/payroll system
+- Support partner's audit trail
+
+Partner's Role:
+- Use settlement data in their payroll system
+- Determine and pay driver compensation
+- Manage tax and benefits deductions
+- Reconcile with driver records
+
+44.3 TRIP EFFICIENCY & FUEL ANALYTICS (Platform Insights for Partner Optimization)
+
+Purpose: ZITO provides analytics for partners to optimize operations. Partners control actual fleet and fuel management.
+
+ZITO Analytics Dashboard:
+- Trip distance and duration (GPS calculated)
+- Route efficiency (actual vs. shortest path)
+- Time utilization (active vs. idle during trip)
+- Cost per km (estimated from distance + fuel benchmarks)
+- Driver efficiency scores (based on trip metrics)
+- Weekly/monthly trend analysis
+
+Partner Controls (Their Operations):
+- Actual fuel purchasing and inventory
+- Vehicle maintenance and servicing
+- Fuel cost accounting and reconciliation
+- Fuel allocation to drivers (partner's decision)
+- Real fuel monitoring (tank checks, etc.)
+- Vehicle optimization decisions
+
+ZITO Does NOT:
+- Monitor actual fuel in tanks
+- Detect fuel theft (partner's security responsibility)
+- Audit fuel purchase receipts
+- Enforce efficiency policies
+- Control vehicle maintenance
+
+Result: Partner gains visibility to optimize costs. Partner manages actual operations.
+
+44.4 PARTNER INCIDENT COORDINATION (Platform Support Escalation)
+
+Purpose: ZITO coordinates incident response. Partners handle operational incidents for their vehicles and drivers.
+
+Incident Types Coordinated by ZITO:
+
+1. Vehicle Breakdown
+   - Driver reports in app → ZITO notifies partner + shipper
+   - Partner decides: on-site repair, tow, reassign driver
+   - ZITO tracks trip status and coordinates communication
+   - Partner manages actual repair/response
+
+2. Delivery Obstacle
+   - Driver unable to access, customer unavailable, etc.
+   - ZITO notifies shipper + partner
+   - Partner and shipper coordinate solution
+   - ZITO tracks resolution
+
+3. Cargo Damage
+   - Driver reports during delivery
+   - ZITO captures evidence (photos, GPS, timestamp)
+   - Claim workflow initiated
+   - Partner and shipper coordinate resolution
+
+4. Safety/Emergency
+   - Driver uses emergency button
+   - ZITO alerts authorities if needed
+   - Notifies partner and shipper
+   - Partner provides driver support
+
+ZITO's Role:
+- Detect incidents in real-time
+- Route notifications to right parties
+- Maintain communication infrastructure
+- Track resolution status
+- Create audit trail for compliance
+- Provide visibility dashboard
+
+Partner's Role:
+- Receive incident alert
+- Decide operational response
+- Dispatch backup vehicle if needed (their drivers/vehicles)
+- Support driver through issue
+- Report resolution to ZITO
+- Follow their own procedures
 44.5 RETURN (RTO) SYSTEM
 Lifecycle:
 delivery_failed → return_initiated → return_in_transit → warehouse_received → closed
@@ -1765,25 +2847,132 @@ Application hosting and Redis must remain provider-agnostic and must not be coup
 Reliability Targets:
 High availability (99.9%+)
 Disaster recovery readiness
-48. REVENUE MODEL (Updated May 13 - Platform Economics)
+48. REVENUE MODEL (Updated May 28 - Phase 1 Money Machine Implementation)
 
-ZITO Revenue is Commission-Based (NOT Operator-Based):
+ZITO Revenue is Multi-Stream (Commission-Based + Subscriptions + Services):
 
-Primary Revenue Streams:
-1. Commission per booking
+PRIMARY REVENUE STREAMS:
+
+1. BOOKING COMMISSIONS (Core Platform Revenue)
    - FTL bookings: 5-10% of booking value
    - PTL/LCL bookings: 8-12% of booking value
    - Courier/last-mile: 10-15% of booking value
    - Warehouse services: 5-8% of storage/handling fees
    - Rail/container: 5-10% of shipment value
+   - Marketplace/Featured Services: Variable (see streams 2-4 below)
+
+PHASE 1 MONEY MACHINE - THREE CORE REVENUE STREAMS (Implementation Complete - May 28):
+
+2. DRIVER SUBSCRIPTION TIERS (Driver Premium Features)
+   Implementation Status: Backend 100% complete (NestJS modules, Cron billing, SMS notifications)
    
-2. B2B Subscription Plans (Tier-Based)
+   Four Subscription Tiers:
+   - FREE: No monthly charge (baseline driver access)
+   - SILVER: KES 2,000/month
+     • Features: Load visibility limit (50 loads), basic dispatch priority
+     • Target: Mid-tier drivers
+   - GOLD: KES 5,000/month
+     • Features: Load visibility limit (200 loads), priority dispatch, corporate_loads access
+     • Target: High-volume drivers
+   - PLATINUM: KES 10,000/month
+     • Features: Unlimited load visibility, top priority dispatch, all features, dedicated support
+     • Target: Fleet operators, premium drivers
+   
+   Revenue Model:
+   - Monthly recurring billing via automated Cron job (runs daily, charges on billing date)
+   - Wallet-based payment deduction (driver funds wallet, auto-charge each month)
+   - Payment retry logic: 3 attempts over 2 days, auto-suspend on failure
+   - Driver can resume suspended subscription by retrying payment
+   - SMS notifications: upgrade, billing_reminder, payment_failed, suspended, resumed
+   
+   Phase 1 Projections:
+   - Month 1: 500 drivers on paid tiers (average KES 5.5K) = KES 2.75M/month
+   - Month 3: 2,000 drivers on paid tiers = KES 11M/month
+   - Month 6: 5,000 drivers on paid tiers (average 4.5K due to mix) = KES 22.5M/month
+   
+   Implementation Details:
+   - Backend Module: /modules/subscriptions/ (service, controller, DTOs)
+   - Cron Job: @Cron('0 2 * * *') processMonthlyBilling()
+   - Database: Subscription, SubscriptionCharge Prisma models with audit trail
+   - Integration: PaymentsService (wallet deduction), NotificationsService (SMS)
+   - API Endpoints: 9 endpoints (list tiers, create, update, cancel, resume, charge)
+   - Tier-based feature access via hasFeatureAccess(userId, feature) method
+
+3. FEATURED LISTINGS (Marketplace Premium Visibility)
+   Implementation Status: Backend 100% complete (NestJS service, daily Cron expiry, SMS notifications)
+   
+   Three Premium Tiers:
+   - FEATURED: KES 500/day (duration: 1-3 days)
+     • Boost load visibility, appears in featured section
+   - PREMIUM: KES 1,000/day (duration: 4-7 days)
+     • Higher ranking in search results, email notifications to drivers
+   - VIP: KES 5,000/month (unlimited duration)
+     • Top-tier ranking, always appears first, dedicated visibility
+   
+   Revenue Model:
+   - One-time payment at purchase (deducted from customer wallet)
+   - 24-hour refund window (full refund if cancelled within 24h, 0% after)
+   - Auto-expiry handled by daily Cron job
+   - SMS notifications: purchase, extension, cancellation, expiry_approaching
+   
+   Phase 1 Projections:
+   - Month 1: 100 featured listings at average KES 2,000 = KES 200K/month
+   - Month 3: 500 featured listings = KES 1M/month
+   - Month 6: 2,000 featured listings (20% of bookings featured) = KES 4.5M/month
+   
+   Implementation Details:
+   - Backend Module: /modules/marketplace/featured-listings.service.ts
+   - Cron Job: @Cron('0 3 * * *') expireOutdatedListings()
+   - Database: FeaturedListing, FeaturedListingStatus, FeaturedListingTier Prisma models
+   - Booking Model: Added isFeatured boolean, featuredTier field for search ranking
+   - Search Integration: List rankings by tier (VIP > PREMIUM > FEATURED)
+   - API Endpoints: 6 endpoints (pricing, purchase, extend, cancel, list active, details)
+
+4. VERIFICATION EXPEDITE FEES (KYC Acceleration Service)
+   Implementation Status: Backend 100% complete (NestJS service, approval workflow, digital certificates)
+   
+   Two Verification Paths:
+   - STANDARD: FREE (7-10 day processing)
+   - EXPEDITED: KES 500 (24-hour priority processing)
+   
+   Expedited Verification Features:
+   - Priority processing queue (handled within 24 hours)
+   - Digital certificate issued (1-year validity, certificate number)
+   - "Verified" badge added to user profile
+   - Full refund if admin rejects verification
+   
+   Revenue Model:
+   - One-time KES 500 charge at request (deducted from user wallet)
+   - Applies to new users, driver KYC, transporter verification
+   - Refund issued immediately if rejected (full KES 500 back to wallet)
+   
+   Phase 1 Projections:
+   - Month 1: 100 expedited verifications = KES 50K/month
+   - Month 3: 500 expedited verifications = KES 250K/month
+   - Month 6: 2,500 expedited verifications (10% of new users) = KES 1.25M/month
+   
+   Implementation Details:
+   - Backend Module: /modules/audit/verification-fee.service.ts
+   - Database: VerificationFeePayment, VerificationCertificate Prisma models
+   - Approval Workflow: User pays → Admin reviews → Approve (issue cert) or Reject (refund)
+   - Certificate Record: certificateNumber (unique), issueDate, expiryDate (1 year)
+   - API Endpoints: 5 endpoints (pricing, status, expedite request, admin approve, admin reject)
+
+PHASE 1 MONEY MACHINE TOTAL REVENUE (June 2026):
+- Driver Subscriptions: KES 22.5M/month (50% of total)
+- Featured Listings: KES 4.5M/month (16% of total)
+- Verification Fees: KES 1.25M/month (4% of total)
+- **TOTAL PHASE 1 RECURRING: KES 28.25M/month** (by end of June)
++ Booking Commissions: KES 15-25M/month (estimated)
+= **TOTAL PHASE 1: KES 43-53M/month potential**
+
+5. B2B SUBSCRIPTION PLANS (Corporate Account Plans - FUTURE PHASE 2)
    - Starter: KES 10K/month (100 monthly bookings)
    - Professional: KES 25K/month (500 monthly bookings)
    - Enterprise: KES 100K+/month (unlimited bookings)
    - Features: Driver management, analytics, API access, dedicated support
    
-3. Platform Services (Value-Add)
+6. PLATFORM SERVICES (Value-Add Services - FUTURE PHASE 2+)
    - Document verification: KES 2-5K per review
    - Premium analytics dashboard: KES 5K-10K/month
    - API access for integrations: KES 20K+/month
@@ -1809,7 +2998,136 @@ vs Logistics Operator Model:
 
 ZITO ADVANTAGE: Higher margin, capital-light, scalable
 
-49. GO-TO-MARKET STRATEGY (Updated May 13 - B2B First)
+48.1 STAGE 1 OPERATIONAL FOCUS (May 28 - Build Priority & Discipline)
+
+BUSINESS MODEL: ASSET-LIGHT OPERATIONS
+
+Core Principle:
+- ZITO controls: Customer relationships, Operations, Pricing, Support, Technology
+- Partners control: Trucks, Drivers, Fuel, Insurance, Maintenance
+- Result: Capital-light scaling on commissions, not capital expenditure
+
+What This Means:
+- ZITO does NOT buy trucks
+- ZITO does NOT hire drivers
+- ZITO does NOT manage fleet maintenance
+- ZITO coordinates available transport infrastructure efficiently
+- Partners earn more through better load matching + visibility
+
+Competitive Advantage:
+- No CapEx burden (competitors investing billions in fleet)
+- Margins preserved (70-90% software margins, not 20% operator margins)
+- Scalability (add partners, not assets)
+- Risk transfer (partners bear operational/vehicle risk)
+
+TARGET MARKET (Stage 1):
+✓ B2B Recurring Revenue (FOCUS)
+  - Distributors (regular scheduled loads)
+  - Wholesalers (consistent volume)
+  - Factories (raw materials + finished goods)
+  - Construction suppliers (equipment, materials)
+  - Importers (port to warehouse, regular flows)
+  - Supermarket chains (supply chain)
+  - Pharmacy networks (medical distribution)
+  - FMCG suppliers (high-volume recurring)
+
+✗ Avoid (Stage 1):
+  - Individual parcel senders (low value, high support cost)
+  - One-off senders (no repeat volume)
+  - Food delivery (low margins, high competition)
+  - Documents/small parcels (not core business)
+
+Why B2B Recurring:
+- Predictable volume (contract-based)
+- Higher average order value (KES 50K+)
+- Repeat customers = lower CAC, higher LTV
+- Operational predictability (plan fleet accordingly)
+- Positive unit economics (better margins on volume)
+
+STAGE 1 SUCCESS CRITERIA (June 30, 2026):
+Target Operations:
+- 100+ daily bookings (scheduled trips)
+- 95%+ on-time delivery rate
+- 5,000+ completed trips in database
+- 50%+ repeat customer rate
+- 80%+ driver retention rate
+- All trips tracked with GPS
+- All trips documented with POD (proof of delivery)
+- All deliveries invoiced automatically
+- Payments settled daily to drivers
+
+What This Proves:
+- Operational model works reliably
+- Unit economics are positive
+- Ready to scale to 500+ drivers
+- Investors see traction + predictability
+
+STAGE 1 BUILD PRIORITY (STRICT ORDER):
+
+1. OPERATIONS LAYER (June Week 1-2, CRITICAL)
+   ✅ Trip lifecycle: Create → Assign → Track → Deliver → Invoice → Settle
+   ✅ Driver assignment algorithm: Nearest + highest-rated + vehicle-match
+   ✅ RBAC (role-based access control): Driver, Customer, Dispatcher, Admin roles
+   ✅ Real-time GPS tracking: Track every trip live on map
+   ✅ POD system: Photo capture + signature + location confirmation
+   ✅ Invoice generation: Automated per-trip invoice
+   ✅ Payment settlement: Daily driver payouts to M-Pesa
+
+2. MARKETPLACE LAYER (June Week 3, IMPORTANT)
+   🔲 Load discovery: Drivers find best-paying loads
+   🔲 Transporter partner onboarding: Manage fleet/drivers
+   🔲 Rating system: Build driver reputation
+   🔲 Featured listings (Phase 1 revenue stream): Premium visibility
+
+3. AUTOMATION LAYER (July, Phase 2)
+   🔲 Smart dispatch: Optimize driver-load matching
+   🔲 Route optimization: Multi-stop, shortest paths
+   🔲 SLA monitoring: Alert on delays
+
+4. FINTECH LAYER (Aug+, Phase 2)
+   🔲 Wallet enhancements: Tap-to-pay, multi-currency
+   🔲 Credit system: Driver loans against earnings
+   🔲 Escrow: Hold payment pending POD
+
+5. AI LAYER (Sept+, Phase 2)
+   🔲 Demand prediction: Forecast hotspots
+   🔲 Pricing optimization: Dynamic rates by time/location
+   🔲 Fraud detection: Spot anomalies
+
+6. EXPANSION (Oct+, Phase 3)
+   🔲 Multi-country: Uganda, Tanzania, Rwanda
+
+DO NOT BUILD (Stage 1):
+❌ Blockchain/crypto
+❌ Advanced AI models
+❌ Warehouse robotics
+❌ Drone delivery
+❌ Complex marketplace bidding
+❌ Multi-language voice support
+❌ Fancy animations (focus on speed)
+
+Database Foundation (Stage 1):
+- Trip: bookingId, driverId, vehicleId, status, assignedAt, pickupETA, deliveryETA, tracking[]
+- TrackingPoint: tripId, latitude, longitude, recordedAt (immutable audit trail)
+- ProofOfDelivery: tripId, photoUrl, signatureUrl, gpsLocation, timestamp
+- Invoice: tripId, baseFare, fuelSurcharge, commission breakdown, status, paidAt
+- Settlement: tripId, driverPayout, transporterCommission, zitoPayout (reconciliation)
+
+Frontend Focus (Stage 1):
+- Dispatcher dashboard: Map + trip list, assign, track, reassign
+- Customer tracking: Live map, ETA, notifications
+- Mobile driver app: Accept/reject trip, GPS tracking, POD upload, earnings
+
+Messaging (Positioning):
+✓ "Technology-enabled logistics infrastructure platform"
+✓ "We coordinate, partners operate"
+✓ "Better utilization = better earnings = better service"
+
+✗ "Delivery app" (not our positioning)
+✗ "We compete with DHL" (we don't)
+✗ "We own trucks" (we don't)
+
+49. GO-TO-MARKET STRATEGY (Updated May 28 - B2B First)
 
 Launch Strategy (June 4, 2026):
 Initial focus: 90% B2B (transporters, courier companies, warehouses, corporate shippers)
@@ -1972,6 +3290,8 @@ For Customers (Booking):
 Modern Pickup / Drop UX Structure (Mandatory):
 - The booking journey must begin with only 2 dominant route inputs: Pickup location and Drop-off location.
 - Route capture must be search-first and map-supported, not form-first.
+- All booking map entry points must follow the same modern pattern: search place, select result, use current location where allowed, then drop or drag a pin only for exact-door/gate/loading-point refinement.
+- Raw latitude and longitude must remain internal technical data and must not be normal user-facing booking inputs for customer, corporate, courier-company, or warehouse booking flows.
 - Tapping Pickup or Drop-off must open a full-screen location selector or bottom-sheet search surface, not a small embedded form workflow.
 - The location selector must support all of the following:
   - place search by text
@@ -2053,7 +3373,7 @@ Customer booking, admin or dispatch operations, driver mobile flows, fleet and c
 Phase 2 - Warehouse & Commerce Expansion
 Warehouse operations, inventory, barcode and scan enforcement, LR and waybill, invoicing, contracts, multi-service billing, and SLA automation
 Phase 3 - Advanced Optimization & Control
-Fraud detection, fuel and payroll engines, breakdown rescue, capacity planning, marketplace mode, demand heatmaps, retention systems, and advanced analytics
+Fraud detection, partner analytics engines (activity tracking, fuel efficiency, earnings settlement), incident coordination, capacity planning, marketplace mode, demand heatmaps, retention systems, and advanced analytics
 Rule:
 Only features inside the approved phase are considered launch scope; all other items must be tracked as deferred scope with an explicit target release
 52. Acceptance Criteria & Definition of Done
@@ -3192,7 +4512,7 @@ Mobile platform coverage and release rules:
 - the shared mobile codebase must support both Android and iPhone; no user-critical workflow may be Android-only unless explicitly approved as a temporary exception
 - iPhone builds must be testable during development through Expo-compatible workflows and distributable for QA through TestFlight before public App Store release
 - Android pre-release testing may use internal APK/AAB distribution, but iPhone pre-release testing must use a managed Apple distribution path such as TestFlight or equivalent approved enterprise/internal distribution
-- iPhone configuration must include explicit permission copy for location, camera, and photo-library access where those capabilities are used for booking, tracking, POD, scans, or support evidence
+- iPhone configuration must include explicit permission copy for location and camera access where those capabilities are used for booking, tracking, POD, scans, support evidence, driver identity verification, or fleet verification; photo-library access must not be requested for verification evidence that is required to be live-camera-only
 - the mobile release process must maintain parity across Android and iPhone for customer, driver, transporter, and courier-company role workflows
 - the mobile release process must maintain parity across Android and iPhone for customer, driver, agent, transporter, courier-company, warehouse-partner, internal-ops, and agency-desk role workflows
 - the shared mobile route tree must expose dedicated role workspaces for Agent, Warehouse Partner, Internal Ops, and Agency Desk rather than collapsing those users into a generic customer or transporter shell

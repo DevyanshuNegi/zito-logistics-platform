@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { WarehousePinPicker } from '@/components/maps/WarehousePinPicker';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
@@ -118,6 +119,11 @@ export default function WarehouseDashboardPage() {
     setAgencyId(user?.agencyId ?? '');
   }, [user?.agencyId]);
 
+  function updateWarehousePin(point: { latitude: string; longitude: string }) {
+    setLatitude(point.latitude);
+    setLongitude(point.longitude);
+  }
+
   async function handleCreateWarehouse(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -202,12 +208,18 @@ export default function WarehouseDashboardPage() {
             <Input label="Warehouse name" value={name} onChange={(event) => setName(event.target.value)} required />
             <Input label="Warehouse code" value={code} onChange={(event) => setCode(event.target.value)} required />
             <Input label="Address" value={address} onChange={(event) => setAddress(event.target.value)} />
-            <Input label="Latitude" value={latitude} onChange={(event) => setLatitude(event.target.value)} type="number" step="0.000001" />
-            <Input label="Longitude" value={longitude} onChange={(event) => setLongitude(event.target.value)} type="number" step="0.000001" />
             <Input label="Manager id" value={managerId} onChange={(event) => setManagerId(event.target.value)} help="Optional manager UUID." />
             {!user?.agencyId ? (
               <Input label="Agency id" value={agencyId} onChange={(event) => setAgencyId(event.target.value)} required />
             ) : null}
+            <div className="md:col-span-2 xl:col-span-3">
+              <WarehousePinPicker
+                latitude={latitude}
+                longitude={longitude}
+                address={[name, address].filter(Boolean).join(' / ')}
+                onChange={updateWarehousePin}
+              />
+            </div>
             <div className="md:col-span-2 xl:col-span-3">
               <Button disabled={saving} type="submit">
                 {saving ? 'Creating warehouse...' : 'Create warehouse'}

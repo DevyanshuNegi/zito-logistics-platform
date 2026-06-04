@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "start": "expo start",
+    "start:phone": "set HTTP_PROXY=&& set HTTPS_PROXY=&& set ALL_PROXY=&& set GIT_HTTP_PROXY=&& set GIT_HTTPS_PROXY=&& set EXPO_NO_CACHE=1&& set NO_PROXY=localhost,127.0.0.1,::1,192.168.0.29&& expo start --clear --max-workers 1 --lan",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "eas:login": "npx eas-cli login",
@@ -27,6 +28,7 @@
     "update:ios": "npx eas update --platform ios",
     "update:all": "npx eas update --platform all",
     "doctor": "npx expo-doctor",
+    "export:android:debug": "expo export --platform android --clear --max-workers 1 --no-bytecode",
     "web": "expo start --web",
     "lint": "expo lint",
     "customer:preview": "node scripts/build-flavor.js customer preview",
@@ -77,6 +79,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "@types/react-native": "^0.72.8",
     "canvas": "^3.2.3",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",

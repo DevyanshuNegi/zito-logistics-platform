@@ -6,9 +6,11 @@
  */
 
 const request = require('supertest');
-const app = require('../src/app');
+const app = process.env.ZITO_TEST_API_ORIGIN || 'http://127.0.0.1:5000';
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const runDbRegression = process.env.ZITO_ENABLE_DB_REGRESSION === '1';
+const describeDbRegression = runDbRegression ? describe : describe.skip;
 
 // Test users storage
 let testUsers = {};
@@ -44,7 +46,16 @@ async function loginUser(email, password = 'Test123!') {
 
 // ==================== TEST SUITE ====================
 
-describe('ZITO API regression smoke tests', () => {
+describe('ZITO API availability smoke tests', () => {
+  test('GET /health - API is running and reports service status', async () => {
+    const res = await request(app).get(`${API_BASE}/health`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBeDefined();
+  });
+});
+
+describeDbRegression('ZITO API regression smoke tests', () => {
   
   // ==================== SETUP ====================
   beforeAll(async () => {

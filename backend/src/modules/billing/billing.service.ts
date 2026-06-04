@@ -638,6 +638,11 @@ export class BillingService {
         amount: 0,
         label: 'ineligible',
       },
+      [UserRole.HEAD_OFFICE_STAFF]: {
+        mode: PlatformFeeBillingMode.PER_FLEET,
+        amount: 0,
+        label: 'ineligible',
+      },
       [UserRole.ADMIN]: {
         mode: PlatformFeeBillingMode.PER_FLEET,
         amount: 0,

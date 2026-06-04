@@ -75,7 +75,7 @@ export default function AgentOpportunitiesScreen() {
   const load = async () => {
     try {
       setError('');
-      const payload = await api.get('/api/v1/marketplace/partner/opportunities');
+      const payload = await api.get('/marketplace/partner/opportunities');
       setOpportunities(readArray(payload, 'opportunities'));
     } catch (requestError) {
       setError(requestError.message);
@@ -94,7 +94,7 @@ export default function AgentOpportunitiesScreen() {
     try {
       setError('');
       await api.post(
-        `/api/v1/marketplace/partner/opportunities/${bookingId}/accept`,
+        `/marketplace/partner/opportunities/${bookingId}/accept`,
         {},
       );
       load();
@@ -115,7 +115,7 @@ export default function AgentOpportunitiesScreen() {
     setBusyId(bookingId);
     try {
       setError('');
-      await api.post(`/api/v1/marketplace/partner/opportunities/${bookingId}/bids`, {
+      await api.post(`/marketplace/partner/opportunities/${bookingId}/bids`, {
         amount: Number(draft),
         note: 'Submitted from agent mobile desk.',
       });

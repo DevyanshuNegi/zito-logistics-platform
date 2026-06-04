@@ -6,10 +6,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api/client';
 import { colors } from '../../src/constants/theme';
@@ -19,6 +20,8 @@ import { SOSButton } from '../../src/components/SOSButton';
 import { QuickReorderCard } from '../../src/components/QuickReorderCard';
 import { SkeletonDashboard } from '../../src/components/SkeletonLoader';
 import { CustomerAiSupportSheet } from '../../src/components/CustomerAiSupportSheet';
+import { CurrentShipmentCard } from '../../src/components/CurrentShipmentCard';
+import { QuickActionsBar } from '../../src/components/QuickActionsBar';
 import BrandLockup from '../../src/components/BrandLockup';
 
 export default function HomeScreen() {
@@ -37,7 +40,7 @@ export default function HomeScreen() {
 
   const load = async () => {
     try {
-      const data = await api.get('/api/v1/customer/bookings?limit=100');
+      const data = await api.get('/customer/bookings?limit=100');
       const allBookings = data.data || [];
       setBookings(allBookings);
       
@@ -52,8 +55,8 @@ export default function HomeScreen() {
         moneySaved: savedCost,
         completedCount: completed,
       });
-    } catch (requestError) {
-      console.error(requestError);
+    } catch (_requestError) {
+      /* Dashboard load error handled by state */
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -98,23 +101,62 @@ export default function HomeScreen() {
             tintColor={colors.primary}
           />
         }>
-        <View style={s.greetRow}>
+        <View style={s.commandHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={s.greeting}>Hello, {(user?.full_name || 'there').split(' ')[0]}</Text>
-            <Text style={s.greetSub}>Manage bookings, tracking, and delivery updates from one place.</Text>
+            <Text style={s.kicker}>Zito Command Center</Text>
+            <Text style={s.heroTitle}>Hello, {(user?.full_name || 'there').split(' ')[0]}</Text>
           </View>
-          <BrandLockup mode="compact" showDescriptor={false} showCompany={false} />
+          <TouchableOpacity style={s.profileOrb} onPress={() => router.push('/(customer)/profile')}>
+            <MaterialCommunityIcons name="account" size={22} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.heroMapCard}>
+          <View style={s.mapGridLineA} />
+          <View style={s.mapGridLineB} />
+          <View style={s.mapRouteMain} />
+          <View style={s.mapRouteAlt} />
+          <View style={[s.mapNode, s.mapNodeOne]}>
+            <MaterialCommunityIcons name="truck-fast-outline" size={18} color={colors.teal} />
+          </View>
+          <View style={[s.mapNode, s.mapNodeTwo]}>
+            <MaterialCommunityIcons name="map-marker-check-outline" size={18} color={colors.primary} />
+          </View>
+          <View style={s.mapGlassPanel}>
+            <Text style={s.mapPanelLabel}>Live Fleet Status</Text>
+            <Text style={s.mapPanelValue}>{active.length} Active Shipments</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity style={s.searchBar} onPress={() => router.push('/(customer)/track')}>
+          <MaterialCommunityIcons name="magnify" size={22} color={colors.textMuted} />
+          <Text style={s.searchText}>Track a shipment, load, or route</Text>
+        </TouchableOpacity>
+
+        <View style={s.summaryRow}>
+          <View style={s.summaryCard}>
+            <Text style={s.summaryValue}>{active.length}</Text>
+            <Text style={s.summaryLabel}>Live</Text>
+          </View>
+          <View style={s.summaryCard}>
+            <Text style={s.summaryValue}>{stats.completedCount}</Text>
+            <Text style={s.summaryLabel}>Delivered</Text>
+          </View>
+          <View style={s.summaryCard}>
+            <Text style={s.summaryValue}>KES {Math.round(stats.moneySaved).toLocaleString()}</Text>
+            <Text style={s.summaryLabel}>Saved</Text>
+          </View>
         </View>
 
         <TouchableOpacity style={s.cta} onPress={() => router.push('/(customer)/book')}>
           <View style={s.ctaBadge}>
-            <Text style={s.ctaBadgeText}>NEW</Text>
+            <MaterialCommunityIcons name="package-variant-closed-plus" size={28} color={colors.teal} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.ctaTitle}>Book a delivery</Text>
-            <Text style={s.ctaSub}>Motorcycles, vans, pickups, and trucks with live pricing guidance.</Text>
+            <Text style={s.ctaSub}>Fast quotes for motorcycles, vans, pickups, and trucks.</Text>
           </View>
-          <Text style={s.ctaArrow}>Open</Text>
+          <MaterialCommunityIcons name="arrow-right" size={22} color={colors.primary} />
         </TouchableOpacity>
 
         <TouchableOpacity style={s.assistantCard} onPress={() => setShowAssistant(true)}>
@@ -123,9 +165,25 @@ export default function HomeScreen() {
           <Text style={s.assistantHint}>Open assistant</Text>
         </TouchableOpacity>
 
+        {/* CURRENT SHIPMENT CARD - Prominent display of active booking */}
+        {active.length > 0 && (
+          <CurrentShipmentCard 
+            booking={active[0]} 
+            onTrack={() => router.push({ pathname: '/(customer)/track', params: { bookingId: active[0].id } })}
+          />
+        )}
+
+        {/* QUICK ACTIONS BAR - Fast shortcuts */}
+        <QuickActionsBar 
+          onSchedule={() => Alert.alert('Schedule', 'Schedule pickup functionality')}
+          onCalculate={() => Alert.alert('Calculate', 'Cost calculator')}
+          onFindDropoff={() => Alert.alert('Drop-off', 'Find drop-off locations')}
+          onChat={() => setShowAssistant(true)}
+        />
+
         {active.length > 0 ? (
           <>
-            <Text style={s.sectionTitle}>Active bookings</Text>
+            <Text style={s.sectionTitle}>More Active bookings</Text>
             {active.map((booking) => (
               <TouchableOpacity
                 key={booking.id}
@@ -285,26 +343,189 @@ export default function HomeScreen() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { padding: 18, paddingBottom: 100 },
   greetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, gap: 12 },
   greeting: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 4 },
   greetSub: { fontSize: 13, color: colors.textMuted, lineHeight: 20, maxWidth: 220 },
+  commandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+  },
+  kicker: {
+    color: colors.teal,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  heroTitle: {
+    color: colors.text,
+    fontSize: 30,
+    fontWeight: '900',
+  },
+  profileOrb: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroMapCard: {
+    height: 210,
+    borderRadius: 22,
+    overflow: 'hidden',
+    backgroundColor: '#08111f',
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.25)',
+    marginBottom: 14,
+  },
+  mapGridLineA: {
+    position: 'absolute',
+    width: 420,
+    height: 2,
+    backgroundColor: 'rgba(158,176,206,0.16)',
+    top: 58,
+    left: -30,
+    transform: [{ rotate: '-12deg' }],
+  },
+  mapGridLineB: {
+    position: 'absolute',
+    width: 380,
+    height: 2,
+    backgroundColor: 'rgba(158,176,206,0.12)',
+    top: 128,
+    left: -10,
+    transform: [{ rotate: '20deg' }],
+  },
+  mapRouteMain: {
+    position: 'absolute',
+    width: 260,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: colors.teal,
+    shadowColor: colors.teal,
+    shadowOpacity: 0.85,
+    shadowRadius: 14,
+    top: 104,
+    left: 36,
+    transform: [{ rotate: '-22deg' }],
+  },
+  mapRouteAlt: {
+    position: 'absolute',
+    width: 190,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.7,
+    shadowRadius: 12,
+    top: 86,
+    right: -12,
+    transform: [{ rotate: '38deg' }],
+  },
+  mapNode: {
+    position: 'absolute',
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: 'rgba(8,17,31,0.9)',
+    borderWidth: 2,
+    borderColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.teal,
+    shadowOpacity: 0.7,
+    shadowRadius: 18,
+  },
+  mapNodeOne: { top: 62, left: 72 },
+  mapNodeTwo: { bottom: 44, right: 58 },
+  mapGlassPanel: {
+    position: 'absolute',
+    left: 14,
+    bottom: 14,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(12,20,36,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  mapPanelLabel: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  mapPanelValue: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  searchBar: {
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: colors.bgInput,
+    borderWidth: 1,
+    borderColor: 'rgba(95,128,255,0.28)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+  searchText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  summaryCard: {
+    flex: 1,
+    minHeight: 74,
+    backgroundColor: colors.bgCard,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    justifyContent: 'center',
+  },
+  summaryValue: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  summaryLabel: {
+    color: colors.textFaint,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
   cta: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bgElevated,
+    backgroundColor: 'rgba(16,27,49,0.94)',
     borderRadius: 18,
     padding: 18,
-    marginBottom: 28,
+    marginBottom: 18,
     gap: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(56,189,248,0.26)',
   },
   ctaBadge: {
     width: 54,
     height: 54,
     borderRadius: 18,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: 'rgba(34,211,238,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },

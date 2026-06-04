@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -207,7 +207,7 @@ export default function AdminAnalyticsPage() {
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadDashboard(nextFilters = filters) {
+  const loadDashboard = useCallback(async (nextFilters = filters) => {
     setLoading(true);
     setError(null);
 
@@ -228,11 +228,11 @@ export default function AdminAnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [filters]);
 
   useEffect(() => {
     void loadDashboard();
-  }, []);
+  }, [loadDashboard]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -14,8 +14,8 @@ export default function DriversScreen() {
   const [form, setForm]           = useState({ full_name: '', email: '', phone: '', password: '', license_number: '', license_class: '' });
 
   const load = async () => {
-    try { const d = await api.get('/api/v1/transporter/drivers'); setDrivers(d.data || []); }
-    catch (e) { console.error(e); }
+    try { const d = await api.get('/transporter/drivers'); setDrivers(d.data || []); }
+    catch (e) { /* Driver load error handled by state */ }
     finally { setLoading(false); setRefreshing(false); }
   };
 
@@ -27,7 +27,7 @@ export default function DriversScreen() {
     }
     setSaving(true);
     try {
-      await api.post('/api/v1/transporter/drivers', form);
+      await api.post('/transporter/drivers', form);
       setShowAdd(false);
       setForm({ full_name: '', email: '', phone: '', password: '', license_number: '', license_class: '' });
       load();

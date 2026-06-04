@@ -1,13 +1,22 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { AuthShell } from '@/components/layout/AuthShell';
+import { VerificationExpeditePanel } from '@/components/verification/VerificationExpeditePanel';
 import { useAuth } from '@/hooks/useAuth';
+import { api } from '@/lib/api';
 import { getPortalConfig, getPortalKindForRole } from '@/lib/auth-portals';
 import { formatStatus } from '@/lib/format';
+
+type VerificationSummary = {
+  status: string;
+  missingDocuments: string[];
+  nextStep: string;
+};
 
 const roleGuidance: Record<string, { title: string; checks: string[]; eta: string }> = {
   CUSTOMER: {
@@ -86,8 +95,10 @@ const roleGuidance: Record<string, { title: string; checks: string[]; eta: strin
 
 export default function PendingApprovalPage() {
   const { pendingRegistration, clearPending, logout, user } = useAuth();
+  const router = useRouter();
   const [queryRole, setQueryRole] = useState<string | null>(null);
   const [queryStatus, setQueryStatus] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -96,8 +107,35 @@ export default function PendingApprovalPage() {
     setQueryStatus(params.get('status'));
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+    api.get<VerificationSummary>('/users/me/verification')
+      .then((summary) => {
+        if (cancelled) return;
+        setVerificationStatus(summary.status);
+        if (summary.status === 'ACTIVE') {
+          router.replace('/');
+          return;
+        }
+        if (summary.missingDocuments.length > 0 || summary.nextStep === 'COMPLETE_VERIFICATION') {
+          router.replace('/complete-verification');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          router.replace('/complete-verification');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, user]);
+
   const role = pendingRegistration?.role ?? user?.role ?? queryRole ?? 'CUSTOMER';
-  const status = pendingRegistration?.status ?? queryStatus ?? 'PENDING';
+  const status = verificationStatus ?? pendingRegistration?.status ?? queryStatus ?? 'PENDING';
   const name = pendingRegistration?.fullName ?? user?.fullName ?? 'there';
   const companyName = pendingRegistration?.companyName ?? user?.companyName ?? null;
   const guidance = roleGuidance[role] ?? roleGuidance.CUSTOMER;
@@ -107,7 +145,7 @@ export default function PendingApprovalPage() {
     <AuthShell
       eyebrow="Pending Approval"
       title={guidance.title}
-      subtitle="Non-active accounts stay blocked from sign-in until approval is complete."
+      subtitle="Your documents are submitted and Zito is reviewing them before account activation."
       footer={
         <p>
           Need to restart?{' '}
@@ -141,6 +179,8 @@ export default function PendingApprovalPage() {
         <Alert title="Expected timing" variant="success">
           {guidance.eta}
         </Alert>
+
+        <VerificationExpeditePanel enabled={Boolean(user)} compact />
 
         <div className="flex flex-wrap gap-3">
           <Link href={portal.loginPath} className="flex-1 min-w-[180px]">

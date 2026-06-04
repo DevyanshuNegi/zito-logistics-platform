@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export type OfflineQueueItem<T> = {
   id: string;
@@ -79,7 +79,7 @@ export function useOfflineSync<T>({
     };
   }, []);
 
-  async function flushQueue() {
+  const flushQueue = useCallback(async () => {
     if (syncing || !isOnline || queue.length === 0) {
       return { synced: 0, failed: queue.length };
     }
@@ -107,7 +107,7 @@ export function useOfflineSync<T>({
       synced,
       failed: failedItems.length,
     };
-  }
+  }, [isOnline, queue, syncItem, syncing]);
 
   useEffect(() => {
     if (!autoFlush || !isOnline || queue.length === 0) {
@@ -115,7 +115,7 @@ export function useOfflineSync<T>({
     }
 
     void flushQueue();
-  }, [autoFlush, isOnline, queue.length]);
+  }, [autoFlush, flushQueue, isOnline, queue.length]);
 
   function enqueue(payload: T) {
     const item: OfflineQueueItem<T> = {

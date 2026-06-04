@@ -83,9 +83,11 @@ export class SystemHealthService {
       redis,
       queue,
       telemetry,
+      observability: this.getObservabilityStatus(),
       notes: [
         'API failure-rate monitoring is live from in-process request metrics and raises internal alerts when the hourly failure percentage breaches the configured threshold.',
         'Database performance monitoring is live through Prisma query-event logging and recent slow-query capture.',
+        'Prometheus-compatible metrics are available to authorized admins from the system-health metrics endpoint.',
         queue.enabled
           ? queue.listenerAttached
             ? 'BullMQ dead-letter monitoring is active through queue event listeners and internal-alert creation.'
@@ -96,6 +98,10 @@ export class SystemHealthService {
           : 'Vendor telemetry forwarding is active for runtime exceptions and system-health escalation events.',
       ],
     };
+  }
+
+  metrics() {
+    return this.requestMetricsService.getPrometheusMetrics(60);
   }
 
   async runChecks() {
@@ -317,6 +323,23 @@ export class SystemHealthService {
         sentryConfigured || datadogConfigured ? 'READY' : 'NOT_CONFIGURED',
       sentryConfigured,
       datadogConfigured,
+    };
+  }
+
+  private getObservabilityStatus() {
+    return {
+      correlationHeaders: ['X-Correlation-Id', 'X-Request-Id', 'X-Tenant-Id'],
+      prometheusMetrics: 'READY',
+      errorTracking:
+        process.env.SENTRY_DSN || process.env.DATADOG_API_KEY || process.env.DD_API_KEY
+          ? 'READY'
+          : 'NOT_CONFIGURED',
+      distributedTracing: process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+        ? 'READY'
+        : 'NOT_CONFIGURED',
+      logAggregation: process.env.LOG_AGGREGATION_ENABLED === 'true'
+        ? 'READY'
+        : 'NOT_CONFIGURED',
     };
   }
 

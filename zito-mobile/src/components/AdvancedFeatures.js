@@ -1,10 +1,310 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors } from '../constants/theme';
 
 /**
- * Feature #15: Predictive ETA
+ * Create styles dynamically to ensure colors are loaded
  */
+const createStyles = (colors) => {
+  return StyleSheet.create({
+    // ETA
+    etaCard: {
+      backgroundColor: colors?.bgCard || '#0c1424',
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors?.border || 'rgba(95,128,255,0.2)',
+    },
+    mainRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+    },
+    label: {
+      fontSize: 11,
+      color: colors?.textMuted || '#9eb0ce',
+    },
+    eta: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: colors?.primary || '#0066FF',
+      marginTop: 2,
+    },
+    confidenceBox: {
+      backgroundColor: colors?.primarySoft || 'rgba(0,102,255,0.14)',
+      borderRadius: 8,
+      padding: 8,
+      alignItems: 'center',
+    },
+    confidenceLabel: {
+      fontSize: 10,
+      color: colors?.textMuted || '#9eb0ce',
+    },
+    confidenceValue: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: colors?.primary || '#0066FF',
+      marginTop: 2,
+    },
+    trafficInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginBottom: 8,
+    },
+    trafficEmoji: {
+      fontSize: 16,
+    },
+    trafficText: {
+      fontSize: 12,
+      color: colors?.text || '#f4f8ff',
+      fontWeight: '600',
+    },
+    delayWarning: {
+      fontSize: 11,
+      color: '#FF9500',
+      fontWeight: '600',
+    },
+
+    // Demand Forecast
+    forecastCard: {
+      backgroundColor: colors?.bgCard || '#0c1424',
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors?.border || 'rgba(95,128,255,0.2)',
+    },
+    forecastTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors?.text || '#f4f8ff',
+      marginBottom: 10,
+    },
+    surgeRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    surgeLabel: {
+      fontSize: 12,
+      color: colors?.textMuted || '#9eb0ce',
+    },
+    surgeBadge: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+    },
+    surgeValue: {
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    recommendationBox: {
+      backgroundColor: '#FFF3E0',
+      borderRadius: 6,
+      padding: 10,
+      marginBottom: 10,
+    },
+    recommendationText: {
+      fontSize: 12,
+      color: '#E65100',
+      fontWeight: '600',
+    },
+    savingsText: {
+      fontSize: 11,
+      color: '#4CAF50',
+      fontWeight: '600',
+    },
+
+    // Subscriptions
+    planCard: {
+      backgroundColor: colors?.bgCard || '#0c1424',
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors?.border || 'rgba(95,128,255,0.2)',
+    },
+    currentPlanCard: {
+      borderColor: colors?.primary || '#0066FF',
+      borderWidth: 2,
+    },
+    currentBadge: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: '#4CAF50',
+      marginBottom: 8,
+    },
+    planName: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors?.text || '#f4f8ff',
+    },
+    planPrice: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: colors?.primary || '#0066FF',
+      marginVertical: 8,
+    },
+    benefitsList: {
+      marginBottom: 12,
+    },
+    benefit: {
+      fontSize: 11,
+      color: colors?.text || '#f4f8ff',
+      marginBottom: 6,
+    },
+    planBtn: {
+      backgroundColor: colors?.primary || '#0066FF',
+      paddingVertical: 10,
+      borderRadius: 6,
+      alignItems: 'center',
+    },
+    planBtnText: {
+      color: 'white',
+      fontWeight: '700',
+      fontSize: 12,
+    },
+    currentPlanBtn: {
+      backgroundColor: '#E0E0E0',
+    },
+    currentPlanBtnText: {
+      color: colors?.text || '#f4f8ff',
+    },
+
+    // Carbon
+    carbonCard: {
+      backgroundColor: colors?.bgCard || '#0c1424',
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors?.border || 'rgba(95,128,255,0.2)',
+    },
+    carbonTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors?.text || '#f4f8ff',
+      marginBottom: 12,
+    },
+    carbonStats: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 12,
+    },
+    carbonStat: {
+      flex: 1,
+      backgroundColor: '#E8F5E9',
+      borderRadius: 8,
+      padding: 10,
+      alignItems: 'center',
+    },
+    carbonLabel: {
+      fontSize: 10,
+      color: '#2E7D32',
+    },
+    carbonValue: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: '#1B5E20',
+      marginTop: 4,
+    },
+    offsetBtn: {
+      backgroundColor: '#4CAF50',
+      paddingVertical: 10,
+      borderRadius: 6,
+      alignItems: 'center',
+    },
+    offsetBtnText: {
+      color: 'white',
+      fontWeight: '700',
+      fontSize: 12,
+    },
+
+    // BNPL
+    bnplContainer: {
+      marginBottom: 16,
+    },
+    bnplTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors?.text || '#f4f8ff',
+      marginBottom: 10,
+    },
+    bnplOption: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: colors?.bgCard || '#0c1424',
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 8,
+      borderWidth: 1,
+      borderColor: colors?.border || 'rgba(95,128,255,0.2)',
+    },
+    bnplOptionName: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors?.text || '#f4f8ff',
+    },
+    bnplOptionDetails: {
+      fontSize: 10,
+      color: colors?.textMuted || '#9eb0ce',
+      marginTop: 2,
+    },
+    bnplTotal: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors?.primary || '#0066FF',
+    },
+
+    // Analytics
+    analyticsContainer: {
+      marginBottom: 16,
+    },
+    analyticsTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors?.text || '#f4f8ff',
+      marginBottom: 10,
+    },
+    analyticCard: {
+      backgroundColor: colors?.bgCard || '#0c1424',
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 8,
+      borderWidth: 1,
+      borderColor: colors?.border || 'rgba(95,128,255,0.2)',
+    },
+    analyticLabel: {
+      fontSize: 11,
+      color: colors?.textMuted || '#9eb0ce',
+    },
+    analyticValue: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors?.text || '#f4f8ff',
+      marginTop: 4,
+    },
+    alertsContainer: {
+      marginTop: 8,
+    },
+    alert: {
+      fontSize: 11,
+      color: colors?.warning || '#f59e0b',
+      marginBottom: 6,
+    },
+  });
+};
+
+/**
+ * Hook to use styles
+ */
+const useStyles = () => {
+  return useMemo(() => createStyles(colors), [colors]);
+};
 export const PredictiveETACard = ({ eta, confidence, baseEta, traffic }) => {
   const etaDifference = eta - baseEta;
   const isDelayed = etaDifference > 0;
@@ -202,12 +502,12 @@ export const AnalyticsSummary = ({ spendingTrend, topDestination, bestTime, rece
 const s = StyleSheet.create({
   // ETA
   etaCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: '#0c1424',
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(95,128,255,0.2)',
   },
   mainRow: {
     flexDirection: 'row',
@@ -216,28 +516,28 @@ const s = StyleSheet.create({
   },
   label: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: '#9eb0ce',
   },
   eta: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.primary,
+    color: '#0066FF',
     marginTop: 2,
   },
   confidenceBox: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: 'rgba(0,102,255,0.14)',
     borderRadius: 8,
     padding: 8,
     alignItems: 'center',
   },
   confidenceLabel: {
     fontSize: 10,
-    color: colors.textMuted,
+    color: '#9eb0ce',
   },
   confidenceValue: {
     fontSize: 16,
     fontWeight: '800',
-    color: colors.primary,
+    color: '#0066FF',
     marginTop: 2,
   },
   trafficInfo: {
@@ -251,7 +551,7 @@ const s = StyleSheet.create({
   },
   trafficText: {
     fontSize: 12,
-    color: colors.text,
+    color: '#f4f8ff',
     fontWeight: '600',
   },
   delayWarning: {
@@ -262,17 +562,17 @@ const s = StyleSheet.create({
 
   // Demand Forecast
   forecastCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: '#0c1424',
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(95,128,255,0.2)',
   },
   forecastTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: '#f4f8ff',
     marginBottom: 10,
   },
   surgeRow: {
@@ -283,7 +583,7 @@ const s = StyleSheet.create({
   },
   surgeLabel: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: '#9eb0ce',
   },
   surgeBadge: {
     paddingHorizontal: 12,
@@ -313,15 +613,15 @@ const s = StyleSheet.create({
 
   // Subscriptions
   planCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: '#0c1424',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(95,128,255,0.2)',
   },
   currentPlanCard: {
-    borderColor: colors.primary,
+    borderColor: '#0066FF',
     borderWidth: 2,
   },
   currentBadge: {
@@ -333,12 +633,12 @@ const s = StyleSheet.create({
   planName: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: '#f4f8ff',
   },
   planPrice: {
     fontSize: 18,
     fontWeight: '800',
-    color: colors.primary,
+    color: '#0066FF',
     marginVertical: 8,
   },
   benefitsList: {
@@ -346,11 +646,11 @@ const s = StyleSheet.create({
   },
   benefit: {
     fontSize: 11,
-    color: colors.text,
+    color: '#f4f8ff',
     marginBottom: 6,
   },
   planBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#0066FF',
     paddingVertical: 10,
     borderRadius: 6,
     alignItems: 'center',
@@ -364,22 +664,22 @@ const s = StyleSheet.create({
     backgroundColor: '#E0E0E0',
   },
   currentPlanBtnText: {
-    color: colors.text,
+    color: '#f4f8ff',
   },
 
   // Carbon
   carbonCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: '#0c1424',
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(95,128,255,0.2)',
   },
   carbonTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: '#f4f8ff',
     marginBottom: 12,
   },
   carbonStats: {
@@ -423,34 +723,34 @@ const s = StyleSheet.create({
   bnplTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: '#f4f8ff',
     marginBottom: 10,
   },
   bnplOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.bgCard,
+    backgroundColor: '#0c1424',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(95,128,255,0.2)',
   },
   bnplOptionName: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.text,
+    color: '#f4f8ff',
   },
   bnplOptionDetails: {
     fontSize: 10,
-    color: colors.textMuted,
+    color: '#9eb0ce',
     marginTop: 2,
   },
   bnplTotal: {
     fontSize: 13,
     fontWeight: '800',
-    color: colors.primary,
+    color: '#0066FF',
   },
 
   // Analytics
@@ -460,25 +760,25 @@ const s = StyleSheet.create({
   analyticsTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: '#f4f8ff',
     marginBottom: 10,
   },
   analyticCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: '#0c1424',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(95,128,255,0.2)',
   },
   analyticLabel: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: '#9eb0ce',
   },
   analyticValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: '#f4f8ff',
     marginTop: 4,
   },
   alertsContainer: {
@@ -486,7 +786,7 @@ const s = StyleSheet.create({
   },
   alert: {
     fontSize: 11,
-    color: colors.warning,
+    color: '#f59e0b',
     marginBottom: 6,
   },
 });

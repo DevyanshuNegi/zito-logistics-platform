@@ -15,7 +15,7 @@ import { APP_ENV, API_URL, colors } from '../../src/constants/theme';
 import { useAuth } from '../../src/context/AuthContext';
 
 async function fetchHealth() {
-  const response = await fetch(`${API_URL}/api/v1/health`, {
+  const response = await fetch(`${API_URL}/health`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
   });
@@ -126,7 +126,7 @@ export default function InternalQaScreen() {
         <SectionCard title="Backend health" subtitle="Live probe against the deployed backend origin used by the mobile runtime.">
           <View style={styles.rowCard}>
             <Text style={styles.rowTitle}>Request URL</Text>
-            <Text style={styles.copy}>{`${API_URL}/api/v1/health`}</Text>
+            <Text style={styles.copy}>{`${API_URL}/health`}</Text>
           </View>
           <View style={styles.rowCard}>
             <Text style={styles.rowTitle}>Response</Text>

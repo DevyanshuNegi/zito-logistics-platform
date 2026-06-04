@@ -10,10 +10,11 @@ import {
   Req,
   ParseUUIDPipe,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { VehicleStatus } from '@prisma/client';
+import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import { VehicleStatus, VehicleType } from '@prisma/client';
 import { FleetService } from './fleet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -26,6 +27,7 @@ import { ReviewVehiclePhotoDto } from './dto/review-vehicle-photo.dto';
 import { ReviewVehicleVerificationDto } from './dto/review-vehicle-verification.dto';
 
 interface MulterFile {
+  fieldname?: string;
   originalname: string;
   mimetype: string;
   size: number;
@@ -39,8 +41,13 @@ export class FleetController {
 
   @Roles('ADMIN', 'SUPER_ADMIN', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
   @Post()
-  create(@Body() createVehicleDto: CreateVehicleDto, @Req() req: any) {
-    return this.fleetService.create(createVehicleDto, req.user);
+  @UseInterceptors(AnyFilesInterceptor())
+  create(
+    @Body() createVehicleDto: CreateVehicleDto,
+    @UploadedFiles() files: MulterFile[],
+    @Req() req: any,
+  ) {
+    return this.fleetService.create(createVehicleDto, req.user, files);
   }
 
   @Roles('ADMIN', 'SUPER_ADMIN', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
@@ -153,6 +160,12 @@ export class FleetController {
   @Post('fuel/logs/:logId/detect-theft')
   detectFuelTheft(@Param('logId', ParseUUIDPipe) logId: string) {
     return this.fleetService.detectFuelTheft(logId);
+  }
+
+  @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')
+  @Get('vehicle-catalog')
+  getVehicleCatalog(@Query('vehicleType') vehicleType?: VehicleType) {
+    return this.fleetService.getVehicleCatalog(vehicleType);
   }
 
   @Roles('ADMIN', 'SUPER_ADMIN', 'AGENCY_STAFF', 'DRIVER', 'TRANSPORTER', 'CUSTOMER', 'CORPORATE', 'COURIER_COMPANY')

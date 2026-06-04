@@ -98,11 +98,33 @@ function buildMapSource({
         line-height: 1.4;
         box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
       }
+
+      .route-pin {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        border: 3px solid #ffffff;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        font-weight: 900;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.32);
+      }
+
+      .route-pin.pickup {
+        background: #059669;
+      }
+
+      .route-pin.drop {
+        background: #7c3aed;
+      }
     </style>
   </head>
   <body>
-    <div class="map-banner">${activeStopKind === 'pickup' ? 'Pickup map refine' : 'Drop-off map refine'}</div>
-    <div class="map-hint">Search first, then use the map only if the exact ${activeStopKind === 'pickup' ? 'pickup spot' : 'drop-off point'} needs adjustment.</div>
+    <div class="map-banner">${activeStopKind === 'pickup' ? 'Pickup pin' : 'Drop-off pin'}</div>
+    <div class="map-hint">Search and select first. Click or drag the pin only if the exact ${activeStopKind === 'pickup' ? 'pickup spot' : 'drop-off point'} needs adjustment.</div>
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
@@ -117,16 +139,44 @@ function buildMapSource({
         maxZoom: 19,
       }).addTo(map);
 
-      function addStopMarker(point, label) {
+      function makeIcon(kind) {
+        return L.divIcon({
+          className: '',
+          html: '<div class="route-pin ' + kind + '">' + (kind === 'pickup' ? 'P' : 'D') + '</div>',
+          iconSize: [34, 34],
+          iconAnchor: [17, 17]
+        });
+      }
+
+      function sendSelection(kind, latlng) {
+        window.parent.postMessage(
+          {
+            type: 'zito-route-picker/select',
+            stop: kind,
+            latitude: Number(latlng.lat.toFixed(6)),
+            longitude: Number(latlng.lng.toFixed(6)),
+          },
+          '*'
+        );
+      }
+
+      function addStopMarker(point, label, kind) {
         if (typeof point.lat !== 'number' || typeof point.lng !== 'number') {
           return null;
         }
 
-        return L.marker([point.lat, point.lng]).addTo(map).bindPopup(label);
+        const marker = L.marker([point.lat, point.lng], {
+          draggable: kind === config.activeStopKind,
+          icon: makeIcon(kind)
+        }).addTo(map).bindPopup(label);
+        marker.on('dragend', function () {
+          sendSelection(kind, marker.getLatLng());
+        });
+        return marker;
       }
 
-      const pickupMarker = addStopMarker(config.pickup, 'Pickup');
-      const dropMarker = addStopMarker(config.drop, 'Drop');
+      const pickupMarker = addStopMarker(config.pickup, 'Pickup', 'pickup');
+      const dropMarker = addStopMarker(config.drop, 'Drop', 'drop');
 
       if (pickupMarker && dropMarker) {
         const bounds = L.latLngBounds([
@@ -149,15 +199,7 @@ function buildMapSource({
       }
 
       map.on('click', function (event) {
-        window.parent.postMessage(
-          {
-            type: 'zito-route-picker/select',
-            stop: config.activeStopKind,
-            latitude: Number(event.latlng.lat.toFixed(6)),
-            longitude: Number(event.latlng.lng.toFixed(6)),
-          },
-          '*'
-        );
+        sendSelection(config.activeStopKind, event.latlng);
       });
     </script>
   </body>

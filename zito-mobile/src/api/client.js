@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../constants/theme';
 
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 30000;
 const DEFAULT_SERVICE_ERROR = 'The service is temporarily unavailable. Please try again shortly.';
+const unauthorizedListeners = new Set();
 
 export class ApiError extends Error {
   constructor(
@@ -22,8 +23,21 @@ function bodyLooksJson(rawText) {
   return /^[\s\r\n]*[\[{]/.test(rawText);
 }
 
-function extractErrorMessage(payload) {
-  return payload?.error?.message || payload?.message || null;
+export function extractErrorMessage(error, fallbackMessage = DEFAULT_SERVICE_ERROR) {
+  if (!error) {
+    return fallbackMessage;
+  }
+
+  if (error instanceof ApiError) {
+    return (
+      error.details?.error?.message ||
+      error.details?.message ||
+      error.message ||
+      fallbackMessage
+    );
+  }
+
+  return error?.error?.message || error?.message || fallbackMessage;
 }
 
 function fallbackMessageForStatus(status, defaultMessage) {
@@ -40,6 +54,22 @@ function fallbackMessageForStatus(status, defaultMessage) {
   }
 
   return defaultMessage;
+}
+
+export function onUnauthorizedSession(listener) {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+async function handleUnauthorizedSession() {
+  await AsyncStorage.multiRemove(['accessToken', 'user']);
+  unauthorizedListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (listenerError) {
+      console.warn('Auth session listener failed:', listenerError?.message || listenerError);
+    }
+  });
 }
 
 async function readResponsePayload(response) {
@@ -83,7 +113,11 @@ export async function apiRequest(method, path, body = null, options = {}) {
     } = options;
     const resolvedToken =
       token === undefined ? await AsyncStorage.getItem('accessToken') : token;
-    const headers = { 'Content-Type': 'application/json', ...extraHeaders };
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+    const headers = { ...extraHeaders };
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
     const controller = new AbortController();
     timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -94,7 +128,7 @@ export async function apiRequest(method, path, body = null, options = {}) {
     const response = await fetch(`${API_URL}${path}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : null,
+      body: body ? (isFormData ? body : JSON.stringify(body)) : null,
       signal: controller.signal,
     });
 
@@ -120,8 +154,12 @@ export async function apiRequest(method, path, body = null, options = {}) {
     }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        await handleUnauthorizedSession();
+      }
+
       throw new ApiError(
-        extractErrorMessage(payload.data) || fallbackMessage,
+        extractErrorMessage(payload.data, fallbackMessage),
         {
           status: response.status,
           details: payload.data,
@@ -135,10 +173,12 @@ export async function apiRequest(method, path, body = null, options = {}) {
   } catch (requestError) {
     if (requestError?.name === 'AbortError') {
       throw new ApiError(
-        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds. Check API reachability or mobile network connectivity.`,
+        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds. Make sure the backend is running and reachable at ${API_URL}.`,
       );
     }
-    console.error('API ERROR:', requestError.message);
+    if (!(requestError instanceof ApiError)) {
+      console.warn('API request failed:', requestError?.message || requestError);
+    }
     throw requestError;
   } finally {
     if (timeout) {

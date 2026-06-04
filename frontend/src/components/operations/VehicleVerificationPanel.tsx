@@ -8,13 +8,18 @@ import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
 
 const REQUIRED_TRUCK_PHOTOS = [
-  'NUMBER_PLATE',
+  'PLATE',
   'FRONT',
   'RIGHT',
   'LEFT',
-  'BACK',
+  'REAR',
   'CHASSIS',
   'INSURANCE',
+  'LOGBOOK',
+  'NTSA_INSPECTION',
+  'GOODS_TRANSPORT_LICENSE',
+  'ROAD_SERVICE_LICENSE',
+  'AXLE_LOAD_CERTIFICATE',
 ] as const;
 const TRUCK_TYPES = new Set([
   'TRUCK_3T',
@@ -28,10 +33,13 @@ const TRUCK_TYPES = new Set([
 
 type VehicleVerificationPhoto = {
   id?: string;
-  category: string;
+  photoType?: string;
+  category?: string;
   status?: string | null;
+  reviewNotes?: string | null;
   reviewNote?: string | null;
   rejectionReason?: string | null;
+  photoUrl?: string | null;
   fileUrl?: string | null;
 };
 
@@ -135,7 +143,7 @@ export function VehicleVerificationPanel({
           {verifiableVehicles.map((vehicle) => {
             const requiredCategories = getRequiredPhotoCategories(vehicle.type);
             const existingPhotos = new Map(
-              (vehicle.verificationPhotos ?? []).map((photo) => [photo.category, photo]),
+              (vehicle.verificationPhotos ?? []).map((photo) => [photo.photoType ?? photo.category, photo]),
             );
             const approvedCount = requiredCategories.filter((category) => {
               const photo = existingPhotos.get(category);
@@ -193,9 +201,9 @@ export function VehicleVerificationPanel({
                           </div>
                         </div>
 
-                        {existing?.reviewNote ? (
+                        {existing?.reviewNotes || existing?.reviewNote ? (
                           <p className={tone === 'light' ? 'mt-2 text-xs text-slate-600' : 'mt-2 text-xs text-slate-300'}>
-                            Note: {existing.reviewNote}
+                            Note: {existing.reviewNotes ?? existing.reviewNote}
                           </p>
                         ) : null}
                         {existing?.rejectionReason ? (
@@ -215,7 +223,7 @@ export function VehicleVerificationPanel({
                             onChange={(event) => handleFileChange(vehicle.id, category, event)}
                           />
                           <p className={tone === 'light' ? 'text-[11px] text-slate-500' : 'text-[11px] text-slate-400'}>
-                            Capture a fresh camera photo of the latest vehicle condition. Reused gallery photos are not acceptable for approval.
+                            Capture a live camera photo of this vehicle view or compliance document.
                           </p>
                           <Button
                             className="w-full"

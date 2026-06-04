@@ -5,8 +5,13 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon-customer.png",
+    "splash": {
+      "image": "./assets/images/zito-original-logo-splash-screen.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#000000"
+    },
     "scheme": "zito-customer",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "platforms": ["ios", "android", "web"],
     "ios": {
@@ -16,13 +21,22 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "Zito uses your location to estimate routes, show pickup and delivery flow, and support live trip tracking.",
-        "NSCameraUsageDescription": "Zito uses your camera to capture proof of delivery, support evidence, and shipment scans.",
+        "NSCameraUsageDescription": "Zito uses your camera to capture proof of delivery, support evidence, shipment scans, driver identity photos, and fleet verification evidence.",
         "NSPhotoLibraryUsageDescription": "Zito uses your photo library so you can upload support evidence, proof of delivery, and shipment documents.",
         "NSPhotoLibraryAddUsageDescription": "Zito can save shipment and proof-of-delivery images when you choose to export them."
       },
       "config": {
         "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
       }
+    },
+    "androidStatusBar": {
+      "backgroundColor": "#000000",
+      "barStyle": "light-content",
+      "translucent": false
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#000000",
+      "barStyle": "light-content"
     },
     "android": {
       "permissions": [
@@ -64,13 +78,13 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/zito-splash-icon.png",
-          "imageWidth": 184,
-          "resizeMode": "contain",
-          "backgroundColor": "#050914",
+          "image": "./assets/images/zito-original-logo-splash-screen.png",
+          "resizeMode": "cover",
+          "backgroundColor": "#000000",
           "dark": {
-            "image": "./assets/images/zito-splash-icon.png",
-            "backgroundColor": "#050914"
+            "image": "./assets/images/zito-original-logo-splash-screen.png",
+            "resizeMode": "cover",
+            "backgroundColor": "#000000"
           }
         }
       ]

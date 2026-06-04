@@ -52,8 +52,8 @@ export default function AgentDashboardScreen() {
     try {
       setError('');
       const [profilePayload, opportunityPayload] = await Promise.all([
-        api.get('/api/v1/marketplace/partner/profile'),
-        api.get('/api/v1/marketplace/partner/opportunities'),
+      api.get('/marketplace/partner/profile'),
+      api.get('/marketplace/partner/opportunities'),
       ]);
 
       setProfile(readObject(profilePayload, 'partner'));

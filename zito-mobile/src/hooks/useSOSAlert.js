@@ -19,7 +19,7 @@ export const useSOSAlert = () => {
 
     try {
       // Call backend endpoint to trigger SOS
-      const response = await api.post(`/api/v1/booking/${bookingId}/emergency-sos`, {
+      const response = await api.post(`/booking/${bookingId}/emergency-sos`, {
         timestamp: new Date().toISOString(),
         source: 'mobile-customer',
       });

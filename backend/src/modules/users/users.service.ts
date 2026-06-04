@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UserRole, AccountStatus, Prisma } from '@prisma/client';
+import { UserRole, AccountStatus, Prisma, StaffDepartment } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import {
   DEFAULT_CURRENCY,
@@ -63,19 +63,20 @@ const HEAD_OFFICE_AGENCY_NAME = 'Zito Head Office';
 
 // PRD §4 — KYC document types required per role
 export const KYC_REQUIRED_DOCS: Record<string, string[]> = {
-  CUSTOMER:          ['NATIONAL_ID'],
-  DRIVER:            ['NATIONAL_ID', 'DRIVERS_LICENSE'],
-  AGENT:             ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
-  TRANSPORTER:       ['NATIONAL_ID', 'BUSINESS_REG', 'VEHICLE_REG'],
-  COURIER_COMPANY:   ['NATIONAL_ID', 'BUSINESS_REG'],
-  CORPORATE:         ['NATIONAL_ID', 'BUSINESS_REG'],
-  WAREHOUSE_PARTNER: ['NATIONAL_ID', 'BUSINESS_REG'],
+  CUSTOMER:          ['NATIONAL_ID', 'PROFILE_PHOTO'],
+  DRIVER:            ['NATIONAL_ID', 'DRIVERS_LICENSE', 'TRANSPORT_PERMIT', 'PROFILE_PHOTO'],
+  AGENT:             ['NATIONAL_ID', 'BUSINESS_PROOF', 'ADDRESS_VERIFICATION'],
+  TRANSPORTER:       ['BUSINESS_REG', 'VEHICLE_REG', 'INSURANCE', 'DRIVER_ASSIGNMENT'],
+  COURIER_COMPANY:   ['BUSINESS_REG', 'OPERATING_LICENSE', 'FLEET_DETAILS'],
+  CORPORATE:         ['BUSINESS_REG', 'TAX_CERTIFICATE', 'AUTHORIZED_PERSON_ID', 'COMPANY_DETAILS'],
+  WAREHOUSE_PARTNER: ['WAREHOUSE_OWNERSHIP_PROOF', 'COMPLIANCE_CERTIFICATE', 'BUSINESS_REG'],
 };
 
 // PRD §4 — Compliance: alert 15 days before expiry
 const EXPIRY_ALERT_DAYS = 15;
 const MAX_FILE_SIZE     = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+const CAMERA_KYC_MIME_TYPES = ['image/jpeg', 'image/png'];
 const VERIFICATION_TARGET_ROLES: UserRole[] = [
   UserRole.CUSTOMER,
   UserRole.CORPORATE,
@@ -94,14 +95,20 @@ const TRUCK_VERIFICATION_TYPES = new Set([
   'CONTAINER_40FT',
   'REFRIGERATED',
 ]);
+// Module 5: Photo categories aligned with VehiclePhotoType enum (PRD §9)
 const TRUCK_PHOTO_CATEGORIES = [
-  'NUMBER_PLATE',
-  'FRONT',
-  'RIGHT',
-  'LEFT',
-  'BACK',
-  'CHASSIS',
-  'INSURANCE',
+  'PLATE',         // License plate close-up
+  'FRONT',         // Front view
+  'RIGHT',         // Right side view
+  'LEFT',          // Left side view
+  'REAR',          // Rear/back view
+  'CHASSIS',       // Chassis/VIN evidence view
+  'INSURANCE',     // Insurance document photo
+  'LOGBOOK',
+  'NTSA_INSPECTION',
+  'GOODS_TRANSPORT_LICENSE',
+  'ROAD_SERVICE_LICENSE',
+  'AXLE_LOAD_CERTIFICATE',
 ] as const;
 const COMPLIANCE_SUSPEND_ROLES = new Set<UserRole>([
   UserRole.DRIVER,
@@ -196,6 +203,13 @@ export class UsersService {
     }
 
     return KYC_REQUIRED_DOCS[String(role)] ?? ['NATIONAL_ID'];
+  }
+
+  private formatDocumentLabel(type: string) {
+    return type
+      .split('_')
+      .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+      .join(' ');
   }
 
   private deriveReviewDrivenUserStatus(input: {
@@ -469,8 +483,9 @@ export class UsersService {
       await this.prisma.staff.create({
         data: {
           userId: created.id,
-          agencyId: effectiveAgencyId,
+          agencyId: effectiveAgencyId || undefined,
           role: normalizedStaffDepartment!,
+          department: (normalizedStaffDepartment || 'OPERATIONS') as any,
           isActive: true,
         },
       });
@@ -589,6 +604,21 @@ export class UsersService {
   async uploadKycDocument(userId: string, file: MulterFile, dto: UploadKycDto) {
     await this.findOne(userId);
 
+    if (!file) {
+      throw new BadRequestException('KYC camera capture is required.');
+    }
+    if (dto.captureSource !== 'CAMERA') {
+      throw new BadRequestException('KYC documents must be captured live using the camera.');
+    }
+    if (!dto.capturedAt || Number.isNaN(new Date(dto.capturedAt).getTime())) {
+      throw new BadRequestException('KYC camera capture timestamp is required.');
+    }
+    if (!CAMERA_KYC_MIME_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('KYC upload must be a live camera image. Allowed: JPEG, PNG');
+    }
+    if (!this.hasAllowedImageSignature(file)) {
+      throw new BadRequestException('Invalid KYC image content. Upload must be a valid JPEG or PNG image.');
+    }
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
       throw new BadRequestException('Invalid file type. Allowed: JPEG, PNG, PDF');
     }
@@ -610,7 +640,11 @@ export class UsersService {
         documentSide: dto.documentSide?.trim().toUpperCase() || null,
         issueDate: dto.issueDate ? new Date(dto.issueDate) : null,
         expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
-        reviewNote: dto.notes?.trim() || null,
+        reviewNote: [
+          dto.notes?.trim() || null,
+          `captureSource=${dto.captureSource}`,
+          `capturedAt=${new Date(dto.capturedAt).toISOString()}`,
+        ].filter(Boolean).join('\n'),
         status:     'PENDING',
       },
     });
@@ -631,6 +665,124 @@ export class UsersService {
       where:   { userId },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async getMyVerificationSummary(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        status: true,
+        kycDocuments: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            rejectionReason: true,
+            reviewNote: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const requiredTypes = this.getRequiredKycDocuments(user.role);
+    const latestByType = new Map<string, (typeof user.kycDocuments)[number]>();
+    for (const document of user.kycDocuments) {
+      if (!latestByType.has(document.type)) {
+        latestByType.set(document.type, document);
+      }
+    }
+
+    const requiredDocuments = requiredTypes.map((type) => {
+      const document = latestByType.get(type);
+      const status = String(document?.status ?? 'MISSING').toUpperCase();
+      return {
+        type,
+        label: this.formatDocumentLabel(type),
+        required: true,
+        status,
+        documentId: document?.id ?? null,
+        rejectionReason: document?.rejectionReason ?? null,
+        reviewNote: document?.reviewNote ?? null,
+        uploadedAt: document?.createdAt ?? null,
+        updatedAt: document?.updatedAt ?? null,
+      };
+    });
+
+    const missingDocuments = requiredDocuments
+      .filter((document) =>
+        ['MISSING', 'REJECTED', 'RESUBMISSION_REQUIRED'].includes(document.status),
+      )
+      .map((document) => document.type);
+    const approvedCount = requiredDocuments.filter((document) => document.status === 'APPROVED').length;
+    const pendingCount = requiredDocuments.filter((document) => this.isReviewPending(document.status)).length;
+    const rejectedCount = requiredDocuments.filter((document) =>
+      ['REJECTED', 'RESUBMISSION_REQUIRED'].includes(document.status),
+    ).length;
+    const uploadedCount = requiredDocuments.filter((document) => document.status !== 'MISSING').length;
+    const allRequiredUploaded = missingDocuments.length === 0;
+
+    return {
+      role: user.role,
+      status: user.status,
+      requiredDocuments,
+      missingDocuments,
+      uploadedCount,
+      approvedCount,
+      pendingCount,
+      rejectedCount,
+      totalRequired: requiredDocuments.length,
+      canSubmit: allRequiredUploaded && user.status !== AccountStatus.ACTIVE,
+      nextStep:
+        user.status === AccountStatus.ACTIVE
+          ? 'DASHBOARD'
+          : allRequiredUploaded
+            ? 'SUBMIT_OR_WAIT_REVIEW'
+            : 'COMPLETE_VERIFICATION',
+    };
+  }
+
+  async submitKycForReview(userId: string) {
+    const summary = await this.getMyVerificationSummary(userId);
+    if (summary.missingDocuments.length > 0) {
+      throw new BadRequestException({
+        message: 'Upload all required KYC documents before submitting for review.',
+        data: {
+          missingDocuments: summary.missingDocuments,
+        },
+      });
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { status: AccountStatus.PENDING },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'KYC_SUBMITTED_FOR_REVIEW',
+        entityType: 'USER',
+        entityId: userId,
+        details: {
+          role: summary.role,
+          requiredDocuments: summary.requiredDocuments.map((document) => document.type),
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return {
+      message: 'KYC submitted for review.',
+      data: await this.getMyVerificationSummary(userId),
+    };
   }
 
   // PRD §4 — Admin review a KYC document and refresh the user's compliance status
@@ -759,15 +911,15 @@ export class UsersService {
             orderBy: { createdAt: 'asc' },
             select: {
               id: true,
-              category: true,
-              fileUrl: true,
-              mimeType: true,
+              photoType: true,
+              photoUrl: true,
               status: true,
-              capturedAt: true,
+              timestamp: true,
+              latitude: true,
+              longitude: true,
               reviewedAt: true,
               reviewedBy: true,
-              reviewNote: true,
-              rejectionReason: true,
+              reviewNotes: true,
               createdAt: true,
               updatedAt: true,
             },
@@ -797,10 +949,10 @@ export class UsersService {
 
     const formattedVehicles = vehicles.map((vehicle) => {
       const requiredPhotoCategories = this.getRequiredVehiclePhotoCategories(vehicle.type);
-      const approvedCategories = new Set(
+      const approvedCategories = new Set<string>(
         vehicle.verificationPhotos
           .filter((photo) => String(photo.status ?? '').toUpperCase() === 'APPROVED')
-          .map((photo) => photo.category),
+          .map((photo) => photo.photoType as string),
       );
 
       return {
@@ -1060,5 +1212,25 @@ export class UsersService {
         });
       }
     }
+  }
+
+  private hasAllowedImageSignature(file: MulterFile) {
+    const header = file.buffer?.subarray(0, 8);
+    if (!header || header.length < 4) {
+      return false;
+    }
+
+    const isJpeg = header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+    const isPng =
+      header[0] === 0x89 &&
+      header[1] === 0x50 &&
+      header[2] === 0x4e &&
+      header[3] === 0x47 &&
+      header[4] === 0x0d &&
+      header[5] === 0x0a &&
+      header[6] === 0x1a &&
+      header[7] === 0x0a;
+
+    return isJpeg || isPng;
   }
 }

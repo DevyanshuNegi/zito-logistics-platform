@@ -1,6 +1,7 @@
 // src/context/AuthContext.js
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { onUnauthorizedSession } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -10,6 +11,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const unsubscribeUnauthorized = onUnauthorizedSession(() => {
+      setUser(null);
+      setToken(null);
+    });
+
     (async () => {
       try {
         const [t, u] = await AsyncStorage.multiGet(['accessToken', 'user']);
@@ -17,6 +23,8 @@ export function AuthProvider({ children }) {
       } catch (e) { console.warn('Auth restore error:', e.message); }
       finally { setLoading(false); }
     })();
+
+    return unsubscribeUnauthorized;
   }, []);
 
   const login = async (userData, accessToken) => {

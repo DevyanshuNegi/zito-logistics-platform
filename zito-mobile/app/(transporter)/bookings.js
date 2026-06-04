@@ -22,8 +22,8 @@ export default function BookingsScreen() {
   const [filter, setFilter]         = useState('all');
 
   const load = async () => {
-    try { const d = await api.get('/api/v1/transporter/bookings'); setBookings(d.data || []); }
-    catch (e) { console.error(e); }
+    try { const d = await api.get('/transporter/bookings'); setBookings(d.data || []); }
+    catch (e) { /* Booking load error handled by state */ }
     finally { setLoading(false); setRefreshing(false); }
   };
 

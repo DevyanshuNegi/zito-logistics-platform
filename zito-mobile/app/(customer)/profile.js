@@ -67,7 +67,7 @@ export default function ProfileScreen() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { padding: 20, paddingBottom: 100 },
   title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 20 },
   card: {
     backgroundColor: colors.bgCard,

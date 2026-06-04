@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { WarehousePinPicker } from '@/components/maps/WarehousePinPicker';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -186,18 +187,26 @@ export default function AdminSurgePricingPage() {
               value={form.radiusKm}
               onChange={(event) => setForm((current) => ({ ...current, radiusKm: event.target.value }))}
             />
-            <Input
-              label="Latitude"
-              type="number"
-              value={form.latitude}
-              onChange={(event) => setForm((current) => ({ ...current, latitude: event.target.value }))}
-            />
-            <Input
-              label="Longitude"
-              type="number"
-              value={form.longitude}
-              onChange={(event) => setForm((current) => ({ ...current, longitude: event.target.value }))}
-            />
+            <div className="md:col-span-2">
+              <WarehousePinPicker
+                title="Surge zone map"
+                searchLabel="Search surge zone"
+                searchPlaceholder="Search demand area, neighborhood, road, or landmark"
+                address={form.name}
+                latitude={form.latitude}
+                longitude={form.longitude}
+                onAddressChange={(value) =>
+                  setForm((current) => ({ ...current, name: current.name || value }))
+                }
+                onChange={(point) =>
+                  setForm((current) => ({
+                    ...current,
+                    latitude: point.latitude,
+                    longitude: point.longitude,
+                  }))
+                }
+              />
+            </div>
             <Input
               label="Base multiplier"
               type="number"

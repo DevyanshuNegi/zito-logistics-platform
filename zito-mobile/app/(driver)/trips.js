@@ -34,7 +34,7 @@ export default function TripsScreen() {
 
   const fetchTrips = useCallback(async () => {
     try {
-      const data = await api.get('/api/v1/driver/trips');
+      const data = await api.get('/driver/trips');
       setTrips(data.data || []);
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setLoading(false); setRefreshing(false); }
@@ -53,7 +53,7 @@ export default function TripsScreen() {
     if (trip.sos_freeze) { Alert.alert('Booking Frozen', 'SOS active — contact admin.'); return; }
     setUpdating(true);
     try {
-      await api.patch(`/api/v1/driver/trips/${trip.id}/status`, { status: newStatus });
+      await api.patch(`/driver/trips/${trip.id}/status`, { status: newStatus });
       await fetchTrips();
       Alert.alert('Updated ✓', `Status: ${newStatus.replace(/_/g,' ')}`);
       if (selected?.id === trip.id) setDetailModal(false);
@@ -66,7 +66,7 @@ export default function TripsScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reject', style: 'destructive', onPress: async () => {
         setUpdating(true);
-        try { await api.post(`/api/v1/driver/trips/${trip.id}/reject`); await fetchTrips(); setDetailModal(false); }
+        try { await api.post(`/driver/trips/${trip.id}/reject`); await fetchTrips(); setDetailModal(false); }
         catch (e) { Alert.alert('Error', e.message); }
         finally { setUpdating(false); }
       }},
@@ -83,7 +83,7 @@ export default function TripsScreen() {
   const submitExpense = async () => {
     if (!expense.amount || !selected) return;
     try {
-      await api.post('/api/v1/trip-charges', {
+      await api.post('/trip-charges', {
         trip_id: selected.id, charge_type: expense.type,
         amount: parseFloat(expense.amount), description: expense.description,
       });

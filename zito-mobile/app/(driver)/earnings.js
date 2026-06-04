@@ -18,7 +18,7 @@ export default function EarningsScreen() {
 
   const load = async () => {
     try {
-      const [e, t] = await Promise.all([api.get('/api/v1/driver/earnings'), api.get('/api/v1/driver/trips')]);
+      const [e, t] = await Promise.all([api.get('/driver/earnings'), api.get('/driver/trips')]);
       setEarnings(e.data || {}); setTrips(t.data || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }

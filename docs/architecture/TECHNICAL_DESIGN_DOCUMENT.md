@@ -27,10 +27,29 @@ This document translates the PRD into a technical design for Zito's current plat
 | Backend | NestJS, TypeScript |
 | ORM | Prisma |
 | Database | PostgreSQL / Neon baseline |
+| Cache/Queues | Redis baseline; RabbitMQ initially for event queues when enabled |
+| Event Streaming | In-process event module now; Kafka later for high-volume replay/streaming |
 | Auth | OTP-first, JWT/session token flow, RBAC |
 | Payments | M-Pesa, Stripe, manual fallback |
 | Notifications | SMS, email, push/in-app notifications |
 | Docs/API | Swagger at backend API |
+
+## 3.1 Architecture Style
+
+PRD v10 uses Modular Monolith -> Microservices Evolution.
+
+Implementation rule:
+
+- Keep the current NestJS backend modular and cohesive for launch stability.
+- Define service boundaries through modules, DTOs, guards, events, and data ownership.
+- Extract microservices only after operational pressure exists: scaling bottleneck, independent deployment need, compliance boundary, or team ownership split.
+- Do not introduce service sprawl before the core booking, payment, warehouse, and marketplace flows are stable.
+
+Gateway target:
+
+- Public and internal traffic should enter through an API gateway in production.
+- Gateway responsibilities are JWT validation, rate limiting, request tracing, API versioning, tenant isolation, and WAF integration.
+- Current backend support includes correlation/request/tenant headers for gateway propagation.
 
 ## 4. Major Components
 
@@ -69,6 +88,48 @@ The backend exposes domain modules:
 - `fleet`, `drivers`: vehicles, shifts, payroll, driver operations.
 - `support`, `notifications`, `ai-support`: help center and escalation.
 - `audit`, `fraud`, `alerts`, `system-health`: governance and monitoring.
+- `events`: PRD v10 enterprise event catalog, in-process delivery, idempotency de-duplication, request correlation, and audit fallback.
+
+### 4.4 Event Platform
+
+Current implementation:
+
+- `EventsModule` registers an event service and architecture-status controller.
+- `EventsService.publish()` creates an event envelope with event ID, correlation ID, tenant ID, actor ID, timestamp, aggregate reference, and idempotency key.
+- Events are delivered in process today and are ready for a RabbitMQ/Kafka adapter later.
+- Critical events write an internal audit fallback so failures do not silently disappear.
+
+Required next maturity:
+
+- Add RabbitMQ queues with retry and dead-letter queues.
+- Add dead-letter replay/cancel tooling for admins.
+- Add Kafka only when high-volume replay, analytics streaming, or multiple independent consumers require it.
+- Publish domain events from booking/payment/tracking/warehouse transitions after each transition has regression tests.
+
+Event catalog:
+
+| Group | Events |
+|---|---|
+| Booking | `BookingCreated`, `BookingAssigned`, `BookingCancelled`, `BookingCompleted` |
+| Payment | `PaymentInitiated`, `PaymentVerified`, `EscrowReleased`, `RefundProcessed` |
+| Driver | `DriverOnline`, `DriverArrived`, `DriverNoShow` |
+| Tracking | `TripStarted`, `GPSUpdated`, `TripDelayed`, `PODUploaded` |
+| Warehouse | `InventoryReceived`, `InventoryMoved`, `InventoryDispatched` |
+
+### 4.5 Request Context
+
+Current implementation:
+
+- `RequestContextInterceptor` reads or generates `X-Correlation-Id` and `X-Request-Id`.
+- Optional `X-Tenant-Id` is accepted for future B2B SaaS isolation.
+- Response headers return the correlation and request IDs.
+- Services can read context through `RequestContextService`.
+
+Rules:
+
+- Never use tenant headers alone as authorization.
+- Tenant, agency, partner, and enterprise isolation must be validated through authenticated user claims and service-level ownership checks.
+- Correlation IDs must flow into logs, events, audit entries, provider callbacks, and support tickets where practical.
 
 ## 5. Authentication Design
 
@@ -296,6 +357,9 @@ Every role dashboard should prioritize operational actions and live state:
 - Keep provider details in logs, not user-visible responses.
 - Enforce role checks in controllers/guards/services.
 - Audit critical changes: auth, KYC, booking status, payment, payout, support escalation, admin actions.
+- Separate customer, partner, internal admin, and system event API surfaces.
+- Preserve correlation ID on all requests and downstream provider operations.
+- Add rate limiting at the gateway/API layer before public launch scale.
 
 ## 11. Non-Functional Requirements
 
@@ -305,8 +369,43 @@ Every role dashboard should prioritize operational actions and live state:
 | Performance | Dashboard APIs should avoid N+1 queries and oversized payloads |
 | Reliability | Retry/fallback for provider failures |
 | Security | RBAC, masked identifiers, hashed secrets, no debug OTP in production |
-| Observability | Logs for provider failures, state transitions, suspicious login, payment callbacks |
+| Observability | Correlation IDs, metrics, logs for provider failures, state transitions, suspicious login, payment callbacks |
 | Usability | Mobile screens fit small Android devices and support OTP autofill/paste |
+
+## 11.1 Cloud-Native Infrastructure Target
+
+Production target:
+
+- Dockerized backend and frontend workloads.
+- ECS first; Kubernetes later only when operational maturity requires it.
+- PostgreSQL for OLTP.
+- Redis for cache, session/rate-limit state, and queue support.
+- TimescaleDB or partitioned tables for high-volume GPS history.
+- S3-compatible object storage for KYC, POD, warehouse photos, invoices, waybills, and support attachments.
+- ClickHouse or BigQuery for analytics once BI load grows.
+- OpenSearch/Elasticsearch for booking, invoice, waybill, customer, partner, and OCR search.
+
+Observability target:
+
+- Prometheus for metrics.
+- Grafana for operational dashboards.
+- Sentry for error tracking.
+- Loki or ELK for logs.
+- OpenTelemetry for distributed tracing across API gateway, backend modules, queues, provider callbacks, and future AI services.
+
+Security target:
+
+- Secrets in AWS Secrets Manager or Vault.
+- WAF and DDoS protection at the edge.
+- Token revocation and session invalidation.
+- Mobile device integrity and rooted-device checks where risk requires it.
+- Tenant-aware RBAC, audit, billing, analytics, and support isolation.
+
+AI target:
+
+- AI dispatch, ETA, fraud, pricing, and demand forecasting must expose confidence scores for internal users.
+- Human override is required for dispatch, pricing, fraud escalation, support routing, and compliance decisions.
+- AI recommendations and automated decisions must be auditable.
 
 ## 12. Open Risks
 
@@ -314,3 +413,4 @@ Every role dashboard should prioritize operational actions and live state:
 - Public proxy environment variables can break provider calls and Expo/CLI networking.
 - Delivery OTP security must remain aligned with PRD: attempt limits, lockout, and non-plain storage where implemented.
 - Dashboard modernization should not alter auth or navigation contracts.
+- Event publishing from live booking/payment/warehouse transitions should be introduced with focused regression tests, not as a broad rewrite.

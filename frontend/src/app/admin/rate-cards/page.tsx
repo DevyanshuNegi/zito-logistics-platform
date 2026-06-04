@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { WarehousePinPicker } from '@/components/maps/WarehousePinPicker';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -1034,26 +1035,6 @@ export default function AdminRateCardsPage() {
               }
             />
             <Input
-              label="Latitude"
-              required
-              step="0.000001"
-              type="number"
-              value={surgeForm.latitude}
-              onChange={(event) =>
-                setSurgeForm((current) => ({ ...current, latitude: event.target.value }))
-              }
-            />
-            <Input
-              label="Longitude"
-              required
-              step="0.000001"
-              type="number"
-              value={surgeForm.longitude}
-              onChange={(event) =>
-                setSurgeForm((current) => ({ ...current, longitude: event.target.value }))
-              }
-            />
-            <Input
               label="Radius (km)"
               min="0.1"
               required
@@ -1075,6 +1056,27 @@ export default function AdminRateCardsPage() {
                 setSurgeForm((current) => ({ ...current, surgeMultiplier: event.target.value }))
               }
             />
+
+            <div className="md:col-span-2 xl:col-span-5">
+              <WarehousePinPicker
+                title="Surge zone map"
+                searchLabel="Search surge zone"
+                searchPlaceholder="Search demand area, neighborhood, road, or landmark"
+                address={surgeForm.name}
+                latitude={surgeForm.latitude}
+                longitude={surgeForm.longitude}
+                onAddressChange={(value) =>
+                  setSurgeForm((current) => ({ ...current, name: current.name || value }))
+                }
+                onChange={(point) =>
+                  setSurgeForm((current) => ({
+                    ...current,
+                    latitude: point.latitude,
+                    longitude: point.longitude,
+                  }))
+                }
+              />
+            </div>
 
             {!editingZoneId ? (
               <label className="flex items-center gap-3 rounded-2xl border border-slate-700/60 bg-slate-950/50 px-4 py-3 text-sm text-slate-200">

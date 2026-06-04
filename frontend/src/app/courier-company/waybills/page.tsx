@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -69,7 +69,7 @@ export default function CourierCompanyWaybillsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -92,11 +92,11 @@ export default function CourierCompanyWaybillsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [bookingId]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const openWaybills = useMemo(
     () => waybills.filter((waybill) => waybill.status !== 'CLOSED').length,

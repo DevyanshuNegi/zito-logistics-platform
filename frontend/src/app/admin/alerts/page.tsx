@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -64,7 +64,7 @@ export default function AdminAlertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function loadDashboard(nextStatus = statusFilter, nextType = typeFilter) {
+  const loadDashboard = useCallback(async (nextStatus = statusFilter, nextType = typeFilter) => {
     setLoading(true);
     setError(null);
 
@@ -84,11 +84,11 @@ export default function AdminAlertsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [statusFilter, typeFilter]);
 
   useEffect(() => {
     void loadDashboard();
-  }, []);
+  }, [loadDashboard]);
 
   async function runAction(actionKey: string, request: () => Promise<unknown>, message: string) {
     setRunningAction(actionKey);

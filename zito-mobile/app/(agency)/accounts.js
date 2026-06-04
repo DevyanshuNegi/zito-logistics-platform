@@ -19,8 +19,8 @@ export default function AgencyAccountsScreen() {
     try {
       setError('');
       const [paymentPayload, invoicePayload] = await Promise.all([
-        api.get('/api/v1/payments?limit=50'),
-        api.get('/api/v1/admin/invoices'),
+      api.get('/payments?limit=50'),
+      api.get('/admin/invoices'),
       ]);
       setPayments(readArray(paymentPayload, 'payments'));
       setInvoices(readArray(invoicePayload, 'invoices'));

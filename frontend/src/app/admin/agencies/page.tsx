@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { WarehousePinPicker } from '@/components/maps/WarehousePinPicker';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api';
 import { compactId, formatStatus } from '@/lib/format';
@@ -119,8 +120,21 @@ export default function AdminAgenciesPage() {
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreate}>
             <Input label="Agency name" value={name} onChange={(event) => setName(event.target.value)} required />
             <Input label="Address" value={address} onChange={(event) => setAddress(event.target.value)} />
-            <Input label="Latitude" value={latitude} onChange={(event) => setLatitude(event.target.value)} />
-            <Input label="Longitude" value={longitude} onChange={(event) => setLongitude(event.target.value)} />
+            <div className="md:col-span-2">
+              <WarehousePinPicker
+                title="Agency map location"
+                searchLabel="Search agency area"
+                searchPlaceholder="Search branch, road, city, or landmark"
+                address={address}
+                latitude={latitude}
+                longitude={longitude}
+                onAddressChange={setAddress}
+                onChange={(point) => {
+                  setLatitude(point.latitude);
+                  setLongitude(point.longitude);
+                }}
+              />
+            </div>
             <div className="md:col-span-2">
               <Button disabled={saving} type="submit">
                 {saving ? 'Creating agency...' : 'Create agency'}

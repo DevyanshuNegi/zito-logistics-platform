@@ -29,6 +29,10 @@ export default function CourierCompanyLayout() {
         options={{ title: 'Loads', tabBarIcon: ({ color }) => <TabIcon name="cube-outline" color={color} /> }}
       />
       <Tabs.Screen
+        name="opportunities"
+        options={{ title: 'Market', tabBarIcon: ({ color }) => <TabIcon name="briefcase-outline" color={color} /> }}
+      />
+      <Tabs.Screen
         name="fleet"
         options={{ title: 'Fleet', tabBarIcon: ({ color }) => <TabIcon name="car-outline" color={color} /> }}
       />

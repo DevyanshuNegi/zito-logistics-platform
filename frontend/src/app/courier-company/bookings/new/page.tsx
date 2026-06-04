@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
+import { WarehousePinPicker } from '@/components/maps/WarehousePinPicker';
 import { ApiError, api } from '@/lib/api';
 import {
   COURIER_CAPACITY_OPTIONS,
@@ -170,6 +171,16 @@ export default function CourierCompanyNewBookingPage() {
     );
   }
 
+  function updateStopPin(id: string, point: { latitude: string; longitude: string }) {
+    setStops((current) =>
+      current.map((stop) =>
+        stop.id === id
+          ? { ...stop, latitude: point.latitude, longitude: point.longitude }
+          : stop,
+      ),
+    );
+  }
+
   function addStop(stopType: StopForm['stopType']) {
     setStops((current) => [...current, createStop(stopType, generateStopId(stopType.toLowerCase()))]);
   }
@@ -190,7 +201,7 @@ export default function CourierCompanyNewBookingPage() {
     }));
 
     if (normalizedStops.some((stop) => stop.latitude == null || stop.longitude == null)) {
-      setError('Every stop needs a valid latitude and longitude before the movement plan can be created.');
+      setError('Every stop needs a searched or pinned map location before the movement plan can be created.');
       setSaving(false);
       return;
     }
@@ -389,9 +400,17 @@ export default function CourierCompanyNewBookingPage() {
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <Input label="Address" value={stop.address} onChange={(event) => updateStop(stop.id, 'address', event.target.value)} required />
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Input label="Latitude" value={stop.latitude} onChange={(event) => updateStop(stop.id, 'latitude', event.target.value)} required />
-                    <Input label="Longitude" value={stop.longitude} onChange={(event) => updateStop(stop.id, 'longitude', event.target.value)} required />
+                  <div className="lg:col-span-2">
+                    <WarehousePinPicker
+                      title={`Stop ${index + 1} pin`}
+                      searchLabel="Search stop"
+                      searchPlaceholder="Search stop area, road, building, or landmark"
+                      latitude={stop.latitude}
+                      longitude={stop.longitude}
+                      address={stop.address}
+                      onChange={(point) => updateStopPin(stop.id, point)}
+                      onAddressChange={(address) => updateStop(stop.id, 'address', address)}
+                    />
                   </div>
                   <Input label="Contact name" value={stop.contactName} onChange={(event) => updateStop(stop.id, 'contactName', event.target.value)} required />
                   <Input label="Contact phone" value={stop.contactPhone} onChange={(event) => updateStop(stop.id, 'contactPhone', event.target.value)} required />

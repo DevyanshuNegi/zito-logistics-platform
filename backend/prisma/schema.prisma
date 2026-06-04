@@ -21,10 +21,22 @@ enum UserRole {
   TRANSPORTER
   COURIER_COMPANY
   WAREHOUSE_PARTNER
+  HEAD_OFFICE_STAFF
   AGENCY_STAFF
   ADMIN
   SUPER_ADMIN
   CORPORATE
+}
+
+enum StaffScope {
+  HEAD_OFFICE
+  AGENCY
+}
+
+enum StaffDepartment {
+  OPERATIONS
+  CUSTOMER_CARE
+  ACCOUNTS
 }
 
 enum AccountStatus {
@@ -38,6 +50,7 @@ enum AccountStatus {
 enum BookingStatus {
   CREATED
   SEARCHING
+  QUOTE_PENDING
   APPROVED
   ASSIGNED
   ACCEPTED
@@ -51,6 +64,7 @@ enum BookingStatus {
   COMPLETED
   CANCELLED
   REJECTED
+  EXPIRED
 }
 
 enum ServiceType {
@@ -119,10 +133,13 @@ enum LossReportStatus {
 enum PaymentStatus {
   INITIATED
   PENDING
-  SUCCESS
+  VERIFIED
+  COMPLETED
   FAILED
   REVERSED
   REFUNDED
+  EXPIRED
+  DISPUTED
 }
 
 enum PaymentMethod {
@@ -221,6 +238,43 @@ enum ScanCheckpoint {
   VEHICLE_UNLOAD
 }
 
+// ============================================================
+// PHASE 1: SUBSCRIPTION TIERS (Revenue Stream #2)
+// ============================================================
+
+enum SubscriptionTier {
+  FREE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PENDING_PAYMENT
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum SubscriptionChargeStatus {
+  SUCCESSFUL
+  FAILED
+  PENDING
+}
+
+enum FeaturedListingStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum FeaturedListingTier {
+  FEATURED
+  PREMIUM
+  VIP
+}
+
 model User {
   id            String        @id @default(uuid())
   fullName      String?
@@ -235,6 +289,7 @@ model User {
   agency        Agency?       @relation(fields: [agencyId], references: [id])
 
   driverProfile     Driver?
+  staffProfile      Staff?
   kycDocuments      KycDocument[]
   managedWarehouses Warehouse[]     @relation("WarehouseManager")
   reportedLosses    LossReport[]    @relation("Reporter")
@@ -250,6 +305,9 @@ model User {
   disbursementsReceived Disbursement[] @relation("DisbursementBeneficiary")
   disbursementsCreated  Disbursement[] @relation("DisbursementCreator")
   disbursementsApproved Disbursement[] @relation("DisbursementApprover")
+  subscription      Subscription?   @relation("UserSubscription")
+  verificationFees  VerificationFeePayment[] @relation("UserVerificationFees")
+  certificates      VerificationCertificate[] @relation("UserCertificates")
 
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -295,14 +353,22 @@ model Agency {
 }
 
 model Staff {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  agencyId  String
-  agency    Agency   @relation(fields: [agencyId], references: [id])
-  role      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String         @id @default(uuid())
+  userId      String         @unique
+  user        User           @relation(fields: [userId], references: [id])
+  
+  scope       StaffScope     @default(AGENCY)
+  agencyId    String?
+  agency      Agency?        @relation(fields: [agencyId], references: [id])
+  
+  department  StaffDepartment
+  role        String
+  isActive    Boolean        @default(true)
+  
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  
+  @@index([userId, scope, department])
 }
 
 model Driver {
@@ -336,6 +402,7 @@ model Driver {
   bookings         Booking[]         @relation("AssignedDriver")
   fuelLogs         FuelLog[]
   breakdowns       VehicleBreakdown[]
+  assignments      DriverAssignment[] @relation("DriverAssignments")  // Module 5 dispatch assignments
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -446,32 +513,14 @@ model Vehicle {
   fuelLogs          FuelLog[]
   breakdowns        VehicleBreakdown[]
   maintenanceLogs   MaintenanceLog[]
-  verificationPhotos VehicleVerificationPhoto[]
+  verificationPhotos VehicleVerificationPhoto[] @relation("VerificationPhotos")
+  assignments       DriverAssignment[] @relation("AssignmentVehicles")  // Module 5 dispatch assignments
 
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
   @@index([ownerUserId])
   @@index([deviceGpsLat, deviceGpsLng])
-}
-
-model VehicleVerificationPhoto {
-  id              String   @id @default(uuid())
-  vehicleId       String
-  vehicle         Vehicle  @relation(fields: [vehicleId], references: [id])
-  category        String
-  fileUrl         String
-  mimeType        String?
-  status          String   @default("PENDING_REVIEW")
-  capturedAt      DateTime?
-  reviewedAt      DateTime?
-  reviewedBy      String?
-  reviewNote      String?
-  rejectionReason String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@unique([vehicleId, category])
 }
 
 model FuelLog {
@@ -558,6 +607,13 @@ model Booking {
   deliveryProofUrl String?
   deliveredAt      DateTime?
 
+  // Dispatch tracking (Module 5)
+  assignedAt       DateTime?
+  acceptedAt       DateTime?
+  dispatchLogId    String?
+  manuallyAssignedBy String?
+  manuallyAssignedAt DateTime?
+
   idempotencyKey   String?       @unique
 
   cargoType           String?
@@ -578,6 +634,7 @@ model Booking {
 
   stops          BookingStop[]
   freightMilestones FreightMilestone[]
+  quote          BookingQuote?
   parcels        InventoryItem[]
   waybills       Waybill[]
   lossReports    LossReport[]
@@ -589,8 +646,116 @@ model Booking {
   breakdowns     VehicleBreakdown[]
   supportTickets SupportTicket[]
   rtoReturn      RtoReturn?
+  featuredListing FeaturedListing?
+  assignments    DriverAssignment[] @relation("BookingAssignments")  // Module 5 dispatch history
+  
+  isFeatured     Boolean         @default(false)
+  featuredTier   FeaturedListingTier?
+
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+}
+
+// Module 5: Driver Assignment tracking (PRD §16 - Dispatch)
+// Tracks the lifecycle of driver assignment: OFFERED → ACCEPTED/REJECTED → REASSIGNED/COMPLETED
+model DriverAssignment {
+  id              String   @id @default(uuid())
+  bookingId       String
+  booking         Booking  @relation("BookingAssignments", fields: [bookingId], references: [id])
+  
+  driverId        String
+  driver          Driver   @relation("DriverAssignments", fields: [driverId], references: [id])
+  
+  vehicleId       String?
+  vehicle         Vehicle? @relation("AssignmentVehicles", fields: [vehicleId], references: [id])
+  
+  // Assignment workflow
+  status          DriverAssignmentStatus @default(OFFERED)  // OFFERED, ACCEPTED, REJECTED, REASSIGNED, COMPLETED
+  offeredAt       DateTime @default(now())
+  acceptedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  reassignedAt    DateTime?
+  completedAt     DateTime?
+  
+  // Matching scores for audit trail (PRD §7 - Driver Matching Engine)
+  matchScore      Float?   // Overall match score (0-100)
+  priorityScore   Float?   // Priority weight in dispatch queue
+  distanceKm      Float?   // Distance from pickup to driver
+  estimatedArrivalMinutes Int?  // ETA to pickup
+  
+  // Manual override (ops team)
+  manuallyOfferedBy String?  // Ops staff user ID if manually assigned
+  manuallyOfferedAt DateTime?
+  
+  // Fallback tracking (PRD §7 - fallback logic)
+  radiusKmAtOffer Int? @default(10)  // Radius used when this assignment was offered
+  attemptNumber   Int @default(1)    // Which attempt this is (1st radius, 2nd expanded, etc)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([bookingId, status])
+  @@index([driverId, status])
+  @@index([offeredAt])
+}
+
+enum DriverAssignmentStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  REASSIGNED
+  COMPLETED
+  EXPIRED
+}
+
+// Module 5: Vehicle Verification Photos (PRD §9 - Fleet System)
+// Mandatory 7-photo verification for trucks before dispatch-eligibility
+model VehicleVerificationPhoto {
+  id              String   @id @default(uuid())
+  vehicleId       String
+  vehicle         Vehicle  @relation("VerificationPhotos", fields: [vehicleId], references: [id])
+  
+  photoType       VehiclePhotoType  // PLATE, FRONT, RIGHT, LEFT, REAR, CHASSIS, INSURANCE
+  photoUrl        String   // S3/blob URL
+  status          PhotoVerificationStatus @default(PENDING_REVIEW)  // PENDING_REVIEW, APPROVED, REJECTED, RESUBMISSION_REQUIRED
+  
+  reviewedBy      String?  // Admin user ID who reviewed
+  reviewedAt      DateTime?
+  reviewNotes     String?  // Why rejected / what needs resubmission
+  
+  // Metadata
+  timestamp       DateTime?  // When the photo was taken (if available)
+  latitude        Float?     // GPS coordinates if available
+  longitude       Float?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([vehicleId, photoType])
+  @@index([status])
+}
+
+enum VehiclePhotoType {
+  PLATE           // License plate close-up
+  FRONT           // Front view
+  RIGHT           // Right side view
+  LEFT            // Left side view
+  REAR            // Rear/back view
+  CHASSIS         // Chassis/VIN evidence view
+  INSURANCE       // Insurance document photo
+  LOGBOOK         // Vehicle logbook / ownership document
+  NTSA_INSPECTION // NTSA inspection certificate
+  GOODS_TRANSPORT_LICENSE // Goods transport license
+  ROAD_SERVICE_LICENSE // Road service license
+  AXLE_LOAD_CERTIFICATE // Axle-load compliance certificate
+}
+
+enum PhotoVerificationStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  RESUBMISSION_REQUIRED
 }
 
 model FreightMilestone {
@@ -612,6 +777,38 @@ model FreightMilestone {
   updatedAt      DateTime @updatedAt
 
   @@index([bookingId, sequence])
+}
+
+model BookingQuote {
+  id                String   @id @default(uuid())
+  bookingId         String   @unique
+  booking           Booking  @relation(fields: [bookingId], references: [id])
+  
+  quotedPrice       Float
+  currency          String   @default("KES")
+  validityStartsAt  DateTime @default(now())
+  validityExpiresAt DateTime
+  
+  quotedBy          String   // admin user ID who created the quote
+  quotedAt          DateTime @default(now())
+  
+  acceptedAt        DateTime?
+  acceptedBy        String?  // customer ID
+  
+  rejectedAt        DateTime?
+  rejectionReason   String?
+  
+  revisionRequestedAt DateTime?
+  revisionNote      String?
+  
+  terms             String?  // JSON or text
+  paymentTerms      String?  // prepayment, on-delivery, installment
+  specialConditions String?  // special terms/conditions
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([bookingId, validityExpiresAt])
 }
 
 model BookingStop {
@@ -1308,3 +1505,127 @@ model MarketplaceBid {
   @@index([opportunityBookingId, status])
   @@index([partnerId, status])
 }
+
+// ============================================================
+// PHASE 1: SUBSCRIPTION MODELS (Recurring Billing)
+// ============================================================
+
+model Subscription {
+  id                String              @id @default(uuid())
+  userId            String              @unique
+  user              User                @relation("UserSubscription", fields: [userId], references: [id], onDelete: Cascade)
+
+  tier              SubscriptionTier    @default(FREE)
+  monthlyPrice      Int                 @default(0) // In cents (KES * 100)
+  status            SubscriptionStatus  @default(ACTIVE)
+
+  startDate         DateTime            @default(now())
+  nextBillingDate   DateTime
+  cancelledDate     DateTime?
+  expiresAt         DateTime?
+
+  autoRenew         Boolean             @default(true)
+  failedAttempts    Int                 @default(0)
+  paymentMethod     String              @default("MPESA") // MPESA, BANK_TRANSFER, WALLET
+
+  cancelReason      String?
+  notes             String?
+
+  charges           SubscriptionCharge[]
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([userId, status])
+  @@index([status, nextBillingDate])
+}
+
+model SubscriptionCharge {
+  id                    String                    @id @default(uuid())
+  subscriptionId        String
+  subscription          Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  amount                Int                       // In cents (KES * 100)
+  chargedDate           DateTime                  @default(now())
+  status                SubscriptionChargeStatus  @default(PENDING)
+  transactionReference  String?
+  failureReason         String?
+
+  createdAt             DateTime                  @default(now())
+
+  @@index([subscriptionId, status])
+  @@index([chargedDate])
+}
+
+// ============================================================
+// PHASE 1: FEATURED LISTINGS (Revenue Stream #3)
+// ============================================================
+
+model FeaturedListing {
+  id                    String                  @id @default(uuid())
+  bookingId             String                  @unique
+  booking               Booking                 @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  tier                  FeaturedListingTier     @default(FEATURED)
+  status                FeaturedListingStatus   @default(ACTIVE)
+
+  startDate             DateTime                @default(now())
+  expiryDate            DateTime
+  durationDays          Int
+
+  totalCost             Int                     // In cents (KES * 100)
+  transactionReference  String?
+
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@index([status, expiryDate])
+  @@index([tier])
+}
+
+// ============================================================
+// PHASE 1: VERIFICATION FEES (Revenue Stream #4)
+// ============================================================
+
+model VerificationFeePayment {
+  id                        String    @id @default(uuid())
+  userId                    String
+  user                      User      @relation("UserVerificationFees", fields: [userId], references: [id], onDelete: Cascade)
+
+  amount                    Int       // In cents (KES * 100)
+  processingMode            String    @default("EXPEDITED") // STANDARD, EXPEDITED
+  status                    String    @default("PAID") // PAID, COMPLETED, REFUNDED, PENDING
+  
+  paidAt                    DateTime  @default(now())
+  completedAt               DateTime?
+  refundedAt                DateTime?
+  expectedCompletionDate    DateTime?
+
+  transactionReference      String?
+
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([status, expectedCompletionDate])
+}
+
+model VerificationCertificate {
+  id                    String    @id @default(uuid())
+  userId                String
+  user                  User      @relation("UserCertificates", fields: [userId], references: [id], onDelete: Cascade)
+
+  certificateNumber     String    @unique
+  status                String    @default("ACTIVE") // ACTIVE, EXPIRED, REVOKED
+  
+  issuedBy              String    // Admin user ID
+  issuedAt              DateTime  @default(now())
+  expiresAt             DateTime
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+

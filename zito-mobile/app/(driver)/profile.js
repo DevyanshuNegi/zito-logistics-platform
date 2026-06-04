@@ -27,7 +27,7 @@ export default function ProfileScreen() {
 
   const load = async () => {
     try {
-      const data = await api.get('/api/v1/driver/profile');
+      const data = await api.get('/driver/profile');
       const d = data.data?.driver || data.data;
       if (d) { setDriver(d); setAvail(!!d.is_available); }
     } catch (e) { console.error(e); }
@@ -38,7 +38,7 @@ export default function ProfileScreen() {
 
   const toggleAvail = async (val) => {
     setToggling(true);
-    try { await api.patch('/api/v1/driver/availability', { is_available: val }); setAvail(val); }
+    try { await api.patch('/driver/availability', { is_available: val }); setAvail(val); }
     catch (e) { Alert.alert('Error', e.message); }
     finally { setToggling(false); }
   };

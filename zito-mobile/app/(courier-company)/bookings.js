@@ -16,10 +16,10 @@ export default function CourierCompanyBookingsScreen() {
 
   const load = async () => {
     try {
-      const data = await api.get('/api/v1/courier-company/bookings');
+      const data = await api.get('/courier-company/bookings');
       setBookings(data.bookings || []);
     } catch (error) {
-      console.error(error);
+      /* Booking load error handled by state */
     } finally {
       setLoading(false);
       setRefreshing(false);

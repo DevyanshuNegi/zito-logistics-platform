@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -12,7 +12,7 @@ import { FuelReportPanel } from '@/components/operations/FuelReportPanel';
 import { VehicleLocationPanel } from '@/components/operations/VehicleLocationPanel';
 import { ApiError, api } from '@/lib/api';
 import { compactId, formatDateTime, formatStatus } from '@/lib/format';
-import { VEHICLE_TYPES } from '@/lib/phase-one';
+import { FLEET_VERIFICATION_UPLOAD_CATEGORIES, KENYA_VEHICLE_CATALOG, VEHICLE_TYPES } from '@/lib/phase-one';
 
 type Driver = {
   id: string;
@@ -78,15 +78,38 @@ export default function AdminFleetPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [plateNumber, setPlateNumber] = useState('');
+  const [chassisNumber, setChassisNumber] = useState('');
   const [type, setType] = useState('VAN');
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
+  const [year, setYear] = useState('');
   const [capacityKg, setCapacityKg] = useState('');
+  const [capacityM3, setCapacityM3] = useState('');
   const [driverId, setDriverId] = useState('');
+  const [insuranceCompany, setInsuranceCompany] = useState('');
+  const [insurancePolicyNumber, setInsurancePolicyNumber] = useState('');
   const [insuranceExpiry, setInsuranceExpiry] = useState('');
   const [permitExpiry, setPermitExpiry] = useState('');
+  const [verificationFiles, setVerificationFiles] = useState<Record<string, File | null>>({});
   const [driverSelection, setDriverSelection] = useState<Record<string, string>>({});
   const [backupSelection, setBackupSelection] = useState<Record<string, string>>({});
+
+  const selectedCatalogGroup = useMemo(
+    () => KENYA_VEHICLE_CATALOG.find((group) => group.vehicleType === type),
+    [type],
+  );
+  const makeOptions = useMemo(
+    () => Array.from(new Set((selectedCatalogGroup?.models ?? []).map((item) => item.make))).sort(),
+    [selectedCatalogGroup],
+  );
+  const modelOptions = useMemo(
+    () =>
+      (selectedCatalogGroup?.models ?? [])
+        .filter((item) => item.make === make)
+        .map((item) => item.model)
+        .sort(),
+    [make, selectedCatalogGroup],
+  );
 
   async function loadFleet() {
     setLoading(true);
@@ -119,31 +142,58 @@ export default function AdminFleetPage() {
     setError(null);
 
     try {
-      await api.post('/fleet', {
-        plateNumber,
-        type,
-        make: make || undefined,
-        model: model || undefined,
-        capacityKg: capacityKg ? Number(capacityKg) : undefined,
-        driverId: driverId || undefined,
-        insuranceExpiry: insuranceExpiry || undefined,
-        permitExpiry: permitExpiry || undefined,
+      const missingUploads = FLEET_VERIFICATION_UPLOAD_CATEGORIES.filter(
+        (category) => !verificationFiles[category],
+      );
+      if (missingUploads.length > 0) {
+        throw new Error(`Upload all required photos and documents first: ${missingUploads.map(formatStatus).join(', ')}`);
+      }
+
+      const formData = new FormData();
+      formData.append('plateNumber', plateNumber);
+      formData.append('chassisNumber', chassisNumber);
+      formData.append('type', type);
+      formData.append('make', make);
+      formData.append('model', model);
+      formData.append('year', year);
+      formData.append('capacityKg', capacityKg);
+      formData.append('capacityM3', capacityM3);
+      formData.append('insuranceCompany', insuranceCompany);
+      formData.append('insurancePolicyNumber', insurancePolicyNumber);
+      formData.append('insuranceExpiry', insuranceExpiry);
+      if (permitExpiry) formData.append('permitExpiry', permitExpiry);
+      if (driverId) formData.append('driverId', driverId);
+      FLEET_VERIFICATION_UPLOAD_CATEGORIES.forEach((category) => {
+        formData.append(category, verificationFiles[category]!);
       });
 
+      await api.post('/fleet', formData);
+
       setPlateNumber('');
+      setChassisNumber('');
       setType('VAN');
       setMake('');
       setModel('');
+      setYear('');
       setCapacityKg('');
+      setCapacityM3('');
       setDriverId('');
+      setInsuranceCompany('');
+      setInsurancePolicyNumber('');
       setInsuranceExpiry('');
       setPermitExpiry('');
+      setVerificationFiles({});
       await loadFleet();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Unable to create vehicle.');
+      setError(caught instanceof ApiError || caught instanceof Error ? caught.message : 'Unable to create vehicle.');
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleVerificationFileChange(category: string, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setVerificationFiles((current) => ({ ...current, [category]: file }));
   }
 
   async function assignDriver(vehicleId: string) {
@@ -234,12 +284,17 @@ export default function AdminFleetPage() {
       <SurfaceCard title="Add vehicle" description="Fleet CRUD and assignment control for admin operations.">
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreate}>
           <Input label="Plate number" value={plateNumber} onChange={(event) => setPlateNumber(event.target.value)} required />
+          <Input label="Chassis number" value={chassisNumber} onChange={(event) => setChassisNumber(event.target.value)} required />
           <label className="block space-y-2">
             <span className="text-sm font-medium text-slate-200">Vehicle type</span>
             <select
               className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
               value={type}
-              onChange={(event) => setType(event.target.value)}
+              onChange={(event) => {
+                setType(event.target.value);
+                setMake('');
+                setModel('');
+              }}
             >
               {VEHICLE_TYPES.map((option) => (
                 <option key={option} value={option}>
@@ -248,9 +303,43 @@ export default function AdminFleetPage() {
               ))}
             </select>
           </label>
-          <Input label="Make" value={make} onChange={(event) => setMake(event.target.value)} />
-          <Input label="Model" value={model} onChange={(event) => setModel(event.target.value)} />
-          <Input label="Capacity (kg)" value={capacityKg} onChange={(event) => setCapacityKg(event.target.value)} />
+          <Input label="Year" type="number" value={year} onChange={(event) => setYear(event.target.value)} required />
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-slate-200">Make</span>
+            <select
+              className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none"
+              value={make}
+              onChange={(event) => {
+                setMake(event.target.value);
+                setModel('');
+              }}
+            >
+              <option value="">Select make</option>
+              {makeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-slate-200">Model</span>
+            <select
+              className="w-full rounded-2xl border border-slate-700/70 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 focus:border-sky-400/70 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              value={model}
+              onChange={(event) => setModel(event.target.value)}
+              disabled={!make}
+            >
+              <option value="">Select model</option>
+              {modelOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Input label="Capacity (kg)" type="number" value={capacityKg} onChange={(event) => setCapacityKg(event.target.value)} required />
+          <Input label="Capacity (m3)" type="number" value={capacityM3} onChange={(event) => setCapacityM3(event.target.value)} required />
           <label className="block space-y-2">
             <span className="text-sm font-medium text-slate-200">Assign driver</span>
             <select
@@ -266,8 +355,28 @@ export default function AdminFleetPage() {
               ))}
             </select>
           </label>
-          <Input label="Insurance expiry" type="date" value={insuranceExpiry} onChange={(event) => setInsuranceExpiry(event.target.value)} />
+          <Input label="Insurance company" value={insuranceCompany} onChange={(event) => setInsuranceCompany(event.target.value)} required />
+          <Input label="Policy number" value={insurancePolicyNumber} onChange={(event) => setInsurancePolicyNumber(event.target.value)} required />
+          <Input label="Insurance expiry" type="date" value={insuranceExpiry} onChange={(event) => setInsuranceExpiry(event.target.value)} required />
           <Input label="Permit expiry" type="date" value={permitExpiry} onChange={(event) => setPermitExpiry(event.target.value)} />
+          <div className="md:col-span-2">
+            <p className="text-sm font-medium text-slate-200">Mandatory photos and documents</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {FLEET_VERIFICATION_UPLOAD_CATEGORIES.map((category) => (
+                <label key={category} className="block space-y-2 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+                  <span className="text-xs font-semibold text-slate-200">{formatStatus(category)}</span>
+                  <input
+                    accept="image/*"
+                    capture="environment"
+                    className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-sky-500/20 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-100"
+                    required
+                    type="file"
+                    onChange={(event) => handleVerificationFileChange(category, event)}
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
           <div className="md:col-span-2">
             <Button disabled={saving} type="submit">
               {saving ? 'Saving vehicle...' : 'Add vehicle'}

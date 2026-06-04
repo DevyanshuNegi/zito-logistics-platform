@@ -26,7 +26,7 @@ export default function SosScreen() {
 
     setLoading(true);
     try {
-      await api.post('/api/v1/help', { booking_id: bookingRef.trim(), help_type: type, message });
+      await api.post('/help', { booking_id: bookingRef.trim(), help_type: type, message });
       Alert.alert('Help sent', 'Admin has been notified.');
       setMessage('');
     } catch (requestError) {
@@ -50,7 +50,7 @@ export default function SosScreen() {
         onPress: async () => {
           setSosLoading(true);
           try {
-            await api.post('/api/v1/help/sos', { booking_id: bookingRef.trim(), message });
+            await api.post('/help/sos', { booking_id: bookingRef.trim(), message });
             Alert.alert('SOS triggered', 'Admin alerted. Booking frozen until support intervenes.');
           } catch (requestError) {
             Alert.alert('Error', requestError.message);

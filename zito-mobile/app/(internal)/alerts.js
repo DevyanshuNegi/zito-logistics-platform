@@ -25,7 +25,7 @@ export default function InternalAlertsScreen() {
   const load = async () => {
     try {
       setError('');
-      const payload = await api.get('/api/v1/alerts/dashboard');
+      const payload = await api.get('/alerts/dashboard');
       setAlerts(readArray(payload, 'alerts'));
     } catch (requestError) {
       setError(requestError.message);
@@ -43,7 +43,7 @@ export default function InternalAlertsScreen() {
     setBusyId(alertId);
     try {
       setError('');
-      await api.patch(`/api/v1/alerts/${alertId}/resolve`, {
+      await api.patch(`/alerts/${alertId}/resolve`, {
         note: 'Resolved from internal mobile desk.',
       });
       load();

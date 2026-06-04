@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -150,7 +150,7 @@ export default function WarehouseScanPage() {
     syncItem: syncScanPayload,
   });
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -172,11 +172,11 @@ export default function WarehouseScanPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [warehouseId]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const bins = useMemo(() => {
     const selectedWarehouse = warehouses.find(

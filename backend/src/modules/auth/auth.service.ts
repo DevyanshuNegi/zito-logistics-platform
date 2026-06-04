@@ -3,6 +3,7 @@ import {
   ConflictException,
   HttpException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -51,6 +52,8 @@ const HEAD_OFFICE_AGENCY_NAME = 'Zito Head Office';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -216,7 +219,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email, phone, or password.');
     }
 
-    this.assertAccountIsActive(user);
+    this.assertAccountCanAuthenticate(user);
 
     await this.assertOtpNotLocked(identifier);
 
@@ -247,7 +250,7 @@ export class AuthService {
       data: {
         temp_token: tempToken,
         contact: identifier,
-        debugOtp: otpResult.debugOtp ?? null,
+        debugOtp: this.shouldExposeDevOtp() ? otpResult.debugOtp ?? null : null,
         debugDeliveryTarget: otpResult.debugDeliveryTarget ?? null,
         otpExpiresAt: otpResult.expiresAt?.toISOString() ?? null,
         resendAvailableAt: new Date(
@@ -274,7 +277,7 @@ export class AuthService {
     try {
       const decoded = this.jwtService.verify(tempToken);
       if (decoded.purpose !== 'otp') {
-        throw new Error();
+        throw new Error('Invalid token purpose for OTP verification');
       }
       contact = decoded.contact;
     } catch {
@@ -288,7 +291,7 @@ export class AuthService {
       throw new UnauthorizedException('User no longer exists');
     }
 
-    this.assertAccountIsActive(user);
+    this.assertAccountCanAuthenticate(user);
 
     try {
       await this.otpService.verifyOtp(contact, otp);
@@ -324,7 +327,7 @@ export class AuthService {
     try {
       const decoded = this.jwtService.verify(tempToken);
       if (decoded.purpose !== 'email_password_after_otp') {
-        throw new Error();
+        throw new Error('Invalid token purpose for password completion');
       }
       contact = decoded.contact;
     } catch {
@@ -338,7 +341,7 @@ export class AuthService {
       throw new UnauthorizedException('User no longer exists');
     }
 
-    this.assertAccountIsActive(user);
+    this.assertAccountCanAuthenticate(user);
 
     if (!this.requiresEmailPassword(user, contact)) {
       throw new UnauthorizedException(
@@ -352,6 +355,103 @@ export class AuthService {
     }
 
     return this.issueSession(user, context);
+  }
+
+  async forgotPassword(email: string) {
+    const identifier = this.normalizeIdentifier(email);
+    if (!identifier || !identifier.includes('@')) {
+      throw new BadRequestException('A valid email address is required.');
+    }
+
+    const user = await this.findUserByIdentifier(identifier);
+    if (!user || !user.email) {
+      throw new NotFoundException('No account was found for this email address.');
+    }
+
+    await this.assertOtpNotLocked(identifier);
+    const otpResult = await this.otpService.sendOtp(identifier, 'password-reset');
+    if (!otpResult.sent) {
+      throw new HttpException(
+        {
+          message: `Please wait ${otpResult.cooldownRemaining}s before requesting a new reset code.`,
+          data: {
+            cooldownRemaining: otpResult.cooldownRemaining,
+            resendAvailableAt: new Date(
+              Date.now() + otpResult.cooldownRemaining * 1000,
+            ).toISOString(),
+          },
+        },
+        429,
+      );
+    }
+
+    return {
+      message: 'Password reset code sent successfully.',
+      data: {
+        email: identifier,
+        debugOtp: this.shouldExposeDevOtp() ? otpResult.debugOtp ?? null : null,
+        resendAvailableAt: new Date(
+          Date.now() + otpResult.cooldownRemaining * 1000,
+        ).toISOString(),
+      },
+    };
+  }
+
+  async verifyResetOtp(email: string, otp: string) {
+    const identifier = this.normalizeIdentifier(email);
+    if (!identifier || !identifier.includes('@')) {
+      throw new BadRequestException('A valid email address is required.');
+    }
+
+    const user = await this.findUserByIdentifier(identifier);
+    if (!user || !user.email) {
+      throw new NotFoundException('No account was found for this email address.');
+    }
+
+    try {
+      await this.otpService.verifyOtp(identifier, otp);
+    } catch (error) {
+      throw this.rewrapOtpError(error);
+    }
+
+    const resetToken = this.jwtService.sign(
+      { contact: identifier, purpose: 'password_reset' },
+      { expiresIn: '10m' },
+    );
+
+    return {
+      message: 'Reset code verified.',
+      data: { resetToken },
+    };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    let contact: string;
+    try {
+      const decoded = this.jwtService.verify(token);
+      if (decoded.purpose !== 'password_reset') {
+        throw new Error('Invalid token purpose for password reset');
+      }
+      contact = decoded.contact;
+    } catch {
+      throw new UnauthorizedException('Invalid or expired reset token. Request a new code.');
+    }
+
+    const user = await this.findUserByIdentifier(contact);
+    if (!user) {
+      throw new NotFoundException('User no longer exists.');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    return {
+      message: 'Password updated successfully. You can now sign in.',
+      data: { email: contact },
+    };
   }
 
   async reauth(userId: string, password: string) {
@@ -444,10 +544,12 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload);
-    const refreshToken = this.jwtService.sign(
-      { userId: user.id, sessionId, purpose: 'refresh' },
-      { expiresIn: '90d' },
-    );
+    const refreshToken = this.shouldExposeLegacyRefreshToken()
+      ? this.jwtService.sign(
+          { userId: user.id, sessionId, purpose: 'refresh' },
+          { expiresIn: '90d' },
+        )
+      : null;
 
     await this.logSession(
       user.id,
@@ -456,16 +558,21 @@ export class AuthService {
       context?.deviceInfo ?? null,
     );
 
+    this.logger.log(
+      `Session created for user ${user.id} role=${user.role} status=${user.status} session=${sessionId.slice(0, 8)}...`,
+    );
+
     return {
       message: 'Login successful',
       data: {
         token: accessToken,
-        refreshToken,
+        ...(refreshToken ? { refreshToken } : {}),
         user: {
           id: user.id,
           email: user.email,
           phone: user.phone,
           role: user.role,
+          status: user.status,
           fullName: user.fullName,
           companyName: user.companyName,
           agencyId: user.agencyId,
@@ -532,8 +639,8 @@ export class AuthService {
     };
   }
 
-  private assertAccountIsActive(user: AuthLookupUser) {
-    if (user.status !== AccountStatus.ACTIVE) {
+  private assertAccountCanAuthenticate(user: AuthLookupUser) {
+    if (user.status === AccountStatus.SUSPENDED) {
       throw new UnauthorizedException({
         message: `Account is ${user.status.toLowerCase()}`,
         data: { status: user.status },
@@ -784,5 +891,19 @@ export class AuthService {
 
   private sanitizeDeviceInfo(deviceInfo?: string | null) {
     return deviceInfo ? deviceInfo.slice(0, 240) : null;
+  }
+
+  private shouldExposeDevOtp() {
+    return (
+      process.env.NODE_ENV !== 'production' &&
+      process.env.EXPOSE_DEV_OTP === 'true'
+    );
+  }
+
+  private shouldExposeLegacyRefreshToken() {
+    return (
+      process.env.NODE_ENV !== 'production' &&
+      process.env.EXPOSE_LEGACY_REFRESH_TOKEN === 'true'
+    );
   }
 }

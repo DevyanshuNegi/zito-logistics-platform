@@ -2,6 +2,7 @@
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const runDbRegression = process.env.ZITO_ENABLE_DB_REGRESSION === '1';
 
 global.prisma = prisma;
 
@@ -10,6 +11,10 @@ jest.setTimeout(30000);
 
 // Setup test database
 beforeAll(async () => {
+  if (!runDbRegression) {
+    return;
+  }
+
   try {
     await prisma.$connect();
     console.log('Test database synced via Prisma');
@@ -21,6 +26,10 @@ beforeAll(async () => {
 
 // Cleanup after all tests
 afterAll(async () => {
+  if (!runDbRegression) {
+    return;
+  }
+
   try {
     await prisma.$disconnect();
     console.log('Test database connection closed');

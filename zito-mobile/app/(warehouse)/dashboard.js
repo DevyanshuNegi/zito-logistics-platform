@@ -20,8 +20,8 @@ export default function WarehouseDashboardScreen() {
     try {
       setError('');
       const [warehousePayload, inventoryPayload] = await Promise.all([
-        api.get('/api/v1/warehouse'),
-        api.get('/api/v1/inventory'),
+        api.get('/warehouse'),
+        api.get('/inventory'),
       ]);
       setWarehouses(readArray(warehousePayload, 'warehouses'));
       setInventory(readArray(inventoryPayload, 'items'));

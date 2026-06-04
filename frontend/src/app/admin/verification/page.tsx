@@ -40,9 +40,12 @@ type VerificationUser = {
 
 type VerificationPhoto = {
   id: string;
-  category: string;
+  photoType?: string;
+  category?: string;
   status: string;
+  photoUrl?: string | null;
   fileUrl?: string | null;
+  reviewNotes?: string | null;
   reviewNote?: string | null;
   rejectionReason?: string | null;
   reviewedAt?: string | null;
@@ -438,7 +441,7 @@ export default function AdminVerificationPage() {
 
       <SurfaceCard
         title="Fleet verification desk"
-        description="Heavy vehicles and container trucks must complete the number plate, front, right, left, back, chassis, and insurance inspection packet before final approval."
+        description="Heavy vehicles and container trucks must complete the inspection photo and Kenya compliance document packet before final approval."
       >
         {loading && !dashboard ? (
           <Spinner />
@@ -485,16 +488,19 @@ export default function AdminVerificationPage() {
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {vehicle.requiredPhotoCategories.length > 0 ? (
                     vehicle.requiredPhotoCategories.map((category) => {
-                      const photo = vehicle.verificationPhotos.find((item) => item.category === category);
+                      const photo = vehicle.verificationPhotos.find(
+                        (item) => (item.photoType ?? item.category) === category,
+                      );
+                      const note = photo?.reviewNotes ?? photo?.reviewNote;
 
                       return (
                         <div key={category} className="rounded-[16px] border border-slate-800 bg-slate-950/70 p-3">
                           <p className="text-sm font-semibold text-white">{formatStatus(category)}</p>
                           <p className="mt-1 text-xs text-slate-400">
-                            {photo ? `Status: ${formatStatus(photo.status)}` : 'Photo missing'}
+                            {photo ? `Status: ${formatStatus(photo.status)}` : 'Upload missing'}
                           </p>
-                          {photo?.reviewNote ? (
-                            <p className="mt-2 text-xs text-slate-300">Note: {photo.reviewNote}</p>
+                          {note ? (
+                            <p className="mt-2 text-xs text-slate-300">Note: {note}</p>
                           ) : null}
                           {photo?.rejectionReason ? (
                             <p className="mt-2 text-xs text-rose-400">Reason: {photo.rejectionReason}</p>
@@ -507,7 +513,7 @@ export default function AdminVerificationPage() {
                                 disabled={busyKey === `photo:${photo.id}:APPROVED`}
                                 onClick={() => void handlePhotoReview(vehicle.id, photo.id, 'APPROVED')}
                               >
-                                {busyKey === `photo:${photo.id}:APPROVED` ? 'Updating...' : 'Approve photo'}
+                                {busyKey === `photo:${photo.id}:APPROVED` ? 'Updating...' : 'Approve upload'}
                               </Button>
                               <Button
                                 className="w-full"
@@ -519,7 +525,7 @@ export default function AdminVerificationPage() {
                               >
                                 {busyKey === `photo:${photo.id}:RESUBMISSION_REQUIRED`
                                   ? 'Updating...'
-                                  : 'Request new photo'}
+                                  : 'Request resubmission'}
                               </Button>
                               <Button
                                 className="w-full"
@@ -527,7 +533,7 @@ export default function AdminVerificationPage() {
                                 variant="danger"
                                 onClick={() => void handlePhotoReview(vehicle.id, photo.id, 'REJECTED')}
                               >
-                                {busyKey === `photo:${photo.id}:REJECTED` ? 'Updating...' : 'Reject photo'}
+                                {busyKey === `photo:${photo.id}:REJECTED` ? 'Updating...' : 'Reject upload'}
                               </Button>
                             </div>
                           ) : (

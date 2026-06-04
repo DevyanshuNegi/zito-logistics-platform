@@ -31,7 +31,7 @@ export default function OperatorSupportDesk({ title, subtitle, audienceLabel }) 
   const load = async () => {
     try {
       setError('');
-      const payload = await api.get('/api/v1/support');
+      const payload = await api.get('/support');
       setTickets(readArray(payload, 'tickets'));
     } catch (requestError) {
       setError(requestError.message);
@@ -49,9 +49,9 @@ export default function OperatorSupportDesk({ title, subtitle, audienceLabel }) 
     setBusyTicketId(ticketId);
     try {
       if (action === 'assign') {
-        await api.patch(`/api/v1/support/${ticketId}/assign`, {});
+        await api.patch(`/support/${ticketId}/assign`, {});
       } else {
-        await api.patch(`/api/v1/support/${ticketId}`, body);
+        await api.patch(`/support/${ticketId}`, body);
       }
       load();
     } catch (requestError) {

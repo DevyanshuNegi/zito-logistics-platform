@@ -81,11 +81,15 @@ export class SessionStateService {
       return;
     }
 
-    const session = await this.restoreOrCreateSession({
-      sessionId: input.sessionId,
-      userId: input.userId,
-      issuedAt: input.issuedAt ?? null,
+    const existing = await this.prisma.idempotencyRecord.findUnique({
+      where: { key: this.keyOf(input.sessionId) },
+      select: { response: true },
     });
+
+    const session = this.asSessionRecord(existing?.response);
+    if (!session) {
+      throw new UnauthorizedException('Session is no longer active.');
+    }
 
     if (session.userId !== input.userId) {
       throw new UnauthorizedException('Session owner mismatch.');

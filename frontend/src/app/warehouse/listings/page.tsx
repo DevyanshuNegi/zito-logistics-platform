@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Table } from '@/components/ui/Table';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
+import { WarehousePinPicker } from '@/components/maps/WarehousePinPicker';
 import { ApiError, api } from '@/lib/api';
 import { formatMoney, formatStatus } from '@/lib/format';
 
@@ -109,6 +110,14 @@ export default function WarehouseListingsPage() {
     [listings],
   );
 
+  function updatePin(point: { latitude: string; longitude: string }) {
+    setForm((current) => ({
+      ...current,
+      latitude: point.latitude,
+      longitude: point.longitude,
+    }));
+  }
+
   async function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -200,8 +209,6 @@ export default function WarehouseListingsPage() {
           <Input label="Listing title" value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} required />
           <Input label="Area" value={form.areaLabel} onChange={(event) => setForm((current) => ({ ...current, areaLabel: event.target.value }))} placeholder="Nairobi Industrial Area" required />
           <Input label="Address" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} required />
-          <Input label="Latitude" type="number" step="0.000001" value={form.latitude} onChange={(event) => setForm((current) => ({ ...current, latitude: event.target.value }))} />
-          <Input label="Longitude" type="number" step="0.000001" value={form.longitude} onChange={(event) => setForm((current) => ({ ...current, longitude: event.target.value }))} />
           <Input label="Service radius km" type="number" min="1" value={form.serviceRadiusKm} onChange={(event) => setForm((current) => ({ ...current, serviceRadiusKm: event.target.value }))} />
           <Input label="Storage types" value={form.storageTypes} onChange={(event) => setForm((current) => ({ ...current, storageTypes: event.target.value }))} help="Comma-separated: DRY, COLD, FROZEN, CROSS_DOCK" required />
           <Input label="Amenities" value={form.amenities} onChange={(event) => setForm((current) => ({ ...current, amenities: event.target.value }))} help="Security, forklift, loading bay, CCTV..." />
@@ -216,6 +223,14 @@ export default function WarehouseListingsPage() {
           <Input label="Minimum days" type="number" min="1" value={form.minimumBookingDays} onChange={(event) => setForm((current) => ({ ...current, minimumBookingDays: event.target.value }))} />
           <div className="md:col-span-2 xl:col-span-3">
             <Input label="Description" textarea rows={3} value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
+          </div>
+          <div className="md:col-span-2 xl:col-span-3">
+            <WarehousePinPicker
+              latitude={form.latitude}
+              longitude={form.longitude}
+              address={[form.title, form.areaLabel, form.address].filter(Boolean).join(' / ')}
+              onChange={updatePin}
+            />
           </div>
           <div className="md:col-span-2 xl:col-span-3">
             <Button disabled={saving || warehouses.length === 0} type="submit">

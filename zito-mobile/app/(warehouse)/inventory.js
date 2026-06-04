@@ -16,7 +16,7 @@ export default function WarehouseInventoryScreen() {
   const load = async () => {
     try {
       setError('');
-      const payload = await api.get('/api/v1/inventory');
+      const payload = await api.get('/inventory');
       setInventory(readArray(payload, 'items'));
     } catch (requestError) {
       setError(requestError.message);

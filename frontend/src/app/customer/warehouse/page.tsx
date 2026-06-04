@@ -1,11 +1,13 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, MapPinned, PackageCheck, Refrigerator, ShieldCheck, Snowflake, Warehouse } from 'lucide-react';
+import Image from 'next/image';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarClock, LocateFixed, MapPinned, PackageCheck, Refrigerator, ShieldCheck, Snowflake, Warehouse } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
+import { WarehouseDiscoveryMap } from '@/components/maps/WarehouseDiscoveryMap';
 import { ApiError, api } from '@/lib/api';
 import { formatDateTime, formatMoney, formatStatus } from '@/lib/format';
 
@@ -28,6 +30,9 @@ type WarehouseListing = {
   vatApplies: boolean;
   vatRatePct: number;
   minimumBookingDays: number;
+  latitude?: number | null;
+  longitude?: number | null;
+  distanceKm?: number | null;
 };
 
 type WarehouseBooking = {
@@ -70,15 +75,22 @@ export default function CustomerWarehousePage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [locationFilter, setLocationFilter] = useState('');
   const [storageType, setStorageType] = useState<(typeof storageModes)[number]['value']>('ALL');
+  const [nearbyPoint, setNearbyPoint] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [radiusKm, setRadiusKm] = useState('25');
   const [bookingForm, setBookingForm] = useState(EMPTY_BOOKING);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const query = new URLSearchParams();
       if (locationFilter.trim()) query.set('location', locationFilter.trim());
       if (storageType !== 'ALL') query.set('storageType', storageType);
+      if (nearbyPoint) {
+        query.set('latitude', String(nearbyPoint.latitude));
+        query.set('longitude', String(nearbyPoint.longitude));
+        query.set('radiusKm', radiusKm || '25');
+      }
       const suffix = query.toString() ? `?${query.toString()}` : '';
       const [listingResponse, bookingResponse] = await Promise.all([
         api.get<WarehouseListing[]>(`/warehouse/listings/public${suffix}`),
@@ -99,16 +111,43 @@ export default function CustomerWarehousePage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [locationFilter, nearbyPoint, radiusKm, storageType]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const selectedListing = useMemo(
     () => listings.find((listing) => listing.id === bookingForm.listingId) ?? listings[0] ?? null,
     [bookingForm.listingId, listings],
   );
+
+  function selectListing(listingId: string) {
+    const listing = listings.find((item) => item.id === listingId);
+    setBookingForm((current) => ({
+      ...current,
+      listingId,
+      storageType: listing?.storageTypes[0] ?? current.storageType,
+      capacityUnit: listing?.capacityUnit ?? current.capacityUnit,
+    }));
+  }
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setError('Location permission is not available in this browser.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setNearbyPoint({
+          latitude: Number(position.coords.latitude.toFixed(6)),
+          longitude: Number(position.coords.longitude.toFixed(6)),
+        });
+      },
+      () => setError('Unable to read your current location.'),
+    );
+  }
 
   const estimate = useMemo(() => {
     if (!selectedListing || !bookingForm.startDate || !bookingForm.endDate || !bookingForm.capacityRequested) {
@@ -185,7 +224,7 @@ export default function CustomerWarehousePage() {
       </section>
 
       <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+        <div className="grid gap-3 md:grid-cols-[1fr_140px_auto_auto]">
           <Input
             label="Find warehouse by location"
             tone="light"
@@ -193,12 +232,34 @@ export default function CustomerWarehousePage() {
             onChange={(event) => setLocationFilter(event.target.value)}
             placeholder="Industrial Area, Mombasa, Kisumu..."
           />
+          <Input
+            label="Radius km"
+            tone="light"
+            type="number"
+            min="1"
+            value={radiusKm}
+            onChange={(event) => setRadiusKm(event.target.value)}
+          />
+          <div className="flex items-end">
+            <Button type="button" variant="secondary" className="w-full rounded-[14px]" onClick={useCurrentLocation}>
+              <LocateFixed className="mr-2 h-4 w-4" />
+              Near me
+            </Button>
+          </div>
           <div className="flex items-end">
             <Button type="button" className="w-full rounded-[14px]" onClick={() => void load()}>
               Search
             </Button>
           </div>
         </div>
+        {nearbyPoint ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] bg-[#eef4ff] px-3 py-2 text-xs text-[#1b3f72]">
+            <span>Nearby search is active.</span>
+            <button type="button" className="font-semibold" onClick={() => setNearbyPoint(null)}>
+              Clear
+            </button>
+          </div>
+        ) : null}
 
         <div className="mt-4 flex gap-2 overflow-x-auto">
           {storageModes.map((mode) => {
@@ -224,6 +285,13 @@ export default function CustomerWarehousePage() {
         </div>
       </section>
 
+      <WarehouseDiscoveryMap
+        listings={listings}
+        selectedId={bookingForm.listingId}
+        customerPoint={nearbyPoint}
+        onSelect={selectListing}
+      />
+
       <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
         <div className="space-y-4">
           {loading ? (
@@ -241,14 +309,7 @@ export default function CustomerWarehousePage() {
               <button
                 key={listing.id}
                 type="button"
-                onClick={() =>
-                  setBookingForm((current) => ({
-                    ...current,
-                    listingId: listing.id,
-                    storageType: listing.storageTypes[0] ?? current.storageType,
-                    capacityUnit: listing.capacityUnit,
-                  }))
-                }
+                onClick={() => selectListing(listing.id)}
                 className={[
                   'w-full rounded-[22px] border bg-white p-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition',
                   selectedListing?.id === listing.id ? 'border-[#1b3f72]' : 'border-[#d7e0ec] hover:border-[#93c5fd]',
@@ -257,7 +318,13 @@ export default function CustomerWarehousePage() {
                 <div className="grid gap-4 md:grid-cols-[150px_1fr]">
                   <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-[16px] bg-[#eef4ff] text-[#1b3f72]">
                     {listing.photoUrls?.[0] ? (
-                      <img src={listing.photoUrls[0]} alt={listing.title} className="h-full w-full object-cover" />
+                      <Image
+                        src={listing.photoUrls[0]}
+                        alt={listing.title}
+                        width={300}
+                        height={225}
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
                       <Warehouse className="h-8 w-8" />
                     )}
@@ -270,6 +337,9 @@ export default function CustomerWarehousePage() {
                         </p>
                         <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">{listing.title}</h2>
                         <p className="mt-1 text-sm leading-6 text-[#64748b]">{listing.areaLabel} / {listing.address}</p>
+                        {listing.distanceKm != null ? (
+                          <p className="mt-1 text-xs font-semibold text-[#1b3f72]">{listing.distanceKm} km from search point</p>
+                        ) : null}
                       </div>
                       <span className="rounded-full bg-[#dcfce7] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#15803d]">
                         Approved

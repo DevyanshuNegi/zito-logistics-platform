@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { Reauth } from '../../common/decorators/reauth.decorator';
@@ -7,6 +7,7 @@ import { SessionGuard } from '../../common/guards/session.guard';
 import { AuthService } from './auth.service';
 import { Roles } from './decorators/roles.decorator';
 import { CompleteEmailLoginDto } from './dto/complete-email-login.dto';
+import { ForgotPasswordDto, ResetPasswordDto, VerifyResetOtpDto } from './dto/forgot-password.dto';
 import { ForceLogoutDto } from './dto/force-logout.dto';
 import { KycUploadDto } from './dto/kyc-upload.dto';
 import { LoginDto } from './dto/login.dto';
@@ -66,11 +67,30 @@ export class AuthController {
     });
   }
 
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Request a password reset OTP' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Post('verify-reset-otp')
+  @ApiOperation({ summary: 'Verify password reset OTP and issue reset token' })
+  async verifyResetOtp(@Body() dto: VerifyResetOtpDto) {
+    return this.authService.verifyResetOtp(dto.email, dto.otp);
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Set a new password after reset OTP verification' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.newPassword);
+  }
+
   @Post('kyc-documents')
   @ApiOperation({ summary: 'PRD §4: Upload KYC document' })
   async uploadKyc(@Body() kycUploadDto: KycUploadDto) {
-    const { userId, ...dto } = kycUploadDto;
-    return this.authService.uploadKycDocument(userId, dto);
+    throw new BadRequestException(
+      'KYC upload must use authenticated live camera capture via /users/me/kyc.',
+    );
   }
 
   @Patch('verify-user/:id')

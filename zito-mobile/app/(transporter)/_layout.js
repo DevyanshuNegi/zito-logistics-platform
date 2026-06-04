@@ -28,6 +28,10 @@ export default function TransporterLayout() {
         options={{ title: 'Fleet', tabBarIcon: ({ color }) => <TabIcon name="car-outline" color={color} /> }}
       />
       <Tabs.Screen
+        name="opportunities"
+        options={{ title: 'Market', tabBarIcon: ({ color }) => <TabIcon name="briefcase-outline" color={color} /> }}
+      />
+      <Tabs.Screen
         name="drivers"
         options={{ title: 'Drivers', tabBarIcon: ({ color }) => <TabIcon name="people-outline" color={color} /> }}
       />

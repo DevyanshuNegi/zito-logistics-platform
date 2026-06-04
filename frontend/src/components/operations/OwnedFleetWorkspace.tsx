@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -12,7 +12,7 @@ import { VehicleLocationPanel } from '@/components/operations/VehicleLocationPan
 import { VehicleVerificationPanel } from '@/components/operations/VehicleVerificationPanel';
 import { ApiError, api } from '@/lib/api';
 import { formatStatus } from '@/lib/format';
-import { VEHICLE_TYPES } from '@/lib/phase-one';
+import { FLEET_VERIFICATION_UPLOAD_CATEGORIES, KENYA_VEHICLE_CATALOG, VEHICLE_TYPES } from '@/lib/phase-one';
 
 type Vehicle = {
   id: string;
@@ -125,6 +125,7 @@ export function OwnedFleetWorkspace({
   const classes = buildToneClasses(tone);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [form, setForm] = useState(INITIAL_FORM);
+  const [verificationFiles, setVerificationFiles] = useState<Record<string, File | null>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [retiringId, setRetiringId] = useState<string | null>(null);
@@ -154,6 +155,23 @@ export function OwnedFleetWorkspace({
     [vehicles],
   );
 
+  const selectedCatalogGroup = useMemo(
+    () => KENYA_VEHICLE_CATALOG.find((group) => group.vehicleType === form.type),
+    [form.type],
+  );
+  const makeOptions = useMemo(
+    () => Array.from(new Set((selectedCatalogGroup?.models ?? []).map((item) => item.make))).sort(),
+    [selectedCatalogGroup],
+  );
+  const modelOptions = useMemo(
+    () =>
+      (selectedCatalogGroup?.models ?? [])
+        .filter((item) => item.make === form.make)
+        .map((item) => item.model)
+        .sort(),
+    [form.make, selectedCatalogGroup],
+  );
+
   async function loadFleet() {
     setLoading(true);
     setError(null);
@@ -180,28 +198,45 @@ export function OwnedFleetWorkspace({
     setError(null);
 
     try {
-      await api.post('/fleet', {
-        plateNumber: form.plateNumber.trim().toUpperCase(),
-        chassisNumber: form.chassisNumber.trim().toUpperCase(),
-        make: form.make || undefined,
-        model: form.model || undefined,
-        year: form.year ? Number(form.year) : undefined,
-        type: form.type,
-        capacityKg: Number(form.capacityKg),
-        capacityM3: Number(form.capacityM3),
-        insuranceCompany: form.insuranceCompany.trim(),
-        insurancePolicyNumber: form.insurancePolicyNumber.trim().toUpperCase(),
-        insuranceExpiry: form.insuranceExpiry,
+      const missingUploads = FLEET_VERIFICATION_UPLOAD_CATEGORIES.filter(
+        (category) => !verificationFiles[category],
+      );
+      if (missingUploads.length > 0) {
+        throw new Error(`Upload all required photos and documents first: ${missingUploads.map(formatStatus).join(', ')}`);
+      }
+
+      const formData = new FormData();
+      formData.append('plateNumber', form.plateNumber.trim().toUpperCase());
+      formData.append('chassisNumber', form.chassisNumber.trim().toUpperCase());
+      formData.append('make', form.make);
+      formData.append('model', form.model);
+      formData.append('year', form.year);
+      formData.append('type', form.type);
+      formData.append('capacityKg', form.capacityKg);
+      formData.append('capacityM3', form.capacityM3);
+      formData.append('insuranceCompany', form.insuranceCompany.trim());
+      formData.append('insurancePolicyNumber', form.insurancePolicyNumber.trim().toUpperCase());
+      formData.append('insuranceExpiry', form.insuranceExpiry);
+      FLEET_VERIFICATION_UPLOAD_CATEGORIES.forEach((category) => {
+        formData.append(category, verificationFiles[category]!);
       });
 
+      await api.post('/fleet', formData);
+
       setForm(INITIAL_FORM);
+      setVerificationFiles({});
       await loadFleet();
       await onChange?.();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Unable to create vehicle.');
+      setError(caught instanceof ApiError || caught instanceof Error ? caught.message : 'Unable to create vehicle.');
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleVerificationFileChange(category: string, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setVerificationFiles((current) => ({ ...current, [category]: file }));
   }
 
   async function handleRetire(vehicleId: string) {
@@ -294,10 +329,56 @@ export function OwnedFleetWorkspace({
               className={classes.select}
               value={form.type}
               onChange={(event) =>
-                setForm((current) => ({ ...current, type: event.target.value }))
+                setForm((current) => ({
+                  ...current,
+                  type: event.target.value,
+                  make: '',
+                  model: '',
+                }))
               }
             >
               {VEHICLE_TYPES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-2">
+            <span className={classes.label}>Make</span>
+            <select
+              className={classes.select}
+              value={form.make}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  make: event.target.value,
+                  model: '',
+                }))
+              }
+              required
+            >
+              <option value="">Select make</option>
+              {makeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-2">
+            <span className={classes.label}>Model</span>
+            <select
+              className={`${classes.select} disabled:cursor-not-allowed disabled:opacity-60`}
+              value={form.model}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, model: event.target.value }))
+              }
+              required
+              disabled={!form.make}
+            >
+              <option value="">Select model</option>
+              {modelOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -321,22 +402,6 @@ export function OwnedFleetWorkspace({
             value={form.capacityM3}
             onChange={(event) =>
               setForm((current) => ({ ...current, capacityM3: event.target.value }))
-            }
-            required
-          />
-          <Input
-            label="Make"
-            tone={tone === 'light' ? 'light' : 'dark'}
-            value={form.make}
-            onChange={(event) => setForm((current) => ({ ...current, make: event.target.value }))}
-            required
-          />
-          <Input
-            label="Model"
-            tone={tone === 'light' ? 'light' : 'dark'}
-            value={form.model}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, model: event.target.value }))
             }
             required
           />
@@ -380,6 +445,28 @@ export function OwnedFleetWorkspace({
             required
             className="col-span-2"
           />
+          <div className="col-span-2">
+            <p className={classes.label}>Mandatory photos and documents</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {FLEET_VERIFICATION_UPLOAD_CATEGORIES.map((category) => (
+                <label key={category} className="block space-y-2">
+                  <span className={classes.sub}>{formatStatus(category)}</span>
+                  <input
+                    accept="image/*"
+                    capture="environment"
+                    className={
+                      tone === 'light'
+                        ? 'block w-full text-xs text-slate-600 file:mr-3 file:rounded-full file:border-0 file:bg-[#1b3f72] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white'
+                        : 'block w-full text-xs text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-sky-500/20 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-100'
+                    }
+                    required
+                    type="file"
+                    onChange={(event) => handleVerificationFileChange(category, event)}
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
           <div className="col-span-2 flex items-end">
             <Button className="w-full" disabled={saving} type="submit">
               {saving ? 'Saving vehicle...' : 'Add vehicle'}

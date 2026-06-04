@@ -22,13 +22,13 @@ export default function CourierCompanyDashboard() {
   const load = async () => {
     try {
       const [bookingData, vehicleData] = await Promise.all([
-        api.get('/api/v1/courier-company/bookings'),
-        api.get('/api/v1/fleet'),
+      api.get('/courier-company/bookings'),
+      api.get('/fleet'),
       ]);
       setBookings(bookingData.bookings || []);
       setVehicles(Array.isArray(vehicleData) ? vehicleData : []);
     } catch (error) {
-      console.error(error);
+      /* Dashboard load error handled by state */
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { api } from '../../src/api/client';
+import { api, extractErrorMessage } from '../../src/api/client';
 import { colors } from '../../src/constants/theme';
 import { CustomerAiSupportSheet } from '../../src/components/CustomerAiSupportSheet';
 import { DriverPhotoCard } from '../../src/components/DriverPhotoCard';
@@ -37,6 +37,7 @@ export default function TrackScreen() {
   const [bookings, setBookings]     = useState([]);
   const [selected, setSelected]     = useState(null);
   const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [rating, setRating]         = useState(0);
   const [ratingDone, setRatingDone] = useState(false);
@@ -45,9 +46,10 @@ export default function TrackScreen() {
 
   const loadBookings = useCallback(async () => {
     try {
-      const data = await api.get('/api/v1/customer/bookings?limit=20');
+      const data = await api.get('/customer/bookings?limit=20');
       const list = data.data || [];
       setBookings(list);
+      setError(null);
       if (bookingId) {
         const found = list.find(b => b.id === bookingId);
         if (found) setSelected(found);
@@ -55,15 +57,17 @@ export default function TrackScreen() {
         const active = list.find(b => ['pending','approved','assigned','accepted','picked_up','in_transit'].includes(b.status));
         setSelected(active || list[0]);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      setError(extractErrorMessage(e));
+    }
     finally { setLoading(false); setRefreshing(false); }
   }, [bookingId, selected?.id]);
 
   const refreshSelected = useCallback(async (id) => {
     try {
-      const data = await api.get(`/api/v1/customer/bookings/${id}`);
+      const data = await api.get(`/customer/bookings/${id}`);
       setSelected(data.data || null);
-    } catch (e) { console.error(e); }
+    } catch (_e) { /* Polling error silently handled */ }
   }, []);
 
   useEffect(() => {
@@ -83,25 +87,36 @@ export default function TrackScreen() {
       { text: 'No', style: 'cancel' },
       { text: 'Yes, Cancel', style: 'destructive', onPress: async () => {
         try {
-          await api.post(`/api/v1/customer/bookings/${selected.id}/cancel`, {});
+          await api.post(`/customer/bookings/${selected.id}/cancel`, {});
           Alert.alert('Cancelled', 'Your booking has been cancelled.');
           loadBookings();
-        } catch (e) { Alert.alert('Error', e.message); }
+        } catch (e) { Alert.alert('Error', extractErrorMessage(e)); }
       }},
     ]);
   };
 
   const handleRate = async (stars) => {
     try {
-      await api.post(`/api/v1/customer/bookings/${selected.id}/rate`, { rating: stars });
+      await api.post(`/customer/bookings/${selected.id}/rate`, { rating: stars });
       setRating(stars); setRatingDone(true);
       Alert.alert('Thank you!', 'Your rating has been submitted.');
-    } catch (e) { Alert.alert('Error', e.message); }
+    } catch (e) { Alert.alert('Error', extractErrorMessage(e)); }
   };
 
   const curIdx = selected ? STATUS_ORDER.indexOf(selected.status) : -1;
 
-  if (loading) return <View style={s.center}><ActivityIndicator color={colors.primary} size="large" /></View>;
+  if (loading && !error) return <View style={s.center}><ActivityIndicator color={colors.primary} size="large" /></View>;
+  if (error) return (
+    <SafeAreaView style={s.root}>
+      <View style={s.center}>
+        <Text style={s.errorIcon}>⚠️</Text>
+        <Text style={s.errorText}>{error}</Text>
+        <TouchableOpacity style={s.retryBtn} onPress={() => { setLoading(true); loadBookings(); }}>
+          <Text style={s.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
 
   const active = bookings.filter(b =>
     ['pending','approved','assigned','accepted','picked_up','in_transit'].includes(b.status)
@@ -128,11 +143,6 @@ export default function TrackScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadBookings(); }} tintColor={colors.primary} />}>
 
         <Text style={s.title}>Track Booking</Text>
-
-        <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
-          <Text style={s.helperLabel}>Zito Assistant</Text>
-          <Text style={s.helperTitle}>Ask about status, ETA, support, or what happens next in this trip.</Text>
-        </TouchableOpacity>
 
         {/* Booking selector chips */}
         {active.length > 1 && (
@@ -179,6 +189,12 @@ export default function TrackScreen() {
                 </View>
               )}
             </View>
+
+            {/* Zito Assistant Card */}
+            <TouchableOpacity style={s.helperCard} onPress={() => setShowAssistant(true)}>
+              <Text style={s.helperLabel}>Zito Assistant</Text>
+              <Text style={s.helperTitle}>Ask about status, ETA, support, or what happens next in this trip.</Text>
+            </TouchableOpacity>
 
             {/* Status Timeline */}
             <Text style={s.sectionTitle}>Trip Progress</Text>
@@ -254,8 +270,8 @@ export default function TrackScreen() {
 const s = StyleSheet.create({
   root:        { flex: 1, backgroundColor: colors.bg },
   center:      { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' },
-  content:     { padding: 20, paddingBottom: 40 },
-  title:       { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
+  content:     { padding: 20, paddingBottom: 100 },
+  title:       { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 20, marginTop: 4 },
   helperCard:  {
     borderRadius: 16,
     borderWidth: 1,
@@ -318,4 +334,8 @@ const s = StyleSheet.create({
   starActive:  { color: colors.warning },
   cancelBtn:   { borderWidth: 1, borderColor: colors.danger, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 10 },
   cancelText:  { color: colors.danger, fontWeight: '700', fontSize: 15 },
+  errorIcon:   { fontSize: 56, marginBottom: 16 },
+  errorText:   { fontSize: 15, color: colors.text, textAlign: 'center', marginBottom: 20, paddingHorizontal: 20 },
+  retryBtn:    { backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 14 },
+  retryText:   { color: colors.bg, fontWeight: '800', fontSize: 15 },
 });

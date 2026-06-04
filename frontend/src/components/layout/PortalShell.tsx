@@ -88,7 +88,9 @@ export function PortalShell({
     user.role !== 'AGENCY_STAFF' ||
     allowedStaffScopes.map((scope) => scope.trim().toUpperCase()).includes(normalizedScope);
   const hasSession = !!user && !!accessToken;
-  const canAccess = hasSession && hasAnyRole(user.role, allowedRoles) && scopeAllowed;
+  const mustCompleteVerification = Boolean(user?.status && user.status !== 'ACTIVE');
+  const canAccess =
+    hasSession && hasAnyRole(user.role, allowedRoles) && scopeAllowed && !mustCompleteVerification;
   const workspaceHome = navItems[0]?.href ?? getRoleHomePath(user?.role, user?.staffScope);
   const currentNavItem =
     navItems
@@ -124,6 +126,20 @@ export function PortalShell({
       };
     }
 
+    if (mustCompleteVerification) {
+      router.replace('/complete-verification');
+      fallbackTimer = window.setTimeout(() => {
+        if (window.location.pathname !== '/complete-verification') {
+          window.location.replace('/complete-verification');
+        }
+      }, 120);
+      return () => {
+        if (fallbackTimer) {
+          window.clearTimeout(fallbackTimer);
+        }
+      };
+    }
+
     if (!hasAnyRole(user.role, allowedRoles) || !scopeAllowed) {
       router.replace('/unauthorized');
       fallbackTimer = window.setTimeout(() => {
@@ -143,7 +159,7 @@ export function PortalShell({
         window.clearTimeout(fallbackTimer);
       }
     };
-  }, [accessToken, allowedRoles, allowedStaffScopes, loading, loginPath, router, scopeAllowed, user]);
+  }, [accessToken, allowedRoles, allowedStaffScopes, loading, loginPath, mustCompleteVerification, router, scopeAllowed, user]);
 
   if (loading || !user || !canAccess) {
     return (

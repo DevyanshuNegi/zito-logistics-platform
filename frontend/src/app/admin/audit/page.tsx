@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -84,7 +84,7 @@ export default function AdminAuditPage() {
     reason: '',
   });
 
-  async function loadRequests() {
+  const loadRequests = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -101,11 +101,11 @@ export default function AdminAuditPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [actionTypeFilter, statusFilter]);
 
   useEffect(() => {
     void loadRequests();
-  }, [statusFilter, actionTypeFilter]);
+  }, [loadRequests]);
 
   async function submitRequest(message: string, action: () => Promise<unknown>) {
     setError(null);

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Clock3, MapPinned, Truck, Wallet } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Spinner } from '@/components/ui/Spinner';
+import { VerificationExpeditePanel } from '@/components/verification/VerificationExpeditePanel';
 import { ApiError, api } from '@/lib/api';
 import { formatMoney, formatStatus } from '@/lib/format';
 
@@ -256,6 +257,8 @@ export default function DriverDashboardPage() {
           {shift.fatigueAlert}
         </Alert>
       ) : null}
+
+      <VerificationExpeditePanel />
 
       <section className="overflow-hidden rounded-[24px] border border-[#d7e0ec] bg-white shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
         <div className="flex items-center justify-between gap-3 bg-[linear-gradient(180deg,#1b3f72_0%,#142f55_100%)] px-4 py-3 text-white">

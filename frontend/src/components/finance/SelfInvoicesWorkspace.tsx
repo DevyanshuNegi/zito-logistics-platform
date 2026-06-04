@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -64,7 +64,7 @@ export function SelfInvoicesWorkspace({
     [invoices],
   );
 
-  async function loadInvoices() {
+  const loadInvoices = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -76,11 +76,11 @@ export function SelfInvoicesWorkspace({
     } finally {
       setLoading(false);
     }
-  }
+  }, [listPath]);
 
   useEffect(() => {
     void loadInvoices();
-  }, [listPath]);
+  }, [loadInvoices]);
 
   async function handleDownload(invoiceId: string) {
     setDownloadingId(invoiceId);

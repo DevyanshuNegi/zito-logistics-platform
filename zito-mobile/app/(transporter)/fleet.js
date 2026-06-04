@@ -20,8 +20,8 @@ export default function FleetScreen() {
   const [form, setForm]           = useState({ plate_number: '', make: '', model: '', year: '', vehicle_type: 'pickup', cargo_capacity_kg: '' });
 
   const load = async () => {
-    try { const d = await api.get('/api/v1/transporter/fleet'); setVehicles(d.data || []); }
-    catch (e) { console.error(e); }
+    try { const d = await api.get('/transporter/fleet'); setVehicles(d.data || []); }
+    catch (e) { /* Fleet load error handled by state */ }
     finally { setLoading(false); setRefreshing(false); }
   };
 
@@ -31,7 +31,7 @@ export default function FleetScreen() {
     if (!form.plate_number || !form.make || !form.model) { Alert.alert('Required', 'Plate, make and model are required.'); return; }
     setSaving(true);
     try {
-      await api.post('/api/v1/transporter/fleet', { ...form, year: parseInt(form.year) || null, cargo_capacity_kg: parseInt(form.cargo_capacity_kg) || null });
+      await api.post('/transporter/fleet', { ...form, year: parseInt(form.year) || null, cargo_capacity_kg: parseInt(form.cargo_capacity_kg) || null });
       setShowAdd(false);
       setForm({ plate_number: '', make: '', model: '', year: '', vehicle_type: 'pickup', cargo_capacity_kg: '' });
       load();

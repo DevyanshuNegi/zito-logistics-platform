@@ -66,7 +66,8 @@ export function DriverShell({
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading } = useAuth();
-  const canAccess = !!user && hasAnyRole(user.role, allowedRoles);
+  const mustCompleteVerification = Boolean(user?.status && user.status !== 'ACTIVE');
+  const canAccess = !!user && hasAnyRole(user.role, allowedRoles) && !mustCompleteVerification;
   const currentItem = [...mobileNavItems]
     .sort((left, right) => right.href.length - left.href.length)
     .find((item) => isActivePath(pathname, item.href));
@@ -103,6 +104,20 @@ export function DriverShell({
       };
     }
 
+    if (mustCompleteVerification) {
+      router.replace('/complete-verification');
+      fallbackTimer = window.setTimeout(() => {
+        if (window.location.pathname !== '/complete-verification') {
+          window.location.replace('/complete-verification');
+        }
+      }, 120);
+      return () => {
+        if (fallbackTimer) {
+          window.clearTimeout(fallbackTimer);
+        }
+      };
+    }
+
     if (!hasAnyRole(user.role, allowedRoles)) {
       router.replace('/unauthorized');
       fallbackTimer = window.setTimeout(() => {
@@ -122,7 +137,7 @@ export function DriverShell({
         window.clearTimeout(fallbackTimer);
       }
     };
-  }, [allowedRoles, loading, router, user]);
+  }, [allowedRoles, loading, mustCompleteVerification, router, user]);
 
   if (loading || !user || !canAccess) {
     return (

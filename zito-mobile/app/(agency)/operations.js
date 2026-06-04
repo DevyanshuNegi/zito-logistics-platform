@@ -20,9 +20,9 @@ export default function AgencyOperationsScreen() {
     try {
       setError('');
       const [warehousePayload, inventoryPayload, alertPayload] = await Promise.all([
-        api.get('/api/v1/warehouse'),
-        api.get('/api/v1/inventory'),
-        api.get('/api/v1/alerts/dashboard'),
+        api.get('/warehouse'),
+        api.get('/inventory'),
+        api.get('/alerts/dashboard'),
       ]);
 
       setWarehouses(readArray(warehousePayload, 'warehouses'));

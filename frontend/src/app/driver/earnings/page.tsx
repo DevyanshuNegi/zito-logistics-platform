@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Wallet } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Spinner } from '@/components/ui/Spinner';
+import { DriverSubscriptionPanel } from '@/components/driver/DriverSubscriptionPanel';
 import { ApiError, api } from '@/lib/api';
 import { formatDateTime, formatMoney, formatStatus } from '@/lib/format';
 
@@ -108,6 +109,8 @@ export default function DriverEarningsPage() {
           {error}
         </Alert>
       ) : null}
+
+      <DriverSubscriptionPanel />
 
       <section className="overflow-hidden rounded-[24px] bg-[linear-gradient(180deg,#1b3f72_0%,#142f55_100%)] px-4 py-4 text-white shadow-[0_16px_38px_rgba(27,63,114,0.24)]">
         <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/78">

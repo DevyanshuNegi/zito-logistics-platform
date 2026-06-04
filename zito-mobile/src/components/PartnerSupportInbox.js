@@ -37,7 +37,7 @@ export default function PartnerSupportInbox({
   const load = async () => {
     try {
       setError('');
-      const payload = await api.get('/api/v1/support/my');
+      const payload = await api.get('/support/my');
       setTickets(readArray(payload, 'tickets'));
     } catch (requestError) {
       setError(requestError.message);
@@ -60,7 +60,7 @@ export default function PartnerSupportInbox({
     setSubmitting(true);
     try {
       setError('');
-      await api.post('/api/v1/support', {
+        await api.post('/support', {
         category,
         priority,
         message: message.trim(),

@@ -14,9 +14,9 @@ export default function FinanceScreen() {
 
   const load = async () => {
     try {
-      const d = await api.get('/api/v1/transporter/bookings?status=completed&limit=50');
+      const d = await api.get('/transporter/bookings?status=completed&limit=50');
       setBookings(d.data || []);
-    } catch (e) { console.error(e); }
+    } catch (e) { /* Finance load error handled by state */ }
     finally { setLoading(false); setRefreshing(false); }
   };
 

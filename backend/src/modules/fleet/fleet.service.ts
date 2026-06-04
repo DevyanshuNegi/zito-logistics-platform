@@ -6,7 +6,9 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { VehicleStatus } from '@prisma/client';
+import { mkdir, writeFile } from 'fs/promises';
+import { extname, join } from 'path';
+import { VehicleStatus, VehicleType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BreakdownService } from './breakdown/breakdown.service';
 import { FleetExpiryService } from './fleet-expiry.service';
@@ -15,8 +17,10 @@ import {
   VEHICLE_PHOTO_CATEGORIES,
   type VehiclePhotoCategory,
 } from './dto/upload-vehicle-photo.dto';
+import { getKenyaVehicleCatalog } from './vehicle-catalog';
 
 interface MulterFile {
+  fieldname?: string;
   originalname: string;
   mimetype: string;
   size: number;
@@ -24,7 +28,8 @@ interface MulterFile {
 }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png'];
+const ALLOWED_UPLOAD_TYPES = ['image/jpeg', 'image/png'];
+const UPLOAD_ROOT = join(process.cwd(), 'uploads');
 const TRUCK_VERIFICATION_TYPES = new Set([
   'TRUCK_3T',
   'TRUCK_7T',
@@ -62,21 +67,87 @@ export class FleetService {
   };
 
   private getRequiredPhotoCategories(vehicleType?: string | null): VehiclePhotoCategory[] {
-    if (!vehicleType || !TRUCK_VERIFICATION_TYPES.has(vehicleType)) {
-      return [];
-    }
-
     return [...VEHICLE_PHOTO_CATEGORIES];
   }
 
   private getSafeFileName(name: string) {
-    return name.replace(/\s+/g, '_');
+    return name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  }
+
+  getVehicleCatalog(vehicleType?: VehicleType) {
+    return getKenyaVehicleCatalog(vehicleType);
+  }
+
+  private getUploadExtension(file: MulterFile) {
+    const originalExtension = extname(file.originalname).toLowerCase();
+    if (originalExtension && ['.jpg', '.jpeg', '.png'].includes(originalExtension)) {
+      return originalExtension;
+    }
+
+    return file.mimetype === 'image/png' ? '.png' : '.jpg';
+  }
+
+  private async persistVerificationUpload(
+    vehicleId: string,
+    category: VehiclePhotoCategory,
+    file: MulterFile,
+  ) {
+    const directory = join(UPLOAD_ROOT, 'fleet-verification', vehicleId, category);
+    await mkdir(directory, { recursive: true });
+
+    const extension = this.getUploadExtension(file);
+    const originalBaseName = file.originalname.replace(extname(file.originalname), '');
+    const baseName = this.getSafeFileName(originalBaseName) || category;
+    const fileName = `${Date.now()}_${baseName}${extension}`;
+    await writeFile(join(directory, fileName), file.buffer);
+
+    return `/uploads/fleet-verification/${vehicleId}/${category}/${fileName}`;
+  }
+
+  private validateVerificationUpload(file: MulterFile) {
+    if (!ALLOWED_UPLOAD_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Invalid upload type. Verification evidence must be a live camera JPEG or PNG.');
+    }
+    if (!this.hasAllowedImageSignature(file)) {
+      throw new BadRequestException('Invalid upload content. Verification evidence must be a valid JPEG or PNG image.');
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      throw new BadRequestException('File too large. Maximum size is 5MB.');
+    }
+  }
+
+  private buildRequiredUploadMap(files: MulterFile[] = []) {
+    const uploadsByCategory = new Map<VehiclePhotoCategory, MulterFile>();
+
+    for (const file of files) {
+      const category = String(file.fieldname ?? '').trim().toUpperCase() as VehiclePhotoCategory;
+      if (!VEHICLE_PHOTO_CATEGORIES.includes(category)) {
+        continue;
+      }
+      this.validateVerificationUpload(file);
+      uploadsByCategory.set(category, file);
+    }
+
+    const missingCategories = VEHICLE_PHOTO_CATEGORIES.filter(
+      (category) => !uploadsByCategory.has(category),
+    );
+
+    if (missingCategories.length > 0) {
+      throw new BadRequestException(
+        `Fleet creation requires all vehicle photos and documents first: ${missingCategories.join(', ')}`,
+      );
+    }
+
+    return uploadsByCategory;
   }
 
   async create(
     createVehicleDto: any,
     actor?: { id: string; role?: string; activeRole?: string },
+    verificationFiles: MulterFile[] = [],
   ) {
+    const uploadsByCategory = this.buildRequiredUploadMap(verificationFiles);
+
     const missingStructuredFields = [
       !String(createVehicleDto.plateNumber ?? '').trim() ? 'plate number' : null,
       !String(createVehicleDto.chassisNumber ?? '').trim() ? 'chassis number' : null,
@@ -111,16 +182,32 @@ export class FleetService {
       await this.assertDriverAssignable(createVehicleDto.driverId, undefined, actor);
     }
 
-    return this.prisma.vehicle.create({
-      data: {
+    const vehicleId = randomUUID();
+    const uploadedPhotos = await Promise.all(
+      VEHICLE_PHOTO_CATEGORIES.map(async (category) => ({
+        photoType: category as any,
+        photoUrl: await this.persistVerificationUpload(
+          vehicleId,
+          category,
+          uploadsByCategory.get(category)!,
+        ),
+        timestamp: new Date(),
+        status: 'PENDING_REVIEW' as const,
+      })),
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      const vehicle = await tx.vehicle.create({
+        data: {
+          id: vehicleId,
         plateNumber: String(createVehicleDto.plateNumber).trim().toUpperCase(),
         chassisNumber: String(createVehicleDto.chassisNumber).trim().toUpperCase(),
         make: createVehicleDto.make?.trim() || undefined,
         model: createVehicleDto.model?.trim() || undefined,
-        year: createVehicleDto.year ?? undefined,
+        year: createVehicleDto.year ? Number(createVehicleDto.year) : undefined,
         type: createVehicleDto.type,
-        capacityKg: createVehicleDto.capacityKg,
-        capacityM3: createVehicleDto.capacityM3,
+        capacityKg: Number(createVehicleDto.capacityKg),
+        capacityM3: Number(createVehicleDto.capacityM3),
         driverId: createVehicleDto.driverId ?? undefined,
         ownerUserId: this.resolveOwnerUserId(createVehicleDto.ownerUserId, actor),
         status: VehicleStatus.INACTIVE,
@@ -134,8 +221,20 @@ export class FleetService {
         permitExpiry: createVehicleDto.permitExpiry
           ? new Date(createVehicleDto.permitExpiry)
           : undefined,
-      },
-      include: this.vehicleInclude,
+        },
+      });
+
+      await tx.vehicleVerificationPhoto.createMany({
+        data: uploadedPhotos.map((photo) => ({
+          vehicleId,
+          ...photo,
+        })),
+      });
+
+      return tx.vehicle.findUnique({
+        where: { id: vehicle.id },
+        include: this.vehicleInclude,
+      });
     });
   }
 
@@ -283,8 +382,11 @@ export class FleetService {
   ) {
     const vehicle = await this.findOne(vehicleId, actor);
 
-    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-      throw new BadRequestException('Invalid image type. Allowed: JPEG or PNG.');
+    if (!ALLOWED_UPLOAD_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Invalid upload type. Verification evidence must be a live camera JPEG or PNG.');
+    }
+    if (!this.hasAllowedImageSignature(file)) {
+      throw new BadRequestException('Invalid upload content. Verification evidence must be a valid JPEG or PNG image.');
     }
     if (file.size > MAX_FILE_SIZE) {
       throw new BadRequestException('File too large. Maximum size is 5MB.');
@@ -295,33 +397,34 @@ export class FleetService {
       throw new BadRequestException('Unsupported verification photo category for this vehicle.');
     }
 
-    const safeName = this.getSafeFileName(file.originalname);
-    const fileUrl = `fleet-verification/${vehicleId}/${dto.category}/${Date.now()}_${safeName}`;
+    const photoUrl = await this.persistVerificationUpload(vehicleId, dto.category, file);
+
+    // Find existing photo by vehicleId and photoType
+    const existingPhoto = await this.prisma.vehicleVerificationPhoto.findFirst({
+      where: {
+        vehicleId,
+        photoType: dto.category as any, // Map category to photoType
+      },
+    });
 
     const photo = await this.prisma.vehicleVerificationPhoto.upsert({
       where: {
-        vehicleId_category: {
-          vehicleId,
-          category: dto.category,
-        },
+        id: existingPhoto?.id || 'new-' + Date.now(), // Use id if exists, else generate temp id
       },
       create: {
         vehicleId,
-        category: dto.category,
-        fileUrl,
-        mimeType: file.mimetype,
-        capturedAt: dto.capturedAt ? new Date(dto.capturedAt) : null,
+        photoType: dto.category as any, // Map to enum
+        photoUrl,
+        timestamp: dto.capturedAt ? new Date(dto.capturedAt) : null,
         status: 'PENDING_REVIEW',
       },
       update: {
-        fileUrl,
-        mimeType: file.mimetype,
-        capturedAt: dto.capturedAt ? new Date(dto.capturedAt) : null,
+        photoUrl,
+        timestamp: dto.capturedAt ? new Date(dto.capturedAt) : null,
         status: 'PENDING_REVIEW',
         reviewedAt: null,
         reviewedBy: null,
-        reviewNote: null,
-        rejectionReason: null,
+        reviewNotes: null,
       },
     });
 
@@ -364,9 +467,7 @@ export class FleetService {
         status: dto.status,
         reviewedAt: new Date(),
         reviewedBy: reviewerId,
-        reviewNote: dto.note?.trim() || null,
-        rejectionReason:
-          dto.status === 'APPROVED' ? null : dto.reason?.trim() || 'Review feedback required',
+        reviewNotes: dto.note?.trim() || null,
       },
     });
 
@@ -419,7 +520,7 @@ export class FleetService {
 
       const requiredCategories = this.getRequiredPhotoCategories(vehicle.type);
       const photosByCategory = new Map(
-        vehicle.verificationPhotos.map((photo) => [photo.category, photo]),
+        vehicle.verificationPhotos.map((photo) => [photo.photoType, photo]),
       );
 
       const missingCategories = requiredCategories.filter(
@@ -701,5 +802,25 @@ export class FleetService {
     }
 
     throw new ForbiddenException('You can only manage vehicles owned by your account.');
+  }
+
+  private hasAllowedImageSignature(file: MulterFile) {
+    const header = file.buffer?.subarray(0, 8);
+    if (!header || header.length < 4) {
+      return false;
+    }
+
+    const isJpeg = header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+    const isPng =
+      header[0] === 0x89 &&
+      header[1] === 0x50 &&
+      header[2] === 0x4e &&
+      header[3] === 0x47 &&
+      header[4] === 0x0d &&
+      header[5] === 0x0a &&
+      header[6] === 0x1a &&
+      header[7] === 0x0a;
+
+    return isJpeg || isPng;
   }
 }

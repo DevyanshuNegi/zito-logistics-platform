@@ -94,8 +94,8 @@ export class AuditService {
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
-    if (payment.status !== PaymentStatus.SUCCESS) {
-      throw new BadRequestException('Only successful payments can enter refund approval');
+    if (payment.status !== PaymentStatus.COMPLETED) {
+      throw new BadRequestException('Only completed payments can enter refund approval');
     }
 
     return this.requireApproval(

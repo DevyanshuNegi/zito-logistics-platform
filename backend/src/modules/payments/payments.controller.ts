@@ -44,6 +44,7 @@ export class PaymentsController {
   initiatePayment(
     @Body() dto: InitiatePaymentDto,
     @Headers('x-idempotency-key') idempotencyKey: string,
+    @Req() req: any,
   ) {
     if (!idempotencyKey) {
       throw new BadRequestException('X-Idempotency-Key header is required');
@@ -59,27 +60,28 @@ export class PaymentsController {
       dto.amount,
       dto.method,
       idempotencyKey,
+      req.user,
     );
   }
 
   @Get('booking/:bookingId')
   @ApiOperation({ summary: 'Get all payments for a booking (PRD Section 15)' })
-  getBookingPayments(@Param('bookingId', ParseUUIDPipe) bookingId: string) {
-    return this.paymentsService.getBookingPayments(bookingId);
+  getBookingPayments(@Param('bookingId', ParseUUIDPipe) bookingId: string, @Req() req: any) {
+    return this.paymentsService.getBookingPayments(bookingId, req.user);
   }
 
   @Get('invoice/:invoiceId')
   @ApiOperation({
     summary: 'Get all payments linked directly to an invoice (PRD Section 16 / 18)',
   })
-  getInvoicePayments(@Param('invoiceId', ParseUUIDPipe) invoiceId: string) {
-    return this.paymentsService.getInvoicePayments(invoiceId);
+  getInvoicePayments(@Param('invoiceId', ParseUUIDPipe) invoiceId: string, @Req() req: any) {
+    return this.paymentsService.getInvoicePayments(invoiceId, req.user);
   }
 
   @Get('escrow/:bookingId')
   @ApiOperation({ summary: 'Get escrow status for a booking (PRD Section 15)' })
-  getEscrow(@Param('bookingId', ParseUUIDPipe) bookingId: string) {
-    return this.paymentsService.getEscrow(bookingId);
+  getEscrow(@Param('bookingId', ParseUUIDPipe) bookingId: string, @Req() req: any) {
+    return this.paymentsService.getEscrow(bookingId, req.user);
   }
 
   @Get('wallet/me')
@@ -175,14 +177,14 @@ export class PaymentsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get payment by ID (PRD Section 15)' })
-  getPayment(@Param('id', ParseUUIDPipe) id: string) {
-    return this.paymentsService.getPayment(id);
+  getPayment(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.paymentsService.getPayment(id, req.user);
   }
 
   @Post(':id/retry')
   @ApiOperation({ summary: 'Retry a failed payment - max 3 attempts (PRD Section 15)' })
-  retryPayment(@Param('id', ParseUUIDPipe) id: string) {
-    return this.paymentsService.retryPayment(id);
+  retryPayment(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.paymentsService.retryPayment(id, req.user);
   }
 
   @Patch(':id/confirm')

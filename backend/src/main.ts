@@ -1,14 +1,130 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import compression from 'compression';
+import { config as loadEnv } from 'dotenv';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { createServer } from 'node:net';
+import { join, resolve } from 'node:path';
 import { AppModule } from './app.module';
 import { BRAND } from './config/brand.config';
 import { corsOriginValidator } from './config/cors.config';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { RequestContextInterceptor } from './common/interceptors/request-context.interceptor';
 import { RequestMetricsInterceptor } from './common/interceptors/request-metrics.interceptor';
+import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+
+loadEnv({ path: resolve(process.cwd(), '.env'), quiet: true });
+loadEnv({ path: resolve(process.cwd(), '.env.local'), override: true, quiet: true });
+loadEnv({ path: resolve(process.cwd(), 'backend/.env'), override: false, quiet: true });
+loadEnv({ path: resolve(process.cwd(), 'backend/.env.local'), override: true, quiet: true });
+
+/**
+ * Validate all required environment variables at startup.
+ * Fails immediately if critical config is missing.
+ * PRD §28 - Security: Fail fast on misconfiguration
+ */
+function validateEnvironment() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const required = [
+    'DATABASE_URL',
+    'JWT_SECRET',
+    'JWT_REFRESH_SECRET',
+    'NODE_ENV',
+  ];
+
+  const missing = required.filter((key) => !process.env[key]);
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(', ')}. ` +
+        `See backend/.env.example for the complete list.`,
+    );
+  }
+
+  const weakSecretKeys = ['JWT_SECRET', 'JWT_REFRESH_SECRET'].filter((key) => {
+    const value = process.env[key] ?? '';
+    return (
+      value.length < 32 ||
+      value.includes('replace_with') ||
+      value.includes('zito-secure-secret-key')
+    );
+  });
+
+  if (weakSecretKeys.length > 0) {
+    throw new Error(
+      `Weak security secret(s): ${weakSecretKeys.join(', ')}. ` +
+        'Use unique random values of at least 32 characters.',
+    );
+  }
+
+  if (process.env.JWT_SECRET === process.env.JWT_REFRESH_SECRET) {
+    throw new Error('JWT_SECRET and JWT_REFRESH_SECRET must be different values.');
+  }
+
+  if (isProduction) {
+    const otpMode = (process.env.OTP_MODE ?? '').trim().toLowerCase();
+    const productionRequired = [
+      'ALLOWED_ORIGINS',
+      'MPESA_CALLBACK_SECRET',
+      'RATE_LIMIT_PER_MINUTE',
+      'AUTH_RATE_LIMIT_PER_15_MINUTES',
+      'OTP_MODE',
+      'TWILIO_VERIFY_SERVICE_SID',
+      'TWILIO_ACCOUNT_SID',
+      'TWILIO_AUTH_TOKEN',
+    ];
+    const missingProduction = productionRequired.filter((key) => !process.env[key]);
+    if (missingProduction.length > 0) {
+      throw new Error(
+        `Missing production security variables: ${missingProduction.join(', ')}.`,
+      );
+    }
+
+    const allowedOrigins = process.env.ALLOWED_ORIGINS ?? '';
+    if (/localhost|127\.0\.0\.1/i.test(allowedOrigins)) {
+      throw new Error('Production ALLOWED_ORIGINS must not include localhost origins.');
+    }
+
+    if (process.env.MPESA_ENVIRONMENT === 'sandbox') {
+      throw new Error('Production must not use MPESA_ENVIRONMENT=sandbox.');
+    }
+
+    if (otpMode === 'test') {
+      throw new Error('OTP_MODE=test is forbidden in production.');
+    }
+
+    if (otpMode === 'firebase') {
+      throw new Error('OTP_MODE=firebase is not production-approved yet.');
+    }
+
+    if (otpMode !== 'twilio') {
+      throw new Error('Production OTP_MODE must be twilio or another approved live provider.');
+    }
+  }
+
+  // Log which optional providers are configured
+  const providers = {
+    'M-Pesa': ['MPESA_CONSUMER_KEY', 'MPESA_CONSUMER_SECRET'],
+    'Twilio SMS': ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'],
+    'Resend Email': ['RESEND_API_KEY'],
+    'Redis': ['REDIS_URL'],
+  };
+
+  const configured = Object.entries(providers)
+    .filter(([, keys]) => keys.every((key) => process.env[key]))
+    .map(([name]) => name);
+
+  if (configured.length === 0) {
+    console.warn(
+      'WARNING: No external providers configured (M-Pesa, Twilio, Resend, Redis). ' +
+        'Payment, SMS, email, and caching will not work. This is expected for local testing only.',
+    );
+  }
+}
 
 async function isPortAvailable(port: number) {
   return new Promise<boolean>((resolve, reject) => {
@@ -30,7 +146,10 @@ async function isPortAvailable(port: number) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  // Validate environment variables FIRST, before creating NestJS app
+  validateEnvironment();
+
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger:
       process.env.NODE_ENV === 'production'
         ? ['error', 'warn']
@@ -40,8 +159,29 @@ async function bootstrap() {
   // PRD §28 - Security headers
   app.use(helmet());
 
+  if (process.env.NODE_ENV !== 'production') {
+    app.useStaticAssets(join(process.cwd(), 'uploads'), {
+      prefix: '/uploads/',
+    });
+  }
+
   // PRD §23 - Compression for low-bandwidth support
   app.use(compression());
+
+  const globalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 300),
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+  });
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: Number(process.env.AUTH_RATE_LIMIT_PER_15_MINUTES ?? 30),
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+  });
+  app.use(globalLimiter);
+  app.use('/api/v1/auth', authLimiter);
 
   // PRD §28, §42 - CORS locked to whitelisted origins only
   app.enableCors({
@@ -53,6 +193,12 @@ async function bootstrap() {
       'Idempotency-Key',
       'X-Idempotency-Key',
       'x-idempotency-key',
+      'X-Correlation-Id',
+      'x-correlation-id',
+      'X-Request-Id',
+      'x-request-id',
+      'X-Tenant-Id',
+      'x-tenant-id',
     ],
     credentials: true,
   });
@@ -64,6 +210,9 @@ async function bootstrap() {
   app.useGlobalFilters(app.get(GlobalExceptionFilter));
 
   // PRD §44.11 - Request metrics for failure-rate and latency monitoring
+  app.useGlobalInterceptors(app.get(RequestContextInterceptor));
+  app.useGlobalInterceptors(app.get(IdempotencyInterceptor));
+  app.useGlobalInterceptors(app.get(AuditInterceptor));
   app.useGlobalInterceptors(app.get(RequestMetricsInterceptor));
 
   // PRD §28, §6 - Validate and strip unknown fields on all requests

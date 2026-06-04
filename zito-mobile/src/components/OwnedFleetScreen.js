@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '../api/client';
 import { colors } from '../constants/theme';
+import PhotoUploadButton from './PhotoUploadButton';
 
 const VEHICLE_OPTIONS = [
   { key: 'VAN', label: 'Van' },
@@ -25,6 +26,21 @@ const VEHICLE_OPTIONS = [
   { key: 'TRUCK_22T', label: '22T Truck' },
   { key: 'REFRIGERATED', label: 'Refrigerated' },
   { key: 'MOTORBIKE', label: 'Motorbike' },
+];
+
+const FLEET_UPLOAD_CATEGORIES = [
+  { key: 'PLATE', label: 'Plate photo' },
+  { key: 'FRONT', label: 'Front photo' },
+  { key: 'RIGHT', label: 'Right side photo' },
+  { key: 'LEFT', label: 'Left side photo' },
+  { key: 'REAR', label: 'Rear photo' },
+  { key: 'CHASSIS', label: 'Chassis/VIN photo' },
+  { key: 'INSURANCE', label: 'Insurance certificate' },
+  { key: 'LOGBOOK', label: 'Logbook' },
+  { key: 'NTSA_INSPECTION', label: 'NTSA inspection' },
+  { key: 'GOODS_TRANSPORT_LICENSE', label: 'Goods transport license' },
+  { key: 'ROAD_SERVICE_LICENSE', label: 'Road service license' },
+  { key: 'AXLE_LOAD_CERTIFICATE', label: 'Axle-load certificate' },
 ];
 
 const INITIAL_FORM = {
@@ -55,10 +71,11 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText, children
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(INITIAL_FORM);
+  const [verificationFiles, setVerificationFiles] = useState({});
 
   const load = async () => {
     try {
-      const data = await api.get('/api/v1/fleet');
+      const data = await api.get('/fleet');
       setVehicles(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
@@ -90,23 +107,37 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText, children
       return;
     }
 
+    const missingUploads = FLEET_UPLOAD_CATEGORIES.filter((item) => !verificationFiles[item.key]);
+    if (missingUploads.length > 0) {
+      Alert.alert(
+        'Required uploads',
+        `Add every vehicle photo and document first: ${missingUploads.map((item) => item.label).join(', ')}`,
+      );
+      return;
+    }
+
     setSaving(true);
     try {
-      await api.post('/api/v1/fleet', {
-        plateNumber: form.plateNumber.trim().toUpperCase(),
-        chassisNumber: form.chassisNumber.trim().toUpperCase(),
-        make: form.make.trim(),
-        model: form.model.trim(),
-        year: Number(form.year),
-        type: form.type,
-        capacityKg: Number(form.capacityKg),
-        capacityM3: Number(form.capacityM3),
-        insuranceCompany: form.insuranceCompany.trim(),
-        insurancePolicyNumber: form.insurancePolicyNumber.trim().toUpperCase(),
-        insuranceExpiry: form.insuranceExpiry,
+      const formData = new FormData();
+      formData.append('plateNumber', form.plateNumber.trim().toUpperCase());
+      formData.append('chassisNumber', form.chassisNumber.trim().toUpperCase());
+      formData.append('make', form.make.trim());
+      formData.append('model', form.model.trim());
+      formData.append('year', form.year);
+      formData.append('type', form.type);
+      formData.append('capacityKg', form.capacityKg);
+      formData.append('capacityM3', form.capacityM3);
+      formData.append('insuranceCompany', form.insuranceCompany.trim());
+      formData.append('insurancePolicyNumber', form.insurancePolicyNumber.trim().toUpperCase());
+      formData.append('insuranceExpiry', form.insuranceExpiry);
+      FLEET_UPLOAD_CATEGORIES.forEach((item) => {
+        formData.append(item.key, verificationFiles[item.key]);
       });
+
+      await api.post('/fleet', formData);
       setShowAdd(false);
       setForm(INITIAL_FORM);
+      setVerificationFiles({});
       load();
       Alert.alert('Saved', 'Vehicle added and sent for admin approval.');
     } catch (error) {
@@ -118,7 +149,7 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText, children
 
   const handleRetire = async (vehicleId) => {
     try {
-      await api.patch(`/api/v1/fleet/${vehicleId}/retire`, {});
+        await api.patch(`/fleet/${vehicleId}/retire`, {});
       load();
       Alert.alert('Updated', 'Vehicle retired from active fleet.');
     } catch (error) {
@@ -310,8 +341,26 @@ export function OwnedFleetScreen({ title, subtitle, feeNote, emptyText, children
             </ScrollView>
 
             <Text style={s.cameraNote}>
-              Verification photos must be captured fresh from the camera during the inspection stage: number plate, front, right, left, back, chassis, and insurance evidence.
+              Every vehicle photo and compliance document must be captured live with the camera before the fleet record can be created.
             </Text>
+
+            <View style={s.uploadGrid}>
+              {FLEET_UPLOAD_CATEGORIES.map((item) => (
+                <PhotoUploadButton
+                  key={item.key}
+                  label={item.label}
+                  photo={verificationFiles[item.key]}
+                  required
+                  disabled={saving}
+                  onPhotoPicked={(photo) =>
+                    setVerificationFiles((current) => ({
+                      ...current,
+                      [item.key]: photo,
+                    }))
+                  }
+                />
+              ))}
+            </View>
 
             <TouchableOpacity
               style={[s.saveBtn, saving && { opacity: 0.6 }]}

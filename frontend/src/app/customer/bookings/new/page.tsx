@@ -81,6 +81,12 @@ type SavedPlace = {
 const RECENT_PLACES_STORAGE_KEY = 'zito_customer_recent_places_v1';
 const SAVED_PLACES_STORAGE_KEY = 'zito_customer_saved_places_v1';
 const SAVED_PLACE_LABELS = ['Home', 'Office', 'Warehouse'] as const;
+const POPULAR_PICKUP_LOCATIONS = [
+  'Westlands, Nairobi, Kenya',
+  'Upper Hill, Nairobi, Kenya',
+  'Industrial Area, Nairobi, Kenya',
+  'Jomo Kenyatta International Airport, Nairobi, Kenya',
+] as const;
 
 const serviceCards = [
   {
@@ -285,6 +291,10 @@ function StepChip({
 }
 
 type StopKind = 'pickup' | 'drop';
+type CurrentLocationStatus = 'idle' | 'loading' | 'ready' | 'denied' | 'unavailable' | 'error';
+type CurrentLocationCandidate = GeocodeLookup & {
+  accuracy: number | null;
+};
 
 export default function NewBookingPage() {
   const router = useRouter();
@@ -332,9 +342,13 @@ export default function NewBookingPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<CurrentLocationCandidate | null>(null);
+  const [currentLocationStatus, setCurrentLocationStatus] = useState<CurrentLocationStatus>('idle');
+  const [currentLocationMessage, setCurrentLocationMessage] = useState<string | null>(null);
   const [recentPlaces, setRecentPlaces] = useState<RecentPlace[]>([]);
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const routePickerRef = useRef<HTMLDivElement | null>(null);
+  const currentLocationRequestedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -363,6 +377,17 @@ export default function NewBookingPage() {
     if (serviceMeta) {
       setVehicleType(serviceMeta.suggestedVehicleType);
     }
+  }, [router]);
+
+  useEffect(() => {
+    if (currentLocationRequestedRef.current) {
+      return;
+    }
+
+    currentLocationRequestedRef.current = true;
+    void detectCurrentLocation({ silent: true });
+    // GPS permission should be requested once per page session, not on every helper identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -533,6 +558,110 @@ export default function NewBookingPage() {
     setDropLng(result.longitude);
   }
 
+  function buildCoordinateFallback(latitude: number, longitude: number): GeocodeLookup {
+    const latText = latitude.toFixed(6);
+    const lngText = longitude.toFixed(6);
+
+    return {
+      address: `Current location (${latText}, ${lngText})`,
+      latitude: latText,
+      longitude: lngText,
+      countryCode: null,
+      countryName: null,
+      county: null,
+      localityType: 'ANY',
+    };
+  }
+
+  function locationErrorMessage(error: unknown) {
+    const code =
+      typeof error === 'object' && error && 'code' in error
+        ? Number((error as { code?: number }).code)
+        : null;
+
+    if (code === 1) {
+      return {
+        status: 'denied' as CurrentLocationStatus,
+        message: 'Location permission was denied. Search pickup manually or move the pin on the map.',
+      };
+    }
+
+    if (code === 2) {
+      return {
+        status: 'unavailable' as CurrentLocationStatus,
+        message: 'Current location is unavailable right now. Search pickup manually.',
+      };
+    }
+
+    if (code === 3) {
+      return {
+        status: 'error' as CurrentLocationStatus,
+        message: 'Location detection timed out. Search pickup manually or try again.',
+      };
+    }
+
+    return {
+      status: 'error' as CurrentLocationStatus,
+      message: 'Unable to detect current location. Search pickup manually instead.',
+    };
+  }
+
+  async function detectCurrentLocation({ silent = false } = {}) {
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) {
+      setCurrentLocationStatus('unavailable');
+      setCurrentLocationMessage('Current location is not available in this browser.');
+      return null;
+    }
+
+    setCurrentLocationStatus('loading');
+    if (!silent) {
+      setSearchError(null);
+    }
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        window.navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000,
+        });
+      });
+
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+      const accuracy = Number.isFinite(position.coords.accuracy)
+        ? Math.round(position.coords.accuracy)
+        : null;
+
+      let lookup: GeocodeLookup;
+      try {
+        lookup = await reverseGeocodeCoordinates(latitude, longitude);
+      } catch {
+        lookup = buildCoordinateFallback(latitude, longitude);
+      }
+
+      const candidate: CurrentLocationCandidate = {
+        ...lookup,
+        accuracy,
+      };
+
+      setCurrentLocation(candidate);
+      setCurrentLocationStatus('ready');
+      setCurrentLocationMessage(
+        accuracy ? `Detected with about ${accuracy}m accuracy.` : 'Current location detected.',
+      );
+      return candidate;
+    } catch (caught) {
+      const next = locationErrorMessage(caught);
+      setCurrentLocationStatus(next.status);
+      setCurrentLocationMessage(next.message);
+      if (!silent) {
+        setSearchError(next.message);
+      }
+      return null;
+    }
+  }
+
   function saveRecentPlace(result: GeocodeLookup) {
     const nextItem: RecentPlace = {
       id: `${result.latitude}:${result.longitude}`,
@@ -617,28 +746,13 @@ export default function NewBookingPage() {
   }
 
   async function handleUseCurrentLocation(kind: StopKind) {
-    if (typeof window === 'undefined' || !window.navigator?.geolocation) {
-      setSearchError('Current location is not available in this browser right now.');
-      return;
-    }
-
-    setSearchLoading(false);
-    setSearchError(null);
     setLocatingStop(kind);
 
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        window.navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 30000,
-        });
-      });
-
-      const result = await reverseGeocodeCoordinates(
-        position.coords.latitude,
-        position.coords.longitude,
-      );
+      const result = currentLocation ?? await detectCurrentLocation();
+      if (!result) {
+        return;
+      }
 
       applyGeocode(kind, result);
       saveRecentPlace(result);
@@ -799,6 +913,32 @@ export default function NewBookingPage() {
     });
   }
 
+  async function handleSelectPopularPlace(kind: StopKind, address: string) {
+    setSearchQuery(address);
+    setSearchLoading(true);
+    setSearchError(null);
+
+    try {
+      const result = await geocodeAddress(address);
+      applyGeocode(kind, result);
+      saveRecentPlace(result);
+      setActiveStopSelection(kind);
+      closeLocationSearch();
+      routePickerRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    } catch (caught) {
+      setSearchError(
+        caught instanceof Error
+          ? caught.message
+          : 'Unable to use that popular location right now. Try manual search.',
+      );
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
   function validateFreightWorkflow() {
     if (!isContainerWorkflow) {
       return null;
@@ -954,89 +1094,95 @@ export default function NewBookingPage() {
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       {searchSheetStop ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-0 md:p-4 md:items-center">
-          <div className="flex h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[32px] border border-slate-200 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.22)] md:h-auto md:max-h-[90vh] md:rounded-[32px]">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 pb-4 pt-5">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 backdrop-blur-[2px]">
+          <div className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[34px] border border-white/10 bg-[#07111f] text-white shadow-[0_-24px_80px_rgba(2,6,23,0.42)]">
+            <div className="px-5 pt-3">
+              <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/25" />
+            </div>
+            <div className="flex items-center justify-between gap-4 px-5 pb-4">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#64748b]">
-                  {searchSheetStop === 'pickup' ? 'Pickup search' : 'Drop-off search'}
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200/70">
+                  {searchSheetStop === 'pickup' ? 'Where from?' : 'Where to?'}
                 </p>
-                <h2 className="mt-1 text-xl font-semibold text-[#1a1a2e]">
+                <h2 className="mt-1 text-2xl font-black text-white">
                   {searchSheetStop === 'pickup'
-                    ? 'Search pickup location first'
-                    : 'Search drop-off location first'}
+                    ? 'Current pickup'
+                    : 'Choose destination'}
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-[#64748b]">
-                  Select a place first. The map will center there automatically and place the
-                  pin for confirmation.
-                </p>
               </div>
               <button
                 type="button"
-                className="rounded-full px-3 py-2 text-sm font-semibold text-[#64748b] transition hover:bg-[#f1f5fb] hover:text-[#1a1a2e]"
+                className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-white/16"
                 onClick={closeLocationSearch}
               >
                 Close
               </button>
             </div>
 
-            <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-              <Input
-                tone="light"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder={
-                  searchSheetStop === 'pickup'
-                    ? 'Search pickup area, building, road, or landmark'
-                    : 'Search destination area, building, road, or landmark'
-                }
-                help="Search comes first. Use move pin only if the exact door, gate, or loading point needs adjustment."
-                autoFocus
-              />
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <button
-                  type="button"
-                  className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4 text-left transition hover:border-[#93c5fd] hover:bg-white"
-                  onClick={() => void handleUseCurrentLocation(searchSheetStop)}
-                  disabled={locatingStop === searchSheetStop}
-                >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-                    Quick action
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
-                    {locatingStop === searchSheetStop ? 'Finding you...' : 'Use current location'}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-[#64748b]">
-                    Set the nearest live location and place the pin automatically.
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4 text-left transition hover:border-[#93c5fd] hover:bg-white"
-                  onClick={() => {
-                    closeLocationSearch();
-                    focusRouteMap(searchSheetStop);
-                  }}
-                >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-                    Map refine
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">Move pin on map</p>
-                  <p className="mt-1 text-xs leading-5 text-[#64748b]">
-                    Use only if the exact gate, door, or loading point needs correction.
-                  </p>
-                </button>
-                <div className="rounded-[18px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-                    Route rule
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">Search first</p>
-                  <p className="mt-1 text-xs leading-5 text-[#64748b]">
-                    Search the place, let the map jump there, then confirm the pin.
-                  </p>
-                </div>
+            <div className="flex-1 space-y-4 overflow-y-auto px-5 pb-5">
+              <div className="flex items-center gap-3 rounded-[22px] bg-white px-4 py-4 text-[#101827] shadow-[0_16px_34px_rgba(0,0,0,0.22)]">
+                <Search className="h-5 w-5 shrink-0 text-[#64748b]" />
+                <input
+                  className="min-w-0 flex-1 bg-transparent text-lg font-bold outline-none placeholder:text-[#94a3b8]"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={searchSheetStop === 'pickup' ? 'Search pickup' : 'Where to?'}
+                  autoFocus
+                />
               </div>
+
+              {searchSheetStop === 'pickup' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    className="w-full rounded-[22px] bg-white/10 px-4 py-4 text-left transition hover:bg-white/14 disabled:cursor-wait"
+                    onClick={() => void handleUseCurrentLocation('pickup')}
+                    disabled={locatingStop === 'pickup' || currentLocationStatus === 'loading'}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#2563eb] text-white">
+                        <MapPinned className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-200/70">
+                          Current Location
+                        </p>
+                        {currentLocationStatus === 'loading' || locatingStop === 'pickup' ? (
+                          <div className="mt-2 space-y-2">
+                            <div className="h-4 w-44 animate-pulse rounded-full bg-white/20" />
+                            <div className="h-3 w-64 max-w-full animate-pulse rounded-full bg-white/12" />
+                          </div>
+                        ) : (
+                          <>
+                            <p className="mt-1 text-base font-bold text-white">
+                              Use Current Location
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-300">
+                              {currentLocation?.address ?? currentLocationMessage ?? 'Detect nearest pickup point automatically.'}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                  {currentLocationStatus !== 'ready' && currentLocationStatus !== 'loading' && currentLocationMessage ? (
+                    <p className="px-1 text-xs leading-5 text-slate-400">
+                      {currentLocationMessage}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                className="w-full rounded-[18px] bg-white/8 px-4 py-3 text-left text-sm font-bold text-slate-200 transition hover:bg-white/12"
+                onClick={() => {
+                  closeLocationSearch();
+                  focusRouteMap(searchSheetStop);
+                }}
+              >
+                Adjust pin on map
+              </button>
 
               {savedPlaces.length ? (
                 <div className="space-y-3">
@@ -1095,6 +1241,34 @@ export default function NewBookingPage() {
                 </div>
               ) : null}
 
+              {searchSheetStop === 'pickup' ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
+                      Popular pickup areas
+                    </p>
+                    <p className="mt-1 text-sm text-[#64748b]">
+                      Fast-start locations for Nairobi logistics pickups.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {POPULAR_PICKUP_LOCATIONS.map((address) => (
+                      <button
+                        key={address}
+                        type="button"
+                        className="rounded-[18px] border border-[#d7e0ec] bg-white px-4 py-3 text-left transition hover:border-[#93c5fd] hover:bg-[#f8fbff]"
+                        onClick={() => void handleSelectPopularPlace('pickup', address)}
+                        disabled={searchLoading}
+                      >
+                        <p className="text-sm font-semibold text-[#1a1a2e]">{buildPlaceLabel(address)}</p>
+                        <p className="mt-1 text-xs leading-5 text-[#64748b]">{address}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               {searchError ? (
                 <Alert title="Location search issue" variant="danger">
                   {searchError}
@@ -1129,111 +1303,122 @@ export default function NewBookingPage() {
         </Alert>
       ) : null}
 
-      <section className="overflow-hidden rounded-[26px] border border-[#d7e0ec] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-        <RoutePreviewMap
-          className="h-[250px]"
-          titleBadge={`${selectedService.label} route`}
-          statusBadge={customerQuoteBadge}
-          points={[
-            {
-              label: 'Pickup',
-              tone: 'pickup',
-              lat: parseCoordinate(pickupLat),
-              lng: parseCoordinate(pickupLng),
-            },
-            {
-              label: 'Drop',
-              tone: 'drop',
-              lat: parseCoordinate(dropLat),
-              lng: parseCoordinate(dropLng),
-            },
-          ]}
-        />
+      <section className="overflow-hidden rounded-[32px] border border-white/70 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.14)]">
+        <div className="relative">
+          <RoutePreviewMap
+            className="h-[360px]"
+            titleBadge={pickupPinned && dropPinned ? 'Route preview' : 'Set your route'}
+            statusBadge={customerQuoteBadge}
+            points={[
+              {
+                label: 'Pickup',
+                tone: 'pickup',
+                lat: parseCoordinate(pickupLat),
+                lng: parseCoordinate(pickupLng),
+              },
+              {
+                label: 'Drop',
+                tone: 'drop',
+                lat: parseCoordinate(dropLat),
+                lng: parseCoordinate(dropLng),
+              },
+            ]}
+          />
 
-        <div className="-mt-5 rounded-t-[24px] bg-white px-4 pb-4 pt-3 shadow-[0_-8px_22px_rgba(15,23,42,0.06)]">
-          <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-[#cbd5e1]" />
+          <div className="absolute left-4 right-4 top-4 flex items-center justify-between gap-3">
+            <div className="rounded-full bg-white/95 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#1b3f72] shadow-[0_10px_28px_rgba(15,23,42,0.16)] backdrop-blur">
+              Zito Logistics
+            </div>
+            <div className="rounded-full bg-[#06101f]/90 px-3 py-2 text-right text-white shadow-[0_10px_28px_rgba(15,23,42,0.2)] backdrop-blur">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200/75">
+                {customerQuotePillLabel}
+              </span>
+              <span className="ml-2 text-sm font-extrabold">{customerQuotePillValue}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="-mt-16 relative rounded-t-[34px] bg-white px-4 pb-5 pt-4 shadow-[0_-16px_38px_rgba(15,23,42,0.12)]">
+          <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#cbd5e1]" />
 
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#64748b]">
-                New booking
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#64748b]">
+                Book a move
               </p>
-              <h1 className="mt-1 text-[1.75rem] font-bold leading-tight text-[#1a1a2e]">
-                {step === 1
-                  ? 'Set the route'
-                  : step === 2
-                    ? 'Choose service and vehicle'
-                    : 'Review and confirm'}
+              <h1 className="mt-1 text-[2rem] font-black leading-tight text-[#101827]">
+                Where to?
               </h1>
-            </div>
-
-            <div className="min-w-[118px] rounded-[18px] bg-[linear-gradient(180deg,#06101f_0%,#0b1730_100%)] px-3 py-3 text-right text-white shadow-[0_12px_28px_rgba(6,16,31,0.18)]">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/72">
-                {customerQuotePillLabel}
+              <p className="mt-1 text-sm text-[#64748b]">
+                Pickup is location-aware. Add your destination, then choose the best service.
               </p>
-              <p className="mt-1 text-base font-bold">{customerQuotePillValue}</p>
             </div>
           </div>
 
-          <div className="mt-4 flex gap-2">
-            <StepChip active={step === 1} done={step > 1} label="Route" onClick={() => setStep(1)} />
-            <StepChip active={step === 2} done={step > 2} label="Vehicle" onClick={() => setStep(2)} />
-            <StepChip active={step === 3} done={false} label="Review" onClick={() => setStep(3)} />
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-5 rounded-[26px] bg-[#f8fbff] p-2 shadow-inner">
             <button
               type="button"
-              className={[
-                'rounded-[16px] px-3 py-3 text-left transition',
-                activeStopSelection === 'pickup'
-                  ? 'bg-[#dbeafe] ring-2 ring-[#60a5fa]'
-                  : 'bg-[#f1f5fb] hover:bg-[#e8f1ff]',
-              ].join(' ')}
-              onClick={() => openLocationSearch('pickup')}
-            >
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
-                Pickup
-              </p>
-              <p className="mt-1 line-clamp-2 text-sm font-semibold text-[#1a1a2e]">
-                {pickupAddress || 'Search pickup location'}
-              </p>
-            </button>
-            <button
-              type="button"
-              className={[
-                'rounded-[16px] px-3 py-3 text-left transition',
-                activeStopSelection === 'drop'
-                  ? 'bg-[#ede9fe] ring-2 ring-[#a78bfa]'
-                  : 'bg-[#f1f5fb] hover:bg-[#f4efff]',
-              ].join(' ')}
+              className="flex w-full items-center gap-3 rounded-[22px] bg-white px-4 py-4 text-left shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.12)]"
               onClick={() => openLocationSearch('drop')}
             >
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
-                Drop
-              </p>
-              <p className="mt-1 line-clamp-2 text-sm font-semibold text-[#1a1a2e]">
-                {dropAddress || 'Search drop-off location'}
-              </p>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#06101f] text-white">
+                <Search className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#64748b]">
+                  Destination
+                </p>
+                <p className="mt-1 truncate text-lg font-black text-[#101827]">
+                  {dropAddress || 'Where to?'}
+                </p>
+              </div>
             </button>
+
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                className="flex items-start gap-3 rounded-[20px] px-3 py-3 text-left transition hover:bg-white"
+                onClick={() => openLocationSearch('pickup')}
+              >
+                <span className="mt-1 h-3 w-3 rounded-full bg-[#10b981] shadow-[0_0_0_4px_rgba(16,185,129,0.14)]" />
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-[#64748b]">
+                    From
+                  </span>
+                  <span className="mt-1 line-clamp-2 block text-sm font-semibold text-[#1a1a2e]">
+                    {pickupAddress || currentLocation?.address || 'Current Location'}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="flex items-start gap-3 rounded-[20px] px-3 py-3 text-left transition hover:bg-white"
+                onClick={() => openLocationSearch('drop')}
+              >
+                <span className="mt-1 h-3 w-3 rounded-full bg-[#7c3aed] shadow-[0_0_0_4px_rgba(124,58,237,0.14)]" />
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-[#64748b]">
+                    To
+                  </span>
+                  <span className="mt-1 line-clamp-2 block text-sm font-semibold text-[#1a1a2e]">
+                    {dropAddress || 'Search destination'}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+            <StepChip active={step === 1} done={step > 1} label="Route" onClick={() => setStep(1)} />
+            <StepChip active={step === 2} done={step > 2} label="Service" onClick={() => setStep(2)} />
+            <StepChip active={step === 3} done={false} label="Confirm" onClick={() => setStep(3)} />
           </div>
         </div>
       </section>
 
       {step === 1 ? (
         <div className="space-y-4">
-          <section className="rounded-[22px] border border-[#d7e0ec] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-            <div className="mb-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-                Route setup
-              </p>
-              <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Search pickup and drop-off first</h2>
-              <p className="mt-1 text-sm leading-6 text-[#64748b]">
-                Tap pickup or drop-off, search the place, and let the map move there automatically.
-                Only use the map to fine-tune the exact gate, door, or loading point if needed.
-              </p>
-            </div>
-
+          <section className="overflow-hidden rounded-[30px] bg-[#07111f] p-3 shadow-[0_18px_48px_rgba(2,6,23,0.24)]">
             <div className="space-y-4">
               <div className="space-y-4" ref={routePickerRef}>
                 <RouteLocationPicker
@@ -1252,16 +1437,13 @@ export default function NewBookingPage() {
                 />
 
                 {pickupPinned && dropPinned ? (
-                  <div className="rounded-[20px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4">
+                  <div className="rounded-[24px] bg-white px-4 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-                          Route ready
-                        </p>
                         <p className="mt-1 text-sm font-semibold text-[#1a1a2e]">
                           {estimatedDistance != null
-                            ? `${estimatedDistance} km preview ready for vehicle selection`
-                            : 'Both stops are selected and ready for the next step.'}
+                            ? `${estimatedDistance} km route ready`
+                            : 'Route ready'}
                         </p>
                       </div>
                       <span className="rounded-full bg-[#dcfce7] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#15803d]">
@@ -1284,20 +1466,13 @@ export default function NewBookingPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-[20px] border border-[#d7e0ec] bg-[#f8fbff] px-4 py-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
-                      Search-first route
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[#475569]">
-                      Search the location first, let the map place the pin automatically, then
-                      adjust the pin only if the exact entrance, loading bay, or building frontage
-                      needs cleanup.
-                    </p>
+                  <div className="rounded-[24px] bg-white/10 px-4 py-4 text-sm font-semibold text-slate-200">
+                    Add pickup and destination to preview the route.
                   </div>
                 )}
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-3 lg:grid-cols-2">
                 <div className="rounded-[18px] bg-[#f8faff] p-4">
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col items-center">
@@ -1464,20 +1639,24 @@ export default function NewBookingPage() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">
               Service lane
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-[#1a1a2e]">Choose the right service</h2>
+            <h2 className="mt-1 text-2xl font-black text-[#101827]">Choose your move</h2>
+            <p className="mt-1 text-sm leading-6 text-[#64748b]">
+              Pick the lane that matches your cargo. Pricing and dispatch rules stay tied to the selected route.
+            </p>
 
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {serviceCards.map((item) => {
                 const active = item.value === serviceType;
+                const Icon = item.icon;
                 return (
                   <button
                     key={item.value}
                     type="button"
                     className={[
-                      'rounded-full border px-3 py-2 text-[11px] font-semibold transition',
+                      'group rounded-[24px] border px-4 py-4 text-left transition hover:-translate-y-0.5',
                       active
-                        ? 'border-transparent bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white shadow-[0_10px_20px_rgba(59,130,246,0.16)]'
-                        : 'border-[#b8c9e4] bg-white text-[#1b3f72] hover:bg-[#eef4ff]',
+                        ? 'border-transparent bg-[#06101f] text-white shadow-[0_18px_42px_rgba(6,16,31,0.22)]'
+                        : 'border-[#dbe4ef] bg-[#f8fbff] text-[#1a1a2e] hover:border-[#93c5fd] hover:bg-white hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]',
                     ].join(' ')}
                     onClick={() => {
                       if (item.value === 'WAREHOUSE') {
@@ -1488,7 +1667,28 @@ export default function NewBookingPage() {
                       setVehicleType(item.suggestedVehicleType);
                     }}
                   >
-                    {item.label}
+                    <div className="flex items-start justify-between gap-3">
+                      <span
+                        className={[
+                          'flex h-12 w-12 items-center justify-center rounded-[18px]',
+                          active ? 'bg-white/12 text-cyan-100' : 'bg-white text-[#1b3f72] shadow-sm',
+                        ].join(' ')}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span
+                        className={[
+                          'rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em]',
+                          active ? 'bg-cyan-300/16 text-cyan-100' : 'bg-[#eef4ff] text-[#1b3f72]',
+                        ].join(' ')}
+                      >
+                        {vehicleMeta[item.suggestedVehicleType]?.eta ?? 'Ready'}
+                      </span>
+                    </div>
+                    <p className="mt-4 text-lg font-black">{item.label}</p>
+                    <p className={['mt-1 text-xs leading-5', active ? 'text-slate-300' : 'text-[#64748b]'].join(' ')}>
+                      {item.description}
+                    </p>
                   </button>
                 );
               })}

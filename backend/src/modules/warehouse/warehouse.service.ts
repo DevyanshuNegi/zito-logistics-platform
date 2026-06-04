@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EventsService } from '../events/events.service';
 
 type WarehouseAccessContext = {
   viewerRole?: string;
@@ -13,9 +14,14 @@ type WarehouseAccessContext = {
   agencyId?: string;
 };
 
+const CAPACITY_RELEASE_STATUSES = ['REJECTED', 'CANCELLED', 'COMPLETED'];
+
 @Injectable()
 export class WarehouseService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventsService: EventsService,
+  ) {}
 
   private readonly warehouseInclude = {
     manager: {
@@ -377,7 +383,7 @@ export class WarehouseService {
       );
     }
 
-    return this.prisma.warehouseListing.create({
+    const listing = await this.prisma.warehouseListing.create({
       data: {
         warehouseId: data.warehouseId,
         partnerId,
@@ -412,6 +418,23 @@ export class WarehouseService {
       },
       include: this.listingInclude(),
     });
+
+    await this.eventsService.publish({
+      eventType: 'WarehouseListingSubmitted',
+      aggregateType: 'WAREHOUSE',
+      aggregateId: listing.id,
+      actorId: partnerId,
+      idempotencyKey: `warehouse-listing-submitted:${listing.id}`,
+      data: {
+        warehouseId: listing.warehouseId,
+        partnerId: listing.partnerId,
+        status: listing.status,
+        areaLabel: listing.areaLabel,
+        hasCoordinates: listing.latitude != null && listing.longitude != null,
+      },
+    });
+
+    return listing;
   }
 
   async listPartnerListings(partnerId: string) {
@@ -422,9 +445,19 @@ export class WarehouseService {
     });
   }
 
-  async listApprovedListings(filters: { location?: string; storageType?: string } = {}) {
+  async listApprovedListings(
+    filters: {
+      location?: string;
+      storageType?: string;
+      latitude?: number;
+      longitude?: number;
+      radiusKm?: number;
+    } = {},
+  ) {
     const location = filters.location?.trim();
     const storageType = filters.storageType?.trim();
+    const hasNearbyFilter =
+      Number.isFinite(filters.latitude) && Number.isFinite(filters.longitude);
 
     const listings = await this.prisma.warehouseListing.findMany({
       where: {
@@ -444,15 +477,48 @@ export class WarehouseService {
       orderBy: [{ updatedAt: 'desc' }],
     });
 
-    if (!storageType || storageType === 'ALL') {
-      return listings;
+    const filteredByStorage =
+      !storageType || storageType === 'ALL'
+        ? listings
+        : listings.filter((listing) =>
+            this.asStringArray(listing.storageTypes).some(
+              (item) => item.toUpperCase() === storageType.toUpperCase(),
+            ),
+          );
+
+    if (!hasNearbyFilter) {
+      return filteredByStorage;
     }
 
-    return listings.filter((listing) =>
-      this.asStringArray(listing.storageTypes).some(
-        (item) => item.toUpperCase() === storageType.toUpperCase(),
-      ),
-    );
+    const radiusKm =
+      Number.isFinite(filters.radiusKm) && Number(filters.radiusKm) > 0
+        ? Number(filters.radiusKm)
+        : 25;
+
+    return filteredByStorage
+      .map((listing) => {
+        const distanceKm =
+          listing.latitude == null || listing.longitude == null
+            ? null
+            : this.calculateDistanceKm(
+                Number(filters.latitude),
+                Number(filters.longitude),
+                listing.latitude,
+                listing.longitude,
+              );
+
+        return {
+          ...listing,
+          distanceKm: distanceKm == null ? null : this.round(distanceKm),
+        };
+      })
+      .filter((listing) => listing.distanceKm == null || listing.distanceKm <= radiusKm)
+      .sort((left, right) => {
+        if (left.distanceKm == null && right.distanceKm == null) return 0;
+        if (left.distanceKm == null) return 1;
+        if (right.distanceKm == null) return -1;
+        return left.distanceKm - right.distanceKm;
+      });
   }
 
   async listAdminListings(filters: { status?: string } = {}) {
@@ -473,7 +539,7 @@ export class WarehouseService {
       throw new NotFoundException('Warehouse listing not found');
     }
 
-    return this.prisma.warehouseListing.update({
+    const reviewed = await this.prisma.warehouseListing.update({
       where: { id },
       data: {
         status: data.status,
@@ -483,6 +549,22 @@ export class WarehouseService {
       },
       include: this.listingInclude(),
     });
+
+    await this.eventsService.publish({
+      eventType: 'WarehouseListingReviewed',
+      aggregateType: 'WAREHOUSE',
+      aggregateId: reviewed.id,
+      actorId: reviewerId,
+      idempotencyKey: `warehouse-listing-reviewed:${reviewed.id}:${reviewed.status}:${reviewed.reviewedAt?.toISOString()}`,
+      data: {
+        warehouseId: reviewed.warehouseId,
+        partnerId: reviewed.partnerId,
+        status: reviewed.status,
+        reviewNote: reviewed.reviewNote,
+      },
+    });
+
+    return reviewed;
   }
 
   async createBooking(customerId: string, data: any) {
@@ -524,29 +606,67 @@ export class WarehouseService {
     const commissionAmount = this.round(taxableAmount * (commissionRatePct / 100));
     const partnerNetAmount = this.round(totalAmount - commissionAmount);
 
-    return this.prisma.warehouseBooking.create({
-      data: {
-        reference: await this.generateWarehouseBookingReference(),
-        listingId: listing.id,
-        customerId,
-        partnerId: listing.partnerId,
-        storageType: data.storageType,
-        goodsDescription: data.goodsDescription,
-        startDate,
-        endDate,
-        capacityRequested: data.capacityRequested,
-        capacityUnit: data.capacityUnit ?? listing.capacityUnit,
-        baseAmount,
-        handlingFee,
-        vatAmount,
-        totalAmount,
-        commissionRatePct,
-        commissionAmount,
-        partnerNetAmount,
-        customerNote: data.customerNote,
-      },
-      include: this.bookingInclude(),
+    const reference = await this.generateWarehouseBookingReference();
+    const booking = await this.prisma.$transaction(async (tx) => {
+      const capacityReserved = await tx.warehouseListing.updateMany({
+        where: {
+          id: listing.id,
+          status: 'APPROVED',
+          availableCapacity: { gte: data.capacityRequested },
+        },
+        data: {
+          availableCapacity: { decrement: data.capacityRequested },
+        },
+      });
+
+      if (capacityReserved.count !== 1) {
+        throw new BadRequestException('Requested capacity is no longer available');
+      }
+
+      return tx.warehouseBooking.create({
+        data: {
+          reference,
+          listingId: listing.id,
+          customerId,
+          partnerId: listing.partnerId,
+          storageType: data.storageType,
+          goodsDescription: data.goodsDescription,
+          startDate,
+          endDate,
+          capacityRequested: data.capacityRequested,
+          capacityUnit: data.capacityUnit ?? listing.capacityUnit,
+          baseAmount,
+          handlingFee,
+          vatAmount,
+          totalAmount,
+          commissionRatePct,
+          commissionAmount,
+          partnerNetAmount,
+          customerNote: data.customerNote,
+        },
+        include: this.bookingInclude(),
+      });
     });
+
+    await this.eventsService.publish({
+      eventType: 'WarehouseBookingCreated',
+      aggregateType: 'WAREHOUSE',
+      aggregateId: booking.id,
+      actorId: customerId,
+      idempotencyKey: `warehouse-booking-created:${booking.id}`,
+      data: {
+        reference: booking.reference,
+        listingId: booking.listingId,
+        customerId: booking.customerId,
+        partnerId: booking.partnerId,
+        status: booking.status,
+        totalAmount: booking.totalAmount,
+        commissionAmount: booking.commissionAmount,
+        partnerNetAmount: booking.partnerNetAmount,
+      },
+    });
+
+    return booking;
   }
 
   async listCustomerBookings(customerId: string) {
@@ -579,7 +699,13 @@ export class WarehouseService {
   ) {
     const booking = await this.prisma.warehouseBooking.findUnique({
       where: { id },
-      select: { id: true, partnerId: true },
+      select: {
+        id: true,
+        listingId: true,
+        partnerId: true,
+        status: true,
+        capacityRequested: true,
+      },
     });
 
     if (!booking) {
@@ -594,18 +720,68 @@ export class WarehouseService {
       );
     }
 
-    return this.prisma.warehouseBooking.update({
-      where: { id },
-      data: {
-        status: data.status,
-        partnerNote: actor.role === 'WAREHOUSE_PARTNER' ? data.note : undefined,
-        adminNote: actor.role !== 'WAREHOUSE_PARTNER' ? data.note : undefined,
-        acceptedAt: data.status === 'ACCEPTED' ? new Date() : undefined,
-        completedAt: data.status === 'COMPLETED' ? new Date() : undefined,
-        cancelledAt: data.status === 'CANCELLED' ? new Date() : undefined,
-      },
-      include: this.bookingInclude(),
+    const previousReleased = CAPACITY_RELEASE_STATUSES.includes(booking.status);
+    const nextReleased = CAPACITY_RELEASE_STATUSES.includes(data.status);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (!previousReleased && nextReleased) {
+        await tx.warehouseListing.update({
+          where: { id: booking.listingId },
+          data: {
+            availableCapacity: { increment: booking.capacityRequested },
+          },
+        });
+      }
+
+      if (previousReleased && !nextReleased) {
+        const capacityReserved = await tx.warehouseListing.updateMany({
+          where: {
+            id: booking.listingId,
+            availableCapacity: { gte: booking.capacityRequested },
+          },
+          data: {
+            availableCapacity: { decrement: booking.capacityRequested },
+          },
+        });
+
+        if (capacityReserved.count !== 1) {
+          throw new BadRequestException(
+            'Cannot reactivate booking because listing capacity is no longer available',
+          );
+        }
+      }
+
+      return tx.warehouseBooking.update({
+        where: { id },
+        data: {
+          status: data.status,
+          partnerNote: actor.role === 'WAREHOUSE_PARTNER' ? data.note : undefined,
+          adminNote: actor.role !== 'WAREHOUSE_PARTNER' ? data.note : undefined,
+          acceptedAt: data.status === 'ACCEPTED' ? new Date() : undefined,
+          completedAt: data.status === 'COMPLETED' ? new Date() : undefined,
+          cancelledAt: data.status === 'CANCELLED' ? new Date() : undefined,
+        },
+        include: this.bookingInclude(),
+      });
     });
+
+    await this.eventsService.publish({
+      eventType: 'WarehouseBookingStatusChanged',
+      aggregateType: 'WAREHOUSE',
+      aggregateId: updated.id,
+      actorId: actor.userId,
+      idempotencyKey: `warehouse-booking-status:${updated.id}:${updated.status}:${Date.now()}`,
+      data: {
+        reference: updated.reference,
+        listingId: updated.listingId,
+        customerId: updated.customerId,
+        partnerId: updated.partnerId,
+        status: updated.status,
+        actorRole: actor.role,
+      },
+    });
+
+    return updated;
   }
 
   private listingInclude() {
@@ -642,6 +818,29 @@ export class WarehouseService {
 
   private round(value: number) {
     return Number(value.toFixed(2));
+  }
+
+  private calculateDistanceKm(
+    originLatitude: number,
+    originLongitude: number,
+    destinationLatitude: number,
+    destinationLongitude: number,
+  ) {
+    const earthRadiusKm = 6371;
+    const toRadians = (value: number) => (value * Math.PI) / 180;
+    const latitudeDelta = toRadians(destinationLatitude - originLatitude);
+    const longitudeDelta = toRadians(destinationLongitude - originLongitude);
+    const originLatRad = toRadians(originLatitude);
+    const destinationLatRad = toRadians(destinationLatitude);
+
+    const haversine =
+      Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
+      Math.cos(originLatRad) *
+        Math.cos(destinationLatRad) *
+        Math.sin(longitudeDelta / 2) *
+        Math.sin(longitudeDelta / 2);
+
+    return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
   }
 
   private async generateWarehouseBookingReference(): Promise<string> {

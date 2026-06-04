@@ -136,7 +136,7 @@ export class ReconciliationService {
         where: {
           status: {
             in: [
-              PaymentStatus.SUCCESS,
+              PaymentStatus.COMPLETED,
               PaymentStatus.PENDING,
               PaymentStatus.REFUNDED,
               PaymentStatus.REVERSED,
@@ -250,7 +250,7 @@ export class ReconciliationService {
       relatedPayments.forEach((payment) => consumedPaymentIds.add(payment.id));
 
       const successfulPayments = relatedPayments.filter(
-        (payment) => payment.status === PaymentStatus.SUCCESS,
+        (payment) => payment.status === PaymentStatus.COMPLETED,
       );
       const pendingPayments = relatedPayments.filter(
         (payment) => payment.status === PaymentStatus.PENDING,
@@ -383,7 +383,7 @@ export class ReconciliationService {
         paymentReferenceIds: payment.reference ? [payment.reference] : [],
         paymentStatuses: [payment.status],
         paymentMethods: [payment.method],
-        paymentTotal: payment.status === PaymentStatus.SUCCESS ? payment.amount : 0,
+        paymentTotal: payment.status === PaymentStatus.COMPLETED ? payment.amount : 0,
         outstandingAmount: 0,
         matchStatus: 'NO_INVOICE',
         matchedBy: 'NONE',

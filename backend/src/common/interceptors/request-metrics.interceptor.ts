@@ -21,6 +21,7 @@ export class RequestMetricsInterceptor implements NestInterceptor {
     const request = http.getRequest();
     const response = http.getResponse();
     const startedAt = Date.now();
+    const requestContext = request.requestContext;
 
     return next.handle().pipe(
       tap(() => {
@@ -30,6 +31,8 @@ export class RequestMetricsInterceptor implements NestInterceptor {
           statusCode: response.statusCode ?? 200,
           durationMs: Date.now() - startedAt,
           failed: (response.statusCode ?? 200) >= 400,
+          correlationId: requestContext?.correlationId,
+          requestId: requestContext?.requestId,
         });
       }),
       catchError((error) => {
@@ -39,6 +42,8 @@ export class RequestMetricsInterceptor implements NestInterceptor {
           statusCode: error?.status ?? 500,
           durationMs: Date.now() - startedAt,
           failed: true,
+          correlationId: requestContext?.correlationId,
+          requestId: requestContext?.requestId,
         });
         return throwError(() => error);
       }),

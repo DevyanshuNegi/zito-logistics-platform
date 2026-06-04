@@ -71,7 +71,7 @@ export function CustomerAiSupportSheet({
     setError(null);
 
     try {
-      const result = await api.post('/api/v1/ai-support/chat', {
+        const result = await api.post('/ai-support/chat', {
         bookingId: bookingId || undefined,
         screenContext,
         message: draftMessage,

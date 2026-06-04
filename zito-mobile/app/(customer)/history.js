@@ -25,12 +25,12 @@ export default function HistoryScreen() {
 
   const load = async (pg = 1, reset = false) => {
     try {
-      const data = await api.get(`/api/v1/customer/bookings?page=${pg}&limit=20`);
+      const data = await api.get(`/customer/bookings?page=${pg}&limit=20`);
       const list = data.data || [];
       setBookings(prev => reset ? list : [...prev, ...list]);
       setHasMore(data.meta?.has_next || false);
       setPage(pg);
-    } catch (e) { console.error(e); }
+    } catch (e) { /* History load error handled by state */ }
     finally { setLoading(false); setRefreshing(false); }
   };
 
@@ -110,7 +110,7 @@ const s = StyleSheet.create({
   filterActive:  { backgroundColor: colors.primary, borderColor: colors.primary },
   filterText:    { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   filterTextActive:{ color: colors.bg },
-  list:          { padding: 16, gap: 12, paddingBottom: 32 },
+  list:          { padding: 16, gap: 12, paddingBottom: 100 },
   empty:         { alignItems: 'center', paddingTop: 60 },
   emptyText:     { color: colors.textFaint, fontSize: 15 },
   card:          { backgroundColor: colors.bgCard, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border },

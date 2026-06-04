@@ -2,11 +2,15 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import axios from 'axios';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { FirebaseOtpProvider } from './otp/firebase.provider';
+import { OtpProvider, OtpProviderMode, maskOtpTarget } from './otp/otp-provider.interface';
+import { TestOtpProvider } from './otp/test.provider';
+import { TwilioOtpProvider } from './otp/twilio.provider';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const COOLDOWN_SECS = 30;
@@ -31,9 +35,21 @@ type OtpDispatchResult = {
 
 @Injectable()
 export class OtpService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(OtpService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly twilioProvider: TwilioOtpProvider,
+    private readonly testProvider: TestOtpProvider,
+    private readonly firebaseProvider: FirebaseOtpProvider,
+  ) {}
 
   async sendOtp(contact: string, purpose: string): Promise<OtpSendResult> {
+    const provider = this.resolveProvider(contact);
+    this.logger.log(
+      `OTP provider selected: ${provider.mode} for ${maskOtpTarget(contact)} (${purpose})`,
+    );
+
     const recent = await this.prisma.loginOtp.findFirst({
       where: {
         contact,
@@ -74,14 +90,16 @@ export class OtpService {
       });
     }
 
-    const plainOtp = this.shouldUseTwilioVerify(contact)
-      ? null
-      : crypto.randomInt(100000, 999999).toString();
+    const plainOtp = provider.mode === 'local'
+      ? crypto.randomInt(100000, 999999).toString()
+      : null;
     const hashedOtp = plainOtp
       ? this.hash(plainOtp)
-      : this.hash(`twilio:${contact}:${Date.now()}`);
+      : this.hash(`provider:${provider.mode}:${contact}:${Date.now()}`);
     const resendCount = recent ? recent.resendCount + 1 : 0;
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+
+    const dispatchResult = await this.dispatch(provider, contact, plainOtp, purpose);
 
     await this.prisma.loginOtp.create({
       data: {
@@ -91,8 +109,6 @@ export class OtpService {
         resendCount,
       },
     });
-
-    const dispatchResult = await this.dispatch(contact, plainOtp, purpose);
 
     return {
       sent: true,
@@ -109,6 +125,10 @@ export class OtpService {
 
   async verifyOtp(contact: string, otp: string): Promise<void> {
     await this.assertNotLocked(contact);
+    const provider = this.resolveProvider(contact);
+    this.logger.log(
+      `OTP verification using provider: ${provider.mode} for ${maskOtpTarget(contact)}`,
+    );
 
     const record = await this.prisma.loginOtp.findFirst({
       where: {
@@ -127,8 +147,8 @@ export class OtpService {
       });
     }
 
-    const isValid = this.shouldUseTwilioVerify(contact)
-      ? await this.verifyTwilioOtp(contact, otp)
+    const isValid = provider.verify
+      ? await provider.verify(contact, otp)
       : this.hash(otp) === record.otp;
 
     if (!isValid) {
@@ -245,35 +265,29 @@ export class OtpService {
   }
 
   private async dispatch(
+    provider: OtpProvider,
     contact: string,
     otp: null | string,
     purpose: string,
   ): Promise<OtpDispatchResult> {
     const isPhone = /^\+?[0-9]{9,15}$/.test(contact);
 
-    if (isPhone && this.shouldUseTwilioVerify(contact)) {
-      const deliveryTarget = this.getPhoneDeliveryTarget(contact);
-
-      await this.sendTwilioVerification(deliveryTarget);
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log(
-          `[OTP DEV] SMS verify -> ${contact} rerouted to ${deliveryTarget} (${purpose})`,
-        );
-      }
-
-      return {
-        debugDeliveryTarget: deliveryTarget,
-      };
+    if (provider.mode !== 'local') {
+      return provider.send({
+        contact,
+        purpose,
+        code: otp,
+        isPhone,
+      });
     }
 
     if (process.env.NODE_ENV === 'development') {
-      console.log(
-        `[OTP DEV] ${isPhone ? 'SMS' : 'Email'} -> ${contact} (${purpose}): ${otp ?? '[Twilio Verify managed]'}`,
+      this.logger.debug(
+        `OTP simulated locally for ${maskOtpTarget(contact)} (${purpose})`,
       );
       return {
         debugOtp: otp ?? undefined,
-        debugDeliveryTarget: contact,
+        debugDeliveryTarget: maskOtpTarget(contact),
       };
     }
 
@@ -288,117 +302,50 @@ export class OtpService {
     return {};
   }
 
+  private resolveProvider(contact: string): OtpProvider {
+    const mode = this.getOtpMode(contact);
+    if (mode === 'test') return this.testProvider;
+    if (mode === 'twilio') return this.twilioProvider;
+    if (mode === 'firebase') return this.firebaseProvider;
+    return this.localProvider();
+  }
+
+  private getOtpMode(contact: string): OtpProviderMode {
+    const configuredMode = (process.env.OTP_MODE ?? '').trim().toLowerCase();
+    if (configuredMode === 'test' || configuredMode === 'firebase') {
+      return configuredMode;
+    }
+
+    if (configuredMode === 'twilio') {
+      return this.isPhoneContact(contact) ? 'twilio' : 'local';
+    }
+
+    if (this.shouldUseTwilioVerify(contact)) {
+      return 'twilio';
+    }
+
+    return 'local';
+  }
+
+  private localProvider(): OtpProvider {
+    return {
+      mode: 'local',
+      send: async () => ({}),
+    };
+  }
+
   private shouldUseTwilioVerify(contact: string) {
+    const enabled =
+      process.env.TWILIO_VERIFY_ENABLED === 'true' ||
+      process.env.OTP_PROVIDER === 'twilio_verify';
+
     return (
+      enabled &&
       this.isPhoneContact(contact) &&
       Boolean(process.env.TWILIO_VERIFY_SERVICE_SID) &&
       Boolean(process.env.TWILIO_ACCOUNT_SID) &&
       Boolean(process.env.TWILIO_AUTH_TOKEN)
     );
-  }
-
-  private getPhoneDeliveryTarget(contact: string) {
-    const overrideTarget = process.env.OTP_TEST_REDIRECT_PHONE?.trim();
-    if (
-      overrideTarget &&
-      process.env.NODE_ENV !== 'production' &&
-      this.isPhoneContact(overrideTarget)
-    ) {
-      return overrideTarget;
-    }
-
-    return contact;
-  }
-
-  private async sendTwilioVerification(to: string) {
-    const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-    if (!serviceSid || !accountSid || !authToken) {
-      throw new HttpException(
-        {
-          message: 'Twilio Verify credentials are incomplete.',
-          data: {},
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    const payload = new URLSearchParams({
-      To: to,
-      Channel: 'sms',
-    });
-
-    const appHash = process.env.TWILIO_VERIFY_ANDROID_APP_HASH?.trim();
-    if (appHash) {
-      payload.set('AppHash', appHash);
-    }
-
-    try {
-      await axios.post(
-        `https://verify.twilio.com/v2/Services/${serviceSid}/Verifications`,
-        payload.toString(),
-        {
-          auth: {
-            username: accountSid,
-            password: authToken,
-          },
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-        },
-      );
-    } catch (error) {
-      throw new HttpException(
-        {
-          message: 'Unable to send phone OTP through Twilio Verify.',
-          data: {
-            provider: 'twilio-verify',
-          },
-        },
-        HttpStatus.BAD_GATEWAY,
-      );
-    }
-  }
-
-  private async verifyTwilioOtp(contact: string, code: string) {
-    const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-    if (!serviceSid || !accountSid || !authToken) {
-      return false;
-    }
-
-    const payload = new URLSearchParams({
-      To: this.getPhoneDeliveryTarget(contact),
-      Code: code,
-    });
-
-    try {
-      const response = await axios.post(
-        `https://verify.twilio.com/v2/Services/${serviceSid}/VerificationCheck`,
-        payload.toString(),
-        {
-          auth: {
-            username: accountSid,
-            password: authToken,
-          },
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-        },
-      );
-
-      const status =
-        typeof response.data?.status === 'string' ? response.data.status.toLowerCase() : '';
-      const valid = response.data?.valid === true;
-
-      return valid || status === 'approved';
-    } catch {
-      return false;
-    }
   }
 
   private isPhoneContact(contact: string) {

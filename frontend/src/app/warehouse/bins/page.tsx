@@ -82,7 +82,7 @@ export default function WarehouseBinsPage() {
     () => warehouses.find((warehouse) => warehouse.id === selectedWarehouseId),
     [selectedWarehouseId, warehouses],
   );
-  const zones = selectedWarehouse?.zones ?? [];
+  const zones = useMemo(() => selectedWarehouse?.zones ?? [], [selectedWarehouse]);
 
   useEffect(() => {
     if (!zones.length) {
@@ -95,8 +95,11 @@ export default function WarehouseBinsPage() {
     }
   }, [selectedZoneId, zones]);
 
-  const selectedZone = zones.find((zone) => zone.id === selectedZoneId);
-  const racks = selectedZone?.racks ?? [];
+  const selectedZone = useMemo(
+    () => zones.find((zone) => zone.id === selectedZoneId),
+    [selectedZoneId, zones],
+  );
+  const racks = useMemo(() => selectedZone?.racks ?? [], [selectedZone]);
 
   useEffect(() => {
     if (!racks.length) {

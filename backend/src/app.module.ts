@@ -37,12 +37,18 @@ import { SystemHealthModule } from './modules/system-health/system-health.module
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { UssdModule } from './modules/ussd/ussd.module';
 import { AiSupportModule } from './modules/ai-support/ai-support.module';
+import { EventsModule } from './modules/events/events.module';
+import { QuotationsModule } from './modules/quotations/quotations.module';
+import { DispatchModule } from './modules/dispatch/dispatch.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
   imports: [
-    PrismaModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule, RateCardsModule, InvoicesModule, BillingModule, ContractsModule, AuditModule, SlaModule, ReconciliationModule, StaffPerformanceModule, RetentionModule, AnalyticsModule, FraudModule, SurgePricingModule, RouteOptimizationModule, HeatmapModule, CapacityPlanningModule, AlertsModule, SystemHealthModule, MarketplaceModule, UssdModule, AiSupportModule
+    PrismaModule, EventsModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, QuotationsModule, DispatchModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule, RateCardsModule, InvoicesModule, BillingModule, ContractsModule, AuditModule, SlaModule, ReconciliationModule, StaffPerformanceModule, RetentionModule, AnalyticsModule, FraudModule, SurgePricingModule, RouteOptimizationModule, HeatmapModule, CapacityPlanningModule, AlertsModule, SystemHealthModule, MarketplaceModule, SubscriptionsModule, UssdModule, AiSupportModule
   ],
-  providers: [GlobalExceptionFilter],
+  providers: [GlobalExceptionFilter, IdempotencyInterceptor, AuditInterceptor],
 })
 export class AppModule {}

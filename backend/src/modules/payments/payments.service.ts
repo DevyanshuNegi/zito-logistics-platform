@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -28,6 +29,7 @@ type PaymentContext = {
     id: string;
     reference: string;
     customerId: string;
+    agencyId: string | null;
     totalPrice: number;
     status: string;
   } | null;
@@ -38,9 +40,16 @@ type PaymentContext = {
     status: InvoiceStatus;
     bookingId: string | null;
     customerId: string;
+    agencyId: string | null;
     issuedAt: Date | null;
     dueDate: Date | null;
   } | null;
+};
+
+type FinanceActor = {
+  id: string;
+  role?: string | null;
+  agencyId?: string | null;
 };
 
 @Injectable()
@@ -56,6 +65,7 @@ export class PaymentsService {
     amount: number,
     method: PaymentMethod,
     idempotencyKey: string,
+    actor?: FinanceActor,
   ) {
     const existing = await this.prisma.payment.findUnique({
       where: { idempotencyKey },
@@ -63,6 +73,7 @@ export class PaymentsService {
     if (existing) return existing;
 
     const context = await this.resolvePaymentContext(target);
+    this.assertPaymentTargetAccess(context, actor);
     const customerId = context.invoice?.customerId ?? context.booking?.customerId;
     if (!customerId) {
       throw new BadRequestException('Payment target must resolve to a billable account');
@@ -158,7 +169,7 @@ export class PaymentsService {
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
-    if (payment.status === PaymentStatus.SUCCESS) {
+    if (payment.status === PaymentStatus.COMPLETED) {
       return this.getPayment(payment.id);
     }
 
@@ -170,7 +181,7 @@ export class PaymentsService {
     const updated = await this.prisma.payment.update({
       where: { id: paymentId },
       data: {
-        status: PaymentStatus.SUCCESS,
+        status: PaymentStatus.COMPLETED,
         providerStatus: 'SUCCESS',
         providerReceiptNumber: mpesaRef ?? undefined,
         confirmedAt: new Date(),
@@ -214,8 +225,8 @@ export class PaymentsService {
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
-    if (payment.status !== PaymentStatus.SUCCESS) {
-      throw new BadRequestException('Only successful payments can be refunded');
+    if (payment.status !== PaymentStatus.COMPLETED) {
+      throw new BadRequestException('Only completed payments can be refunded');
     }
 
     const refunded = await this.prisma.payment.update({
@@ -245,18 +256,20 @@ export class PaymentsService {
     return refunded;
   }
 
-  async retryPayment(paymentId: string) {
+  async retryPayment(paymentId: string, actor?: FinanceActor) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
+    await this.assertPaymentRecordAccess(paymentId, actor);
+
     if (payment.retryCount >= 3) {
       throw new BadRequestException('Maximum retry attempts (3) reached');
     }
 
-    if (payment.status === PaymentStatus.SUCCESS) {
-      throw new BadRequestException('Payment already successful');
+    if (payment.status === PaymentStatus.COMPLETED) {
+      throw new BadRequestException('Payment already completed');
     }
 
     return this.prisma.payment.update({
@@ -321,8 +334,8 @@ export class PaymentsService {
   async requestMpesaReversal(paymentId: string, reason: string) {
     const payment = await this.loadMpesaPaymentState(paymentId);
 
-    if (payment.status !== PaymentStatus.SUCCESS) {
-      throw new BadRequestException('Only successful M-Pesa payments can be reversed');
+    if (payment.status !== PaymentStatus.COMPLETED) {
+      throw new BadRequestException('Only completed M-Pesa payments can be reversed');
     }
 
     if (!payment.providerReceiptNumber) {
@@ -429,8 +442,8 @@ export class PaymentsService {
           'transactionStatusResult',
           {
             status:
-              payment.status === PaymentStatus.SUCCESS
-                ? PaymentStatus.SUCCESS
+              payment.status === PaymentStatus.COMPLETED
+                ? PaymentStatus.COMPLETED
                 : PaymentStatus.FAILED,
             failureReason:
               providerResponse.resultDesc ?? 'M-Pesa transaction status query failed',
@@ -577,7 +590,7 @@ export class PaymentsService {
         bookingId,
         status: {
           in: [
-            PaymentStatus.SUCCESS,
+            PaymentStatus.COMPLETED,
             PaymentStatus.PENDING,
             PaymentStatus.INITIATED,
           ],
@@ -593,7 +606,7 @@ export class PaymentsService {
       };
     }
 
-    if (payment.status === PaymentStatus.SUCCESS) {
+    if (payment.status === PaymentStatus.COMPLETED) {
       const refundedPayment = await this.refundPayment(payment.id, reason);
       return {
         action: 'PAYMENT_REFUNDED',
@@ -628,7 +641,7 @@ export class PaymentsService {
 
   async releaseEscrowForBooking(bookingId: string, note: string) {
     const successfulPayment = await this.prisma.payment.findFirst({
-      where: { bookingId, status: PaymentStatus.SUCCESS },
+      where: { bookingId, status: PaymentStatus.COMPLETED },
       select: { id: true },
     });
 
@@ -653,19 +666,27 @@ export class PaymentsService {
     }
   }
 
-  async getPayment(id: string) {
+  async getPayment(id: string, actor?: FinanceActor) {
     const payment = await this.prisma.payment.findUnique({
       where: { id },
       include: {
-        booking: { select: { id: true, reference: true, status: true } },
-        invoice: { select: { id: true, number: true, status: true } },
+        booking: { select: { id: true, reference: true, status: true, customerId: true, agencyId: true } },
+        invoice: { select: { id: true, number: true, status: true, customerId: true, agencyId: true } },
       },
     });
     if (!payment) throw new NotFoundException('Payment not found');
+    this.assertPaymentAccessFromRecord(payment, actor);
     return payment;
   }
 
-  async getBookingPayments(bookingId: string) {
+  async getBookingPayments(bookingId: string, actor?: FinanceActor) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, customerId: true, agencyId: true },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+    this.assertScopedAccess(actor, booking.customerId, booking.agencyId);
+
     return this.prisma.payment.findMany({
       where: { bookingId },
       orderBy: { createdAt: 'desc' },
@@ -675,7 +696,14 @@ export class PaymentsService {
     });
   }
 
-  async getInvoicePayments(invoiceId: string) {
+  async getInvoicePayments(invoiceId: string, actor?: FinanceActor) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { id: true, customerId: true, agencyId: true },
+    });
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    this.assertScopedAccess(actor, invoice.customerId, invoice.agencyId);
+
     return this.prisma.payment.findMany({
       where: { invoiceId },
       orderBy: { createdAt: 'desc' },
@@ -686,11 +714,15 @@ export class PaymentsService {
     });
   }
 
-  async getEscrow(bookingId: string) {
+  async getEscrow(bookingId: string, actor?: FinanceActor) {
     const escrow = await this.prisma.escrow.findUnique({
       where: { bookingId },
+      include: {
+        booking: { select: { customerId: true, agencyId: true } },
+      },
     });
     if (!escrow) throw new NotFoundException('Escrow not found for this booking');
+    this.assertScopedAccess(actor, escrow.booking.customerId, escrow.booking.agencyId);
     return escrow;
   }
 
@@ -780,6 +812,32 @@ export class PaymentsService {
         },
       });
     });
+  }
+
+  async deductFromWallet(
+    userId: string,
+    input: { amount: number; description?: string; reference?: string; type?: string },
+  ) {
+    return this.debitWallet(
+      userId,
+      input.amount,
+      input.description ?? input.type ?? 'Wallet debit',
+      undefined,
+      input.reference,
+    );
+  }
+
+  async refundToWallet(
+    userId: string,
+    input: { amount: number; description?: string; reference?: string; type?: string },
+  ) {
+    return this.creditWallet(
+      userId,
+      input.amount,
+      input.description ?? input.type ?? 'Wallet refund',
+      undefined,
+      input.reference,
+    );
   }
 
   async getWalletTransactions(userId: string, page = 1, limit = 20) {
@@ -1378,7 +1436,7 @@ export class PaymentsService {
         provider: providerResponse.provider,
         providerMode: providerResponse.mode,
         providerStatus: providerResponse.providerStatus,
-        status: PaymentStatus.SUCCESS,
+        status: PaymentStatus.COMPLETED,
         merchantRequestId:
           providerResponse.merchantRequestId ?? payment.merchantRequestId ?? null,
         checkoutRequestId:
@@ -1443,8 +1501,8 @@ export class PaymentsService {
         providerMode: providerResponse.mode,
         providerStatus: providerResponse.providerStatus,
         status:
-          payment.status === PaymentStatus.SUCCESS
-            ? PaymentStatus.SUCCESS
+          payment.status === PaymentStatus.COMPLETED
+            ? PaymentStatus.COMPLETED
             : PaymentStatus.FAILED,
         merchantRequestId:
           providerResponse.merchantRequestId ?? payment.merchantRequestId ?? null,
@@ -1647,6 +1705,77 @@ export class PaymentsService {
     return 'M-Pesa request failed';
   }
 
+  private async assertPaymentRecordAccess(paymentId: string, actor?: FinanceActor) {
+    if (!actor) {
+      return;
+    }
+
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: {
+        booking: { select: { customerId: true, agencyId: true } },
+        invoice: { select: { customerId: true, agencyId: true } },
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    this.assertPaymentAccessFromRecord(payment, actor);
+  }
+
+  private assertPaymentTargetAccess(context: PaymentContext, actor?: FinanceActor) {
+    if (!actor) {
+      return;
+    }
+
+    const customerId = context.invoice?.customerId ?? context.booking?.customerId ?? null;
+    const agencyId = context.invoice?.agencyId ?? context.booking?.agencyId ?? null;
+    this.assertScopedAccess(actor, customerId, agencyId);
+  }
+
+  private assertPaymentAccessFromRecord(
+    payment: {
+      booking?: { customerId: string; agencyId?: string | null } | null;
+      invoice?: { customerId: string; agencyId?: string | null } | null;
+    },
+    actor?: FinanceActor,
+  ) {
+    if (!actor) {
+      return;
+    }
+
+    const customerId = payment.invoice?.customerId ?? payment.booking?.customerId ?? null;
+    const agencyId = payment.invoice?.agencyId ?? payment.booking?.agencyId ?? null;
+    this.assertScopedAccess(actor, customerId, agencyId);
+  }
+
+  private assertScopedAccess(
+    actor: FinanceActor | undefined,
+    ownerUserId?: string | null,
+    agencyId?: string | null,
+  ) {
+    if (!actor) {
+      return;
+    }
+
+    const role = String(actor.role ?? '').toUpperCase();
+    if (['SUPER_ADMIN', 'ADMIN'].includes(role)) {
+      return;
+    }
+
+    if (role === 'AGENCY_STAFF' && actor.agencyId && agencyId === actor.agencyId) {
+      return;
+    }
+
+    if (ownerUserId && actor.id === ownerUserId) {
+      return;
+    }
+
+    throw new ForbiddenException('You are not allowed to access this finance record.');
+  }
+
   private async resolvePaymentContext(
     target: PaymentTargetInput,
   ): Promise<PaymentContext> {
@@ -1661,6 +1790,7 @@ export class PaymentsService {
             id: true,
             reference: true,
             customerId: true,
+            agencyId: true,
             totalPrice: true,
             status: true,
           },
@@ -1680,6 +1810,7 @@ export class PaymentsService {
             status: true,
             bookingId: true,
             customerId: true,
+            agencyId: true,
             issuedAt: true,
             dueDate: true,
           },
@@ -1699,6 +1830,7 @@ export class PaymentsService {
           status: true,
           bookingId: true,
           customerId: true,
+          agencyId: true,
           issuedAt: true,
           dueDate: true,
         },
@@ -1710,10 +1842,11 @@ export class PaymentsService {
         where: { id: invoice.bookingId },
         select: {
           id: true,
-          reference: true,
-          customerId: true,
-          totalPrice: true,
-          status: true,
+            reference: true,
+            customerId: true,
+            agencyId: true,
+            totalPrice: true,
+            status: true,
         },
       });
     }
@@ -1773,7 +1906,7 @@ export class PaymentsService {
   ) {
     const payments = await this.prisma.payment.findMany({
       where: {
-        status: PaymentStatus.SUCCESS,
+        status: PaymentStatus.COMPLETED,
         OR: [
           { invoiceId: invoice.id },
           ...(invoice.bookingId
@@ -1793,7 +1926,7 @@ export class PaymentsService {
     const payments = await this.prisma.payment.findMany({
       where: {
         bookingId,
-        status: PaymentStatus.SUCCESS,
+        status: PaymentStatus.COMPLETED,
       },
       select: { amount: true },
     });
@@ -1840,7 +1973,7 @@ export class PaymentsService {
     const payments = await this.prisma.payment.findMany({
       where: {
         invoiceId,
-        status: PaymentStatus.SUCCESS,
+        status: PaymentStatus.COMPLETED,
       },
       orderBy: { createdAt: 'desc' },
       select: {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '../../constants/theme';
 
@@ -29,7 +29,59 @@ export const KPICard = ({
     return '→';
   };
 
-  const borderColor = customColor || colors.primary;
+  // Create styles inside component to ensure colors are loaded
+  const s = useMemo(
+    () =>
+      StyleSheet.create({
+        card: {
+          borderLeftWidth: 4,
+          backgroundColor: colors?.bgCard || '#0c1424',
+          padding: 14,
+          borderRadius: 12,
+          marginBottom: 10,
+          borderColor: colors?.border || 'rgba(95,128,255,0.2)',
+          borderRightWidth: 1,
+          borderTopWidth: 1,
+          borderBottomWidth: 1,
+        },
+        header: {
+          marginBottom: 8,
+        },
+        icon: {
+          fontSize: 24,
+        },
+        label: {
+          fontSize: 12,
+          fontWeight: '600',
+          color: colors?.text || '#f4f8ff',
+          marginBottom: 2,
+        },
+        period: {
+          fontSize: 10,
+          color: colors?.textMuted || '#9eb0ce',
+          marginBottom: 4,
+        },
+        value: {
+          fontSize: 18,
+          fontWeight: '700',
+          color: colors?.text || '#f4f8ff',
+          marginBottom: 6,
+        },
+        trend: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginBottom: 4,
+        },
+        status: {
+          fontSize: 9,
+          color: colors?.textFaint || '#677a9d',
+          marginTop: 4,
+        },
+      }),
+    [colors]
+  );
+
+  const borderColor = customColor || colors?.primary || '#0066FF';
 
   return (
     <View style={[s.card, { borderLeftColor: borderColor }]}>
@@ -48,51 +100,3 @@ export const KPICard = ({
     </View>
   );
 };
-
-const s = StyleSheet.create({
-  card: {
-    borderLeftWidth: 4,
-    backgroundColor: colors.bgCard,
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderColor: colors.border,
-    borderRightWidth: 1,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-  },
-  header: {
-    marginBottom: 8,
-  },
-  icon: {
-    fontSize: 24,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  period: {
-    fontSize: 10,
-    color: colors.textMuted,
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  trend: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  status: {
-    fontSize: 11,
-    color: '#4CAF50',
-    fontWeight: '600',
-    marginTop: 4,
-  },
-});

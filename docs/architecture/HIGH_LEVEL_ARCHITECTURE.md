@@ -13,16 +13,20 @@ The PRD position is platform-first: Zito does not own trucks, warehouses, or dri
 
 ```mermaid
 flowchart LR
-  C["Customer / Corporate App"] --> API["Unified Backend API"]
-  P["Partners App\nDriver, Agent, Transporter, Courier, Warehouse"] --> API
-  W["Web Portal\nCustomer, Partner, Staff"] --> API
-  I["Internal Ops\nAdmin, Head Office, Agency Staff"] --> API
-  API --> DB["Neon PostgreSQL\nPrisma ORM"]
+  C["Customer / Corporate App"] --> GW["API Gateway\nJWT, rate limits, tracing"]
+  P["Partners App\nDriver, Agent, Transporter, Courier, Warehouse"] --> GW
+  W["Web Portal\nCustomer, Partner, Staff"] --> GW
+  I["Internal Ops\nAdmin, Head Office, Agency Staff"] --> GW
+  GW --> API["Modular Backend API"]
+  API --> EVT["Event Layer\nIn-process now, RabbitMQ/Kafka ready"]
+  API --> DB["PostgreSQL\nPrisma ORM"]
+  API --> CACHE["Redis\nCache, queues, sessions"]
   API --> OTP["OTP Providers\nTwilio Verify / Email"]
   API --> PAY["Payments\nM-Pesa / Stripe / Manual fallback"]
   API --> MAP["Maps / Routing / GPS"]
   API --> NOTIF["Notifications\nPush / Email / SMS"]
   API --> FILES["Documents / Media\nPOD, KYC, invoices"]
+  API --> OBS["Observability\nLogs, metrics, tracing"]
 ```
 
 ## 3. Application Surfaces
@@ -37,7 +41,7 @@ flowchart LR
 
 ## 4. Core Backend Domains
 
-The backend is organized as NestJS modules around PRD business domains:
+The backend is organized as a modular monolith around PRD business domains. This is the required starting point for PRD v10: strong module boundaries first, microservice extraction later only where scale, compliance, team ownership, or deployment independence requires it.
 
 | Domain | Module Area |
 |---|---|
@@ -48,6 +52,34 @@ The backend is organized as NestJS modules around PRD business domains:
 | Finance | `payments`, `billing`, `invoices`, `reconciliation`, `rate-cards`, `surge-pricing`, `contracts` |
 | Support and notifications | `support`, `ai-support`, `notifications`, `alerts` |
 | Governance | `audit`, `fraud`, `system-health`, `retention`, `rto` |
+| Event platform | `events`, request context, idempotency, audit fallback |
+
+Logical enterprise services map to these modules:
+
+| Logical Service | Current Boundary |
+|---|---|
+| Identity Service | `auth`, `users`, guards, session/RBAC controls |
+| Booking Service | `bookings`, booking DTOs, lifecycle services |
+| Dispatch Service | `bookings`, `marketplace`, `route-optimization`, `capacity-planning` |
+| Tracking Service | `tracking`, GPS updates, trip visibility |
+| Fleet Service | `fleet`, `drivers` |
+| Warehouse Service | `warehouse`, `inventory`, `scan`, `waybill` |
+| Payment/Billing Services | `payments`, `billing`, `invoices`, `reconciliation` |
+| Notification Service | `notifications`, provider channel services |
+| Compliance/Audit Services | `audit`, `fraud`, KYC documents, internal alerts |
+| Analytics/AI Services | `analytics`, `ai-support`, `heatmap`, `surge-pricing` |
+| Marketplace Service | `marketplace`, partner approval, opportunities, bids |
+
+## 4.1 API Surface Separation
+
+The gateway and backend must keep API surfaces separated even when served by one NestJS application:
+
+- Customer APIs: booking, tracking, payment, invoice, support, public warehouse listings, warehouse booking.
+- Partner APIs: transporter, driver, agent, courier-company, warehouse-partner, fleet, listing, bid, payout, compliance.
+- Internal Admin APIs: approvals, finance, support, audit, analytics, marketplace governance, manual overrides.
+- System Event APIs: payment callbacks, notification callbacks, internal event status, future queue/webhook ingestion.
+
+Current implementation adds request context headers (`X-Correlation-Id`, `X-Request-Id`, `X-Tenant-Id`) so this separation can be traced across the modular backend and future gateway.
 
 ## 5. Data Architecture
 
@@ -61,6 +93,33 @@ The primary database is PostgreSQL through Prisma. Core models include:
 - `Invoice`, `InvoiceLineItem`, `SupportTicket`, `Notification`, `AuditLog`, `FraudFlag`
 
 Important enums include `UserRole`, `BookingStatus`, `ServiceType`, `PaymentStatus`, `PaymentMethod`, `InventoryStatus`, `WaybillStatus`, and `TicketStatus`.
+
+High-volume data must not overload the transactional database:
+
+- GPS history should move to TimescaleDB or partitioned time-series tables before large-scale live tracking.
+- Search should move to OpenSearch/Elasticsearch for booking, invoice, waybill, container, OCR, customer, and partner search.
+- Analytics should move to a separate BI warehouse such as ClickHouse or BigQuery once reporting volume grows.
+- Files must remain in object storage, not database rows, with metadata in PostgreSQL.
+
+## 5.1 Event Architecture
+
+PRD v10 requires an event-driven foundation. The current codebase starts with an in-process event module and audit fallback, with RabbitMQ/Kafka adapter readiness.
+
+Core event groups:
+
+- Booking: `BookingCreated`, `BookingAssigned`, `BookingCancelled`, `BookingCompleted`
+- Payment: `PaymentInitiated`, `PaymentVerified`, `EscrowReleased`, `RefundProcessed`
+- Driver: `DriverOnline`, `DriverArrived`, `DriverNoShow`
+- Tracking: `TripStarted`, `GPSUpdated`, `TripDelayed`, `PODUploaded`
+- Warehouse: `InventoryReceived`, `InventoryMoved`, `InventoryDispatched`
+
+Event guarantees:
+
+- Correlation ID propagation.
+- Idempotency-key de-duplication.
+- Audit fallback for critical event visibility.
+- Future retry queues and dead-letter queues when RabbitMQ/Kafka is enabled.
+- Replayable event records for finance, compliance, disputes, and manual override evidence.
 
 ## 6. Identity and Role Segregation
 
@@ -179,3 +238,13 @@ Local defaults:
 - Swagger: `http://127.0.0.1:5000/api/docs`
 
 Production deployment should keep database, backend, frontend, Redis/queue, storage, and provider credentials independently configurable. Environment secrets must be managed outside source control.
+
+PRD v10 production target:
+
+- API gateway: Kong, NGINX Gateway, or AWS API Gateway.
+- Compute: Docker on ECS initially; Kubernetes only when service scale justifies it.
+- Secrets: AWS Secrets Manager or Vault.
+- Observability: Prometheus metrics, Grafana dashboards, Sentry error tracking, Loki/ELK logs, OpenTelemetry traces.
+- Release safety: CI/CD, staging, rollback, blue-green deployment, feature flags.
+- Security: WAF, DDoS mitigation, token revocation, device integrity checks, rooted-device detection where mobile risk requires it.
+- Multi-tenant strategy: tenant, agency, partner, and enterprise isolation at API, RBAC, audit, invoice, analytics, and support boundaries.

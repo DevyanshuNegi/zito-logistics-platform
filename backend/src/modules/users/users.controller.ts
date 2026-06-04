@@ -71,6 +71,12 @@ export class UsersController {
     return this.usersService.updatePreferences(req.user.id, dto);
   }
 
+  @Get('me/verification')
+  @ApiOperation({ summary: 'Get role-based KYC requirements and onboarding status' })
+  getMyVerification(@Req() req: any) {
+    return this.usersService.getMyVerificationSummary(req.user.id);
+  }
+
   @Post('me/kyc')
   @ApiOperation({ summary: 'Upload KYC document (PRD §4)' })
   @ApiConsumes('multipart/form-data')
@@ -87,6 +93,12 @@ export class UsersController {
   @ApiOperation({ summary: 'Get own KYC documents (PRD §4)' })
   getMyKyc(@Req() req: any) {
     return this.usersService.getKycDocuments(req.user.id);
+  }
+
+  @Post('me/kyc/submit')
+  @ApiOperation({ summary: 'Submit completed role-based KYC documents for review' })
+  submitMyKyc(@Req() req: any) {
+    return this.usersService.submitKycForReview(req.user.id);
   }
 
   @Get()

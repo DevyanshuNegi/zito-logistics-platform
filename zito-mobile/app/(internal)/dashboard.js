@@ -24,10 +24,10 @@ export default function InternalDashboardScreen() {
     try {
       setError('');
       const [alertsPayload, ticketPayload, paymentPayload, invoicePayload] = await Promise.all([
-        api.get('/api/v1/alerts/dashboard'),
-        api.get('/api/v1/support'),
-        api.get('/api/v1/payments?limit=50'),
-        api.get('/api/v1/admin/invoices'),
+        api.get('/alerts/dashboard'),
+        api.get('/support'),
+        api.get('/payments?limit=50'),
+        api.get('/admin/invoices'),
       ]);
 
       setAlerts(readArray(alertsPayload, 'alerts'));

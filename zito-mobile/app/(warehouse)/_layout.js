@@ -29,6 +29,10 @@ export default function WarehouseLayout() {
         options={{ title: 'Inventory', tabBarIcon: ({ color }) => <TabIcon name="cube-outline" color={color} /> }}
       />
       <Tabs.Screen
+        name="opportunities"
+        options={{ title: 'Market', tabBarIcon: ({ color }) => <TabIcon name="briefcase-outline" color={color} /> }}
+      />
+      <Tabs.Screen
         name="support"
         options={{ title: 'Support', tabBarIcon: ({ color }) => <TabIcon name="chatbubbles-outline" color={color} /> }}
       />

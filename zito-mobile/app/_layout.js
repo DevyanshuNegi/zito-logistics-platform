@@ -3,8 +3,10 @@ import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
-import { View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, ImageBackground, StyleSheet, View } from 'react-native';
 import { colors } from '../src/constants/theme';
+
+const SPLASH_SOURCE = require('../assets/images/zito-original-logo-splash-screen.png');
 
 function RootGuard() {
   const { user, loading } = useAuth();
@@ -46,9 +48,11 @@ function RootGuard() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
+      <ImageBackground source={SPLASH_SOURCE} style={styles.splashScreen} resizeMode="cover">
+        <View style={styles.splashLoader}>
+          <ActivityIndicator color="#14bfff" size="small" />
+        </View>
+      </ImageBackground>
     );
   }
 
@@ -72,6 +76,20 @@ function RootGuard() {
     </Stack>
   );
 }
+
+const styles = StyleSheet.create({
+  splashScreen: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  splashLoader: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 90,
+    alignItems: 'center',
+  },
+});
 
 export default function RootLayout() {
   return (

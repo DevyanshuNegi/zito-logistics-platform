@@ -101,6 +101,8 @@ async function upsertUser(spec, agencyMap) {
 
     const staffPayload = {
       agencyId,
+      scope: spec.staffScope || 'AGENCY',
+      department: spec.staffRole || 'OPERATIONS',
       role: spec.staffRole || 'OPERATIONS',
       isActive: true,
     };

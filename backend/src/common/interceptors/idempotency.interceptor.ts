@@ -51,7 +51,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    const key = req.headers['idempotency-key'] as string | undefined;
+    const key = (
+      req.headers['idempotency-key'] ??
+      req.headers['x-idempotency-key']
+    ) as string | undefined;
 
     // Booking create and payment initiate REQUIRE the key
     const requiresKey = this.requiresIdempotencyKey(req.path);

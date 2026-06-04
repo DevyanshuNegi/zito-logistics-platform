@@ -232,7 +232,7 @@ export class ContractsService {
         select: {
           totalPrice: true,
           payments: {
-            where: { status: PaymentStatus.SUCCESS },
+            where: { status: PaymentStatus.COMPLETED },
             select: { amount: true },
           },
         },

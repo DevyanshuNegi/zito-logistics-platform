@@ -63,6 +63,20 @@ export class NotificationsService {
     );
   }
 
+  async sendSms(userId: string, data: Record<string, unknown>) {
+    const template =
+      typeof data.template === 'string' ? data.template : 'Zito notification';
+
+    return this.send({
+      userId,
+      title: template.replace(/_/g, ' '),
+      message: this.renderTemplateMessage(template, data),
+      channels: ['SMS'],
+      entityType: typeof data.entityType === 'string' ? data.entityType : 'SYSTEM',
+      entityId: typeof data.entityId === 'string' ? data.entityId : userId,
+    });
+  }
+
   async notifyBookingCreated(customerId: string, bookingRef: string, bookingId: string) {
     return this.send({
       userId: customerId,
@@ -268,5 +282,13 @@ export class NotificationsService {
 
   private sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private renderTemplateMessage(template: string, data: Record<string, unknown>) {
+    const parts = Object.entries(data)
+      .filter(([key, value]) => key !== 'template' && value !== undefined && value !== null)
+      .map(([key, value]) => `${key}: ${String(value)}`);
+
+    return parts.length > 0 ? `${template.replace(/_/g, ' ')} - ${parts.join(', ')}` : template;
   }
 }

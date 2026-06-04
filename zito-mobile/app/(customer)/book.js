@@ -1,6 +1,6 @@
 // app/(customer)/book-modern.js — Modern Booking Screen with Interactive Map & Location Search
 // PRD 3.1 - Customer booking with modern Uber/Bolt-like UX
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Platform,
   View,
@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   Switch,
   KeyboardAvoidingView,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -21,30 +20,31 @@ import { useRouter } from 'expo-router';
 
 import { LocationSearchInput } from '../../src/components/LocationSearchInput';
 import VehicleTypePicker from '../../src/components/VehicleTypePicker';
+import { DateInput } from '../../src/components/DateInput';
 import { CustomerAiSupportSheet } from '../../src/components/CustomerAiSupportSheet';
 import { api, extractErrorMessage } from '../../src/api/client';
-import { colors, VEHICLE_TYPES, estimatePrice, spacing, radius, shadows, typography } from '../../src/constants/theme';
+import { colors, VEHICLE_TYPES, estimatePrice, spacing, radius, shadows } from '../../src/constants/theme';
+import { formatDateForAPI } from '../../src/utils/dateFormat';
 
-const { height: screenHeight } = Dimensions.get('window');
+const VEHICLE_TYPE_API_MAP = {
+  motorcycle: 'MOTORBIKE',
+  pickup: 'VAN',
+  van: 'VAN',
+  light_truck: 'TRUCK_3T',
+  heavy_truck: 'TRUCK_7T',
+};
 
-let MapView = null;
-let Marker = null;
-
-if (Platform.OS !== 'web') {
-  try {
-    const ReactNativeMaps = require('react-native-maps');
-    MapView = ReactNativeMaps.default;
-    Marker = ReactNativeMaps.Marker;
-  } catch (_) {
-    // Maps not available
+function createUuid() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
   }
-}
 
-const DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
-];
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
 
 export default function BookScreenModern() {
   const router = useRouter();
@@ -56,11 +56,11 @@ export default function BookScreenModern() {
   const [description, setDescription] = useState('');
   const [instructions, setInstructions] = useState('');
   const [scheduled, setScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
   const [expandCargo, setExpandCargo] = useState(false);
   const [recentLocations, setRecentLocations] = useState([]);
-  const mapRef = useRef(null);
 
   // Get current location on mount
   useEffect(() => {
@@ -115,13 +115,18 @@ export default function BookScreenModern() {
       Alert.alert('Invalid Price', 'Estimated price is invalid.');
       return;
     }
+    if (scheduled && !scheduledDate) {
+      Alert.alert('Scheduled Date Required', 'Please select a date for scheduled booking.');
+      return;
+    }
 
     setLoading(true);
     try {
       const bookingData = await api.post('/customer/bookings', {
         serviceType: 'COURIER',
+        vehicleType: VEHICLE_TYPE_API_MAP[vehicleType] || 'VAN',
         totalPrice: estimate,
-        idempotencyKey: `bk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        idempotencyKey: createUuid(),
         stops: [
           {
             sequence: 1,
@@ -147,6 +152,7 @@ export default function BookScreenModern() {
         cargoDescription: description,
         specialInstructions: instructions,
         isScheduled: scheduled,
+        scheduledDate: scheduled ? formatDateForAPI(scheduledDate) : null,
       });
 
       // Add to recent locations
@@ -168,7 +174,7 @@ export default function BookScreenModern() {
     }
   };
 
-  const isComplete = vehicleType && pickup.lat && delivery.lat && (estimate > 0);
+  const isComplete = vehicleType && pickup.lat && delivery.lat && (estimate > 0) && (!scheduled || scheduledDate);
 
   return (
     <SafeAreaView style={s.root}>
@@ -220,21 +226,22 @@ export default function BookScreenModern() {
             </View>
 
             {/* Map Preview */}
-            {MapView && pickup.lat && delivery.lat && (
+            {pickup.lat && delivery.lat && (
               <View style={s.mapContainer}>
-                <MapView
-                  ref={mapRef}
-                  style={s.map}
-                  customMapStyle={DARK_MAP_STYLE}
-                  initialRegion={{
-                    latitude: (pickup.lat + delivery.lat) / 2,
-                    longitude: (pickup.lng + delivery.lng) / 2,
-                    latitudeDelta: 0.05,
-                    longitudeDelta: 0.05,
-                  }}>
-                  <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup" />
-                  <Marker coordinate={{ latitude: delivery.lat, longitude: delivery.lng }} title="Delivery" />
-                </MapView>
+                <View style={s.routePreviewGrid}>
+                  <View style={[s.routeNode, s.pickupNode]}>
+                    <Text style={s.routeNodeText}>P</Text>
+                  </View>
+                  <View style={s.routeLine} />
+                  <View style={[s.routeNode, s.deliveryNode]}>
+                    <Text style={s.routeNodeText}>D</Text>
+                  </View>
+                </View>
+                <View style={s.routePreviewOverlay}>
+                  <Text style={s.routePreviewTitle}>Route Preview</Text>
+                  <Text style={s.routePreviewText} numberOfLines={1}>{pickup.address}</Text>
+                  <Text style={s.routePreviewText} numberOfLines={1}>{delivery.address}</Text>
+                </View>
               </View>
             )}
           </View>
@@ -243,8 +250,9 @@ export default function BookScreenModern() {
           <View style={s.section}>
             <Text style={s.sectionTitle}>🚗 Vehicle Type</Text>
             <VehicleTypePicker
-              selectedVehicle={vehicleType}
-              onSelectVehicle={setVehicleType}
+              vehicles={VEHICLE_TYPES}
+              selectedType={vehicleType}
+              onSelect={setVehicleType}
             />
           </View>
 
@@ -330,6 +338,21 @@ export default function BookScreenModern() {
                   />
                 </View>
               </View>
+
+              {/* Scheduled Date Picker (only show if scheduled) */}
+              {scheduled && (
+                <View style={s.formGroup}>
+                  <DateInput
+                    label="Pickup Date"
+                    value={scheduledDate}
+                    onDateChange={setScheduledDate}
+                    minimumDate={new Date()}
+                    icon="📅"
+                    required={true}
+                    placeholder="DD/MM/YYYY"
+                  />
+                </View>
+              )}
             </View>
           )}
 
@@ -369,7 +392,12 @@ export default function BookScreenModern() {
         screenContext="CUSTOMER_BOOKING"
         title="Booking Help"
         description="Get help with vehicle selection, pricing, or booking process."
-        quickActions={['Vehicle choice', 'Pricing info', 'How to book', 'Delivery timeline']}
+        quickActions={[
+          { label: 'Vehicle choice', message: 'Help me choose the right vehicle for my delivery.' },
+          { label: 'Pricing info', message: 'Explain how booking pricing is estimated.' },
+          { label: 'How to book', message: 'Show me how to complete this booking correctly.' },
+          { label: 'Delivery timeline', message: 'Explain what happens after I create a booking.' },
+        ]}
         placeholder="Ask about vehicle types, pricing, or how to book."
         helpText="Zito Assistant helps you navigate the booking process smoothly."
       />
@@ -421,7 +449,7 @@ const s = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
-    paddingBottom: 120,
+    paddingBottom: 160,
   },
   section: {
     marginBottom: spacing.xl,
@@ -467,10 +495,66 @@ const s = StyleSheet.create({
     overflow: 'hidden',
     height: 200,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(18,200,255,0.30)',
+    backgroundColor: '#07111f',
   },
-  map: {
+  routePreviewGrid: {
     flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 34,
+  },
+  routeLine: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#12c8ff',
+    shadowColor: '#12c8ff',
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+  },
+  routeNode: {
+    position: 'absolute',
+    top: 72,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.8)',
+    zIndex: 2,
+  },
+  pickupNode: {
+    left: 26,
+    backgroundColor: '#12c8ff',
+  },
+  deliveryNode: {
+    right: 26,
+    backgroundColor: '#b13cff',
+  },
+  routeNodeText: {
+    color: '#fff',
+    fontWeight: '900',
+  },
+  routePreviewOverlay: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(2,5,12,0.74)',
+    borderWidth: 1,
+    borderColor: 'rgba(18,200,255,0.24)',
+  },
+  routePreviewTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  routePreviewText: {
+    color: colors.textMuted,
+    fontSize: 12,
   },
   cargoHeader: {
     padding: spacing.lg,
@@ -562,6 +646,7 @@ const s = StyleSheet.create({
     right: 0,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
+    paddingBottom: spacing.xl,
     backgroundColor: colors.bg,
     borderTopWidth: 1,
     borderTopColor: colors.border,

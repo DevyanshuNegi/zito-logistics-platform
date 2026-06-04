@@ -1014,6 +1014,86 @@ export class BookingsService {
   // ─── PRICING ENGINE ───────────────────────────────────────────────────────
 
   private async resolveBookingPricing(dto: CreateBookingDto, requesterRole: string) {
+    // SERVICE-TYPE-SPECIFIC PRICING LOGIC (PRD §5.1)
+    
+    // 1. COURIER — Always require instant pricing, fail if no rate card
+    if (dto.serviceType === ServiceType.COURIER) {
+      try {
+        return {
+          ...(await this.calculatePrice(dto)),
+          pricingReviewRequired: false,
+        };
+      } catch (error) {
+        // Courier MUST have pricing; do not defer
+        if (this.isNoRateCardError(error)) {
+          throw new BadRequestException(
+            `No active rate card for COURIER service: ${dto.vehicleType}. Service not available in this area.`,
+          );
+        }
+        throw error;
+      }
+    }
+
+    // 2. FTL — Never use instant pricing, always defer to quotation workflow
+    if (dto.serviceType === ServiceType.FTL) {
+      return {
+        baseFare: 0,
+        distanceFare: 0,
+        stopFare: 0,
+        surgeMultiplier: 1,
+        totalPrice: 0,
+        estimatedDistKm: this.estimateStopsDistance(dto),
+        surgeBreakdown: null,
+        pricingReviewRequired: true,
+        pricingNote: 'FTL requires manual quotation. Admin will review and create quote.',
+      };
+    }
+
+    // 3. PTL — Try to get estimated range, defer if not available
+    if (dto.serviceType === ServiceType.PTL) {
+      try {
+        const pricing = await this.calculatePrice(dto);
+        // Return with estimated range flag
+        return {
+          ...pricing,
+          pricingReviewRequired: false,
+          pricingNote: `Estimated range: KES ${Math.floor(pricing.totalPrice * 0.85)} - ${Math.ceil(pricing.totalPrice * 1.15)}. Final price may adjust based on consolidation.`,
+        };
+      } catch (error) {
+        // If no rate card or error, defer to operations review
+        if (!this.canDeferPricingReview(error, requesterRole)) {
+          throw error;
+        }
+        return {
+          baseFare: 0,
+          distanceFare: 0,
+          stopFare: 0,
+          surgeMultiplier: 1,
+          totalPrice: 0,
+          estimatedDistKm: this.estimateStopsDistance(dto),
+          surgeBreakdown: null,
+          pricingReviewRequired: true,
+          pricingNote: 'PTL pricing under operations review. You will receive a quote shortly.',
+        };
+      }
+    }
+
+    // 4. CONTAINER / RAIL — Defer to quotation workflow
+    if ([ServiceType.RAIL, 'CONTAINER' as any].includes(dto.serviceType)) {
+      return {
+        baseFare: 0,
+        distanceFare: 0,
+        stopFare: 0,
+        surgeMultiplier: 1,
+        totalPrice: 0,
+        estimatedDistKm: this.estimateStopsDistance(dto),
+        surgeBreakdown: null,
+        pricingReviewRequired: true,
+        pricingNote: 'Corridor and container bookings require custom quotation. Admin will review and create quote.',
+      };
+    }
+
+    // 5. Default fallback (unknown service type)
     try {
       return {
         ...(await this.calculatePrice(dto)),
@@ -1035,6 +1115,21 @@ export class BookingsService {
         pricingReviewRequired: true,
       };
     }
+  }
+
+  private isNoRateCardError(error: unknown): boolean {
+    if (!(error instanceof BadRequestException)) {
+      return false;
+    }
+    const response = error.getResponse();
+    const message =
+      typeof response === 'string'
+        ? response
+        : Array.isArray((response as { message?: unknown }).message)
+          ? (response as { message: string[] }).message.join(' ')
+          : String((response as { message?: unknown }).message ?? '');
+
+    return message.toLowerCase().includes('no active rate card');
   }
 
   private canDeferPricingReview(error: unknown, requesterRole: string) {

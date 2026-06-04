@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -215,7 +215,7 @@ export function PartnerControlDesk({
   const [onboardingForm, setOnboardingForm] = useState(EMPTY_ONBOARDING_FORM);
   const contactRef = useRef<HTMLInputElement | null>(null);
 
-  async function loadDesk() {
+  const loadDesk = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -262,11 +262,11 @@ export function PartnerControlDesk({
     } finally {
       setLoading(false);
     }
-  }
+  }, [accountLabel, accountRole, isCourierDesk, marketplaceType]);
 
   useEffect(() => {
     void loadDesk();
-  }, [accountLabel, accountRole, isCourierDesk, marketplaceType]);
+  }, [loadDesk]);
 
   const activeAccounts = useMemo(
     () => users.filter((user) => user.status === 'ACTIVE'),

@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsNotEmpty, IsOptional, IsEnum, MinLength } from 'class-validator';
+import { IsString, IsEmail, IsNotEmpty, IsOptional, IsEnum, Matches, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -31,10 +31,13 @@ export class RegisterDto {
   @IsNotEmpty()
   phone: string;
 
-  @ApiProperty({ example: 'password123', description: 'Secure password (min 6 characters)', minLength: 6 })
+  @ApiProperty({ example: 'Password123', description: 'Secure password (8+ chars, uppercase, lowercase, and number)', minLength: 8 })
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
+  @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, {
+    message: 'Password must include uppercase, lowercase, and number characters.',
+  })
   password: string;
 
   @ApiProperty({ enum: UserRole, default: UserRole.CUSTOMER, description: 'Assigned platform role' })

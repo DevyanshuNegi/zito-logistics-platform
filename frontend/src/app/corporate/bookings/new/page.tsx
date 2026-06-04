@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
+import { WarehousePinPicker } from '@/components/maps/WarehousePinPicker';
 import { ApiError, api } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 import { estimateDistanceKm, parseCoordinate } from '@/lib/geo';
@@ -61,6 +62,16 @@ export default function CorporateNewBookingPage() {
   const [quote, setQuote] = useState<RateQuoteResponse | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+
+  function updatePickupPin(point: { latitude: string; longitude: string }) {
+    setPickupLat(point.latitude);
+    setPickupLng(point.longitude);
+  }
+
+  function updateDropPin(point: { latitude: string; longitude: string }) {
+    setDropLat(point.latitude);
+    setDropLng(point.longitude);
+  }
 
   const summaryStops = useMemo(
     () => [
@@ -265,15 +276,21 @@ export default function CorporateNewBookingPage() {
       ) : null}
 
       {step === 2 ? (
-        <SurfaceCard title="Route and contacts" description="Provide the mandatory pickup and drop-off fields required by the PRD booking contract.">
+        <SurfaceCard title="Route and contacts" description="Search each stop, select a result, then adjust the pin only if the exact gate or loading point needs refinement.">
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-white">Pickup</h3>
               <Input label="Pickup address" value={pickupAddress} onChange={(event) => setPickupAddress(event.target.value)} required />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input label="Latitude" value={pickupLat} onChange={(event) => setPickupLat(event.target.value)} required />
-                <Input label="Longitude" value={pickupLng} onChange={(event) => setPickupLng(event.target.value)} required />
-              </div>
+              <WarehousePinPicker
+                title="Pickup pin"
+                searchLabel="Search pickup"
+                searchPlaceholder="Search pickup area, road, building, or landmark"
+                latitude={pickupLat}
+                longitude={pickupLng}
+                address={pickupAddress}
+                onChange={updatePickupPin}
+                onAddressChange={setPickupAddress}
+              />
               <Input label="Contact name" value={pickupContactName} onChange={(event) => setPickupContactName(event.target.value)} required />
               <Input label="Contact phone" value={pickupContactPhone} onChange={(event) => setPickupContactPhone(event.target.value)} required />
             </div>
@@ -281,10 +298,16 @@ export default function CorporateNewBookingPage() {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-white">Drop-off</h3>
               <Input label="Drop-off address" value={dropAddress} onChange={(event) => setDropAddress(event.target.value)} required />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input label="Latitude" value={dropLat} onChange={(event) => setDropLat(event.target.value)} required />
-                <Input label="Longitude" value={dropLng} onChange={(event) => setDropLng(event.target.value)} required />
-              </div>
+              <WarehousePinPicker
+                title="Drop-off pin"
+                searchLabel="Search drop-off"
+                searchPlaceholder="Search destination area, road, building, or landmark"
+                latitude={dropLat}
+                longitude={dropLng}
+                address={dropAddress}
+                onChange={updateDropPin}
+                onAddressChange={setDropAddress}
+              />
               <Input label="Contact name" value={dropContactName} onChange={(event) => setDropContactName(event.target.value)} required />
               <Input label="Contact phone" value={dropContactPhone} onChange={(event) => setDropContactPhone(event.target.value)} required />
             </div>

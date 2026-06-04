@@ -1,14 +1,73 @@
 # ZITO PRD Tracker
 
 ## Active Source
-`docs/prd/ZITO_PRD_v10_ULTIMATE.docx` is the only PRD to follow in this repo.
-`docs/prd/ZITO_PRD_v10_ULTIMATE.txt` is the searchable text export generated from the same file.
-Brand identity in the active PRD is `Aurenza Limited` as the company and `Zito` as the product/app.
-The repo copy was re-synced on 29 April 2026 from the external master v10 document, restoring the missing readiness, release, non-functional, fallback, testing, and go-live sections.
+`docs/prd/ZITO_PRD_v10_ULTIMATE.txt` is the master searchable text export of the PRD.
+`docs/prd/ZITO_PRD_v10_ULTIMATE.docx` is the official source document in Microsoft Word format.
+Brand identity: `Aurenza Limited` (company) + `Zito` (product/app)
+Last Major Update: May 28, 2026 (Phase 1 Money Machine Revenue Streams Implementation)
+Last Sync: May 28, 2026
+
+## Documentation Organization (May 28 - CLEANUP)
+All documentation is now stored in `docs/prd/` folder ONLY:
+- `ZITO_PRD_v10_ULTIMATE.txt` - Master searchable PRD (updated May 28)
+- `ZITO_PRD_v10_ULTIMATE.docx` - Official PRD Word document
+- All other documentation in `/docs/prd/` subfolder only
+- No scattered docs in workspace root (cleanup completed May 28)
 
 ## Phase 1 Status
 - Core Platform scope is implemented across the backend and the Next.js web portal.
 - Verification completed with `backend/npm run build`, `frontend/npx tsc --noEmit`, and `frontend/npm run build`.
+
+### Phase 1 Money Machine: Revenue Streams (May 28, 2026)
+**NEW** — Three core revenue streams now implemented in backend with wallet integration, recurring billing, and SMS notifications:
+
+1. **Driver Subscriptions** (backend/src/modules/subscriptions/)
+   - Four tiers: FREE, SILVER (KES 2K/mo), GOLD (KES 5K/mo), PLATINUM (KES 10K/mo)
+   - Feature access control: load visibility limits (10, 50, unlimited), corporate_loads, priority_dispatch access
+   - Recurring monthly billing via Cron job (processMonthlyBilling runs daily, charges due subscriptions)
+   - Payment retry logic: 3 attempts with 2-day grace period, auto-suspend on failure
+   - Resume capability: Driver can retry failed payment to reactivate
+   - Endpoints: GET /tiers, POST /create, GET /current, PATCH /update, DELETE /cancel, POST /:id/resume, POST /:id/charge
+   - SMS notifications: upgrade, billing_reminder, payment_failed, suspended, resumed
+   - Integration: PaymentsService (wallet deduction/refund), NotificationsService (SMS templates)
+   - Backend Status: ✅ 100% COMPLETE (service, controller, DTOs, Prisma models, Cron jobs)
+   - Frontend Status: 🔲 0% (subscription tier UI pending Week 2)
+
+2. **Featured Listings** (backend/src/modules/marketplace/featured-listings.service.ts)
+   - Three tiers: FEATURED (KES 500/day, 1-3 days), PREMIUM (KES 1K/day, 4-7 days), VIP (KES 5K/month)
+   - Marketplace visibility premium: top ranking by tier for load searches
+   - Full lifecycle: purchase → extend → cancel with 24-hour refund window (100% if within 24h)
+   - Auto-expiry: Cron job daily marks expired listings, removes badges from bookings
+   - Search ranking: VIP > PREMIUM > FEATURED in active listings
+   - Endpoints: GET /pricing, POST /purchase, GET /:id, GET /active (list), POST /:id/extend, DELETE /:id/cancel
+   - SMS notifications: purchase, extension, cancellation, expiry_approaching
+   - Integration: PaymentsService (wallet deduction/refund), Booking model (isFeatured, featuredTier fields)
+   - Backend Status: ✅ 100% COMPLETE (service, DTOs, Prisma models, Cron jobs)
+   - Frontend Status: 🔲 0% (featured listing purchase modal pending Week 2)
+
+3. **Verification Expedite Fees** (backend/src/modules/audit/verification-fee.service.ts)
+   - Standard verification: FREE, 7-10 day processing
+   - Expedited verification: KES 500, 24-hour priority processing with digital certificate
+   - Certificate issuance: 1-year validity, certificate number for verification checks
+   - Rejection refund: Full KES 500 refund to wallet if admin rejects
+   - Endpoints: GET /pricing, GET /status, POST /expedite, POST /approve (admin), POST /reject (admin)
+   - SMS notifications: paid, approved, rejected, refunded
+   - Integration: PaymentsService (wallet charge/refund), User model (verificationFees[], certificates[] relations)
+   - Backend Status: ✅ 100% COMPLETE (service, DTOs, Prisma models, approval workflow)
+   - Frontend Status: 🔲 0% (expedite button on KYC screen pending Week 2)
+
+**Database Schema Updates (Prisma)**
+- New Enums: SubscriptionTier, SubscriptionStatus, SubscriptionChargeStatus, FeaturedListingStatus, FeaturedListingTier
+- New Models: Subscription, SubscriptionCharge, FeaturedListing, VerificationFeePayment, VerificationCertificate
+- Modified Models: User (subscription relation, verification relations), Booking (isFeatured, featuredTier)
+- Pending Migration: `npx prisma migrate dev --name phase1_revenue_streams_and_operations`
+
+**Revenue Projections (Phase 1 Month 1-6)**
+- Subscriptions: KES 22.5M/month (by Month 6, assuming 5K drivers on average tier)
+- Featured Listings: KES 4.5M/month (by Month 6, assuming 20% of shipments featured)
+- Verification Expedite: KES 1.25M/month (by Month 6, assuming 10% of new users expedite)
+- **Total Phase 1 Revenue: KES 28.25M/month by end of June**
+
 - Remaining workstreams in this tracker should be treated as Phase 2+ expansion, not Phase 1 blockers.
 
 ## Phase 2 Status
@@ -79,6 +138,7 @@ The repo copy was re-synced on 29 April 2026 from the external master v10 docume
 - Web coverage is active for `/customer/fleet`, `/corporate/fleet`, and the separate `/courier-company/*` portal, including multi-stop movement-plan composition, dispatch visibility, scan operations, waybill access, and owned-fleet management.
 - Platform-fee charging per vehicle or fleet is now active through `/admin/billing/platform-fee`, with role-aware default fee rules, idempotent billing-window protection, platform invoice generation, and self-serve invoice visibility for courier-company and transporter accounts.
 - Mobile courier-company and customer-owned-fleet coverage is now active through the Expo app routes, including customer-owned-fleet management and a dedicated courier-company tab workspace.
+- Fleet and driver verification evidence is live-camera-only: vehicle views, compliance documents, and driver identity photos must be captured in-app; gallery uploads, imported PDFs, and manual photo URLs are not valid verification evidence.
 
 ## Legacy Cleanup
 Legacy PRD files and PRD-linked testing documentation under `docs/prd/` and `docs/testing/` have been removed from the repo.

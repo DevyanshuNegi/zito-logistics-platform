@@ -168,7 +168,7 @@ export class InvoicesService {
       where: { id: bookingId },
       include: {
         payments: {
-          where: { status: PaymentStatus.SUCCESS },
+          where: { status: PaymentStatus.COMPLETED },
           orderBy: { createdAt: 'desc' },
         },
       },
@@ -456,7 +456,7 @@ export class InvoicesService {
 
     const payments = await this.prisma.payment.findMany({
       where: {
-        status: PaymentStatus.SUCCESS,
+        status: PaymentStatus.COMPLETED,
         OR: [
           { invoiceId: invoice.id },
           ...(invoice.bookingId

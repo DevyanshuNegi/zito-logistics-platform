@@ -14,13 +14,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'zito-secure-secret-key',
+      secretOrKey: process.env.JWT_SECRET as string,
     });
   }
 
   async validate(payload: any) {
     const user = await this.prisma.user.findUnique({ where: { id: payload.userId } });
-    if (!user || user.status !== AccountStatus.ACTIVE) {
+    if (!user || user.status === AccountStatus.SUSPENDED) {
       throw new UnauthorizedException();
     }
 
@@ -36,6 +36,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: user.email,
       role: user.role,
       activeRole: user.role,
+      status: user.status,
       agencyId: user.agencyId,
       sessionId: payload.sessionId ?? null,
       tokenIssuedAt: payload.iat ?? null,

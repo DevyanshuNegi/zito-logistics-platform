@@ -73,6 +73,17 @@ flowchart TD
 | Payment pending | Finance/system | Settlement, escrow, invoice |
 | Completed | Finance/system | Booking closed |
 
+Event checkpoints:
+
+- `BookingCreated` when a valid booking enters the lifecycle.
+- `BookingAssigned` when a driver, transporter, courier company, agent, or warehouse partner is selected.
+- `TripStarted` and `GPSUpdated` during live movement.
+- `PODUploaded` when proof of delivery evidence is captured.
+- `PaymentVerified` and `EscrowReleased` when finance clears settlement.
+- `BookingCompleted` when the operational and finance closeout is finished.
+
+Every checkpoint must preserve correlation ID, actor, tenant/partner scope where available, and audit evidence for disputes.
+
 ## 5. Partner Supply Flow
 
 ```mermaid
@@ -152,6 +163,13 @@ Warehouse listing business rules:
 5. Customer booking captures storage type, goods description, dates, requested capacity, and notes.
 6. Zito records 10% default commission from the warehouse partner booking value; customer screens do not show internal commission math.
 
+Warehouse event checkpoints:
+
+- `InventoryReceived` when goods are received and recorded.
+- `InventoryMoved` when goods move between zones, racks, bins, quarantine, or dispatch staging.
+- `InventoryDispatched` when goods leave warehouse custody.
+- Warehouse listing approval and rejection are admin audit events, even when not customer visible.
+
 ## 8. Marketplace Flow
 
 ```mermaid
@@ -213,6 +231,40 @@ flowchart LR
   D --> H["Customer total"]
   E --> H
 ```
+
+Finance event checkpoints:
+
+- `PaymentInitiated` when a customer or wallet payment starts.
+- `PaymentVerified` when provider/manual reconciliation confirms funds.
+- `EscrowReleased` when held funds are released after fulfillment rules pass.
+- `RefundProcessed` when a refund or reversal is completed.
+
+Finance, commission, VAT, warehouse commission, partner net, payout hold, and refund decisions must be immutable and replayable for audit, compliance, and dispute resolution.
+
+## 9.1 Marketplace Trust Flow
+
+```mermaid
+flowchart TD
+  A["Partner completes booking or warehouse service"] --> B["Outcome captured"]
+  B --> C["Rating, delay, dispute, fraud, compliance signals"]
+  C --> D["Partner reputation score"]
+  D --> E{"Risk threshold exceeded?"}
+  E -- No --> F["Normal marketplace visibility"]
+  E -- Yes --> G["Visibility reduction / payout hold / review queue"]
+  G --> H["Admin review and appeal outcome"]
+  H --> D
+```
+
+Trust score inputs:
+
+- Delivery success and completion rate.
+- Delay and no-show history.
+- Customer and partner ratings.
+- Dispute outcomes.
+- Fraud flags and suspicious payout patterns.
+- Compliance document status and expiry history.
+
+Automated penalties must always be auditable and reversible by authorized admins.
 
 ## 10. Support Flow
 

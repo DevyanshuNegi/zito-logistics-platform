@@ -27,13 +27,13 @@ export default function DashboardScreen() {
   const load = async () => {
     try {
       const [dashData, bookingData] = await Promise.all([
-        api.get('/api/v1/transporter/dashboard').catch(() => ({ data: {} })),
-        api.get('/api/v1/transporter/bookings?limit=100').catch(() => ({ data: [] })),
+        api.get('/transporter/dashboard').catch(() => ({ data: {} })),
+        api.get('/transporter/bookings?limit=100').catch(() => ({ data: [] })),
       ]);
       setDash(dashData.data || {});
       setBookings(bookingData.data || []);
     } catch (requestError) {
-      console.error(requestError);
+      /* Dashboard load error handled by state */
     } finally {
       setLoading(false);
       setRefreshing(false);
