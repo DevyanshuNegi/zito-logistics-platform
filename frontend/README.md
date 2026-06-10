@@ -22,7 +22,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1
 npm run dev
 ```
 
-The app runs on `http://localhost:3000` by default, so set `PORT=3001` if the backend is already using `3000`.
+The app runs on `http://127.0.0.1:3003` using the project npm scripts.
 
 ## Production deployment
 
