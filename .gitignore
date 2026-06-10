@@ -116,6 +116,7 @@ uploads/
 storage/
 public/uploads/
 backend/uploads/
+docs/
 
 # =========================
 # SSL / TLS Secrets (PRD §11)
