@@ -357,7 +357,7 @@ function IntegrationsTab() {
           <span style={{ fontSize: 12, color: keys.sendgrid_key ? '#22c55e' : '#545f73' }}>{keys.sendgrid_key ? 'Connected' : 'Not configured'}</span>
         </div>
         <SecretInput label="API Key" k="sendgrid_key" />
-        <Row label="From Email"><Input value={keys.sendgrid_from} placeholder="noreply@ZITO.co.ke" style={{ width: 220 }} onChange={v => set('sendgrid_from', v)} /></Row>
+        <Row label="From Email"><Input value={keys.sendgrid_from} placeholder="no-reply@zitoafrica.com" style={{ width: 220 }} onChange={v => set('sendgrid_from', v)} /></Row>
       </Card>
       <SaveBar saved={saved} onSave={save} />
     </div>
@@ -425,7 +425,7 @@ function ServiceAreasTab() {
 
 // ── ACCOUNT TAB ────────────────────────────────────────────────────────────
 function AccountTab() {
-  const [profile, setProfile] = useState({ company_name: 'VG Global Logistics', email: 'admin@ZITO.co.ke', phone: '+254 700 000 000', address: 'Nairobi, Kenya', kra_pin: '', logo_url: '' });
+  const [profile, setProfile] = useState({ company_name: 'Zito Tech Africa Limited', email: 'info@zitoafrica.com', phone: '+254 700 000 000', address: 'Nairobi, Kenya', kra_pin: '', logo_url: '' });
   const [pwd, setPwd] = useState({ current: '', newp: '', confirm: '' });
   const [saved, setSaved] = useState(false);
   const [pwdSaved, setPwdSaved] = useState(false);

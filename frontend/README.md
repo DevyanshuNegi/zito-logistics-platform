@@ -1,6 +1,6 @@
 # Zito Frontend
 
-This workspace is the Next.js 14 web portal for Zito by Aurenza Limited.
+This workspace is the Next.js 14 web portal for Zito by Zito Tech Africa Limited.
 
 ## Local setup
 

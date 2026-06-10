@@ -88,7 +88,7 @@ export default function Transporters() {
       <div style={s.header}>
         <div>
           <div style={s.title}>Transporters / Fleet Owners</div>
-          <div style={s.sub}>Companies and individuals who provide contracted trucks to ZITO (VG Global Logistics)</div>
+          <div style={s.sub}>Companies and individuals who provide contracted trucks to ZITO (Zito Tech Africa Limited)</div>
         </div>
         <button style={s.btnPrimary} onClick={() => { setSubmitError(''); setShowAddModal(true); }}>
           + Register Transporter

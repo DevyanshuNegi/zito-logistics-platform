@@ -33,3 +33,67 @@ a {
 * {
   box-sizing: border-box;
 }
+
+@keyframes pwa-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes onboarding-slide {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes zito-route-travel {
+  0% {
+    opacity: 0;
+    transform: translateX(-80%);
+  }
+  16% {
+    opacity: 1;
+  }
+  84% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(520%);
+  }
+}
+
+@keyframes zito-soft-rise {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.zito-route-dot {
+  animation: zito-route-travel 5.8s linear infinite;
+}
+
+.zito-soft-rise {
+  animation: zito-soft-rise 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zito-route-dot,
+  .zito-soft-rise {
+    animation: none;
+  }
+}

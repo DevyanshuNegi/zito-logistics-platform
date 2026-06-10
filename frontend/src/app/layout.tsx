@@ -7,6 +7,12 @@ import { BRAND } from '@/lib/brand';
 export const metadata: Metadata = {
   title: BRAND.appName,
   description: BRAND.appDescription,
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: BRAND.appName,
+  },
   icons: {
     // Primary favicon for browser tabs
     icon: [

@@ -52,9 +52,9 @@ export default function Terms() {
           Please read them carefully before using our services.
         </p>
 
-        <h2 style={S.h2}>1. About ZITO (VG GLOBAL LOGISTICS)</h2>
+        <h2 style={S.h2}>1. About ZITO (Zito Tech Africa Limited)</h2>
         <p style={S.p}>
-          ZITO (VG GLOBAL LOGISTICS) is a technology platform that connects customers, agents, drivers,
+          ZITO (Zito Tech Africa Limited) is a technology platform that connects customers, agents, drivers,
           and transporters to facilitate logistics and delivery services across Kenya and East Africa.
           We operate as an intermediary between service providers and customers.
         </p>
@@ -82,7 +82,7 @@ export default function Terms() {
         <p style={S.p}>
           You are responsible for maintaining the confidentiality of your login credentials.
           Do not share your password or OTP with anyone. Notify us immediately at{' '}
-          <span style={S.highlight}>support@ZITO.co.ke</span> if you suspect unauthorized access.
+          <span style={S.highlight}>info@zitoafrica.com</span> if you suspect unauthorized access.
         </p>
 
         <div style={S.divider} />
@@ -157,7 +157,7 @@ export default function Terms() {
         <h2 style={S.h2}>6. Liability & Disclaimers</h2>
         <h3 style={S.h3}>6.1 Cargo Insurance</h3>
         <p style={S.p}>
-          VG Global Logistics is not automatically liable for cargo loss or damage.
+          Zito Tech Africa Limited is not automatically liable for cargo loss or damage.
           Customers are encouraged to declare high-value goods and purchase cargo insurance
           as an add-on service at the time of booking.
         </p>
@@ -199,9 +199,9 @@ export default function Terms() {
         <h2 style={S.h2}>10. Contact Us</h2>
         <p style={S.p}>
           For questions about these Terms, contact us at:<br />
-          📧 <span style={S.highlight}>legal@ZITO.co.ke</span><br />
+          📧 <span style={S.highlight}>info@zitoafrica.com</span><br />
           📞 <span style={S.highlight}>+254 700 000 000</span><br />
-          🏢 VG Global Logistics Kenya, Nairobi, Kenya
+          🏢 Zito Tech Africa Limited Kenya, Nairobi, Kenya
         </p>
 
         <div style={S.divider} />

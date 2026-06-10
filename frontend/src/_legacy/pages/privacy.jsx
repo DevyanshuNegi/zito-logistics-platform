@@ -46,22 +46,22 @@ export default function Privacy() {
         </button>
 
         <div style={S.header}>
-          <div style={S.logo}>VG Global Logistics</div>
+          <div style={S.logo}>Zito Tech Africa Limited</div>
           <div style={S.title}>Privacy Policy</div>
           <div style={S.date}>Last updated: March 2026 · Compliant with Kenya Data Protection Act 2019</div>
         </div>
 
         <div style={S.infoBox}>
-          🔒 VG Global Logistics is committed to protecting your personal data. This Privacy Policy
+          🔒 Zito Tech Africa Limited is committed to protecting your personal data. This Privacy Policy
           explains what data we collect, how we use it, and your rights under the Kenya Data
           Protection Act 2019 (DPA).
         </div>
 
         <h2 style={S.h2}>1. Who We Are</h2>
         <p style={S.p}>
-          VG Global Logistics Kenya is the Data Controller responsible for your personal data
+          Zito Tech Africa Limited Kenya is the Data Controller responsible for your personal data
           collected through our platform. Contact our Data Protection Officer at:{' '}
-          <span style={S.highlight}>privacy@vglogistics.co.ke</span>
+          <span style={S.highlight}>info@zitoafrica.com</span>
         </p>
 
         <h2 style={S.h2}>2. Data We Collect</h2>
@@ -162,7 +162,7 @@ export default function Privacy() {
         </ul>
         <p style={S.p}>
           To exercise any of these rights, email us at{' '}
-          <span style={S.highlight}>privacy@vglogistics.co.ke</span>.
+          <span style={S.highlight}>info@zitoafrica.com</span>.
           We will respond within 30 days.
         </p>
 
@@ -207,9 +207,9 @@ export default function Privacy() {
         <h2 style={S.h2}>13. Contact & Complaints</h2>
         <p style={S.p}>
           For privacy-related questions or complaints:<br />
-          📧 <span style={S.highlight}>privacy@vglogistics.co.ke</span><br />
+          📧 <span style={S.highlight}>info@zitoafrica.com</span><br />
           📞 <span style={S.highlight}>+254 700 000 000</span><br />
-          🏢 VG Global Logistics Kenya, Nairobi, Kenya
+          🏢 Zito Tech Africa Limited Kenya, Nairobi, Kenya
         </p>
         <p style={S.p}>
           You may also file a complaint with the{' '}

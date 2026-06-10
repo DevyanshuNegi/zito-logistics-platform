@@ -73,6 +73,13 @@ const USER_KEY = 'zito.user';
 const OTP_KEY = 'zito.otpSession';
 const PENDING_KEY = 'zito.pendingRegistration';
 const SESSION_NOTICE_KEY = 'zito.sessionNotice';
+const LEGACY_AUTH_KEYS = [
+  'accessToken',
+  'refreshToken',
+  'user',
+  'adminUser',
+  'zito-auth-storage',
+] as const;
 
 function canUseStorage() {
   return typeof window !== 'undefined';
@@ -83,9 +90,29 @@ function normalizePath(path: string) {
   return path.startsWith('/') ? path : `/${path}`;
 }
 
+function parseStorageJson<T>(key: string): T | null {
+  if (!canUseStorage()) return null;
+  const value = window.localStorage.getItem(key);
+  if (!value) return null;
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+}
+
+export function clearLegacyAuthStorage() {
+  if (!canUseStorage()) return;
+  for (const key of LEGACY_AUTH_KEYS) {
+    window.localStorage.removeItem(key);
+  }
+}
+
 export function getApiOrigin() {
   const fallback = 'http://127.0.0.1:3001';
-  const deployedBackendFallback = 'https://zito-backend.vercel.app';
+  const deployedBackendFallback = 'https://api.zitoafrica.com';
   if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/, '');
   }
@@ -93,7 +120,7 @@ export function getApiOrigin() {
     const host = window.location.hostname.replace(/\/+$/, '');
     if (
       host.endsWith('.vercel.app') &&
-      host !== 'zito-backend.vercel.app'
+      host !== 'api.zitoafrica.com'
     ) {
       return deployedBackendFallback;
     }
@@ -113,17 +140,24 @@ export function getStoredSession(): StoredSessionSnapshot {
 
   const accessToken = window.localStorage.getItem(ACCESS_TOKEN_KEY);
   const refreshToken = null;
-  const userRaw = window.localStorage.getItem(USER_KEY);
+  const user = parseStorageJson<SessionUser>(USER_KEY);
+
+  if ((accessToken && !user) || (!accessToken && user)) {
+    clearSession();
+    clearOtpSession();
+    return { accessToken: null, refreshToken: null, user: null };
+  }
 
   return {
     accessToken,
     refreshToken,
-    user: userRaw ? (JSON.parse(userRaw) as SessionUser) : null,
+    user,
   };
 }
 
 export function persistSession(session: StoredSession) {
   if (!canUseStorage()) return;
+  clearLegacyAuthStorage();
   window.localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
   window.localStorage.removeItem(REFRESH_TOKEN_KEY);
   window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
@@ -134,6 +168,7 @@ export function clearSession() {
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
   window.localStorage.removeItem(REFRESH_TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  clearLegacyAuthStorage();
 }
 
 export function persistOtpSession(session: OtpSession) {
@@ -148,10 +183,13 @@ export function getOtpSession(): OtpSession | null {
     return null;
   }
 
-  const parsed = JSON.parse(value) as Partial<OtpSession> & {
+  const parsed = parseStorageJson<Partial<OtpSession> & {
     tempToken?: string;
     contact?: string;
-  };
+  }>(OTP_KEY);
+  if (!parsed) {
+    return null;
+  }
   if (!parsed.tempToken || !parsed.contact) {
     return null;
   }
@@ -186,8 +224,7 @@ export function persistPendingRegistration(registration: PendingRegistration) {
 
 export function getPendingRegistration() {
   if (!canUseStorage()) return null;
-  const value = window.localStorage.getItem(PENDING_KEY);
-  return value ? (JSON.parse(value) as PendingRegistration) : null;
+  return parseStorageJson<PendingRegistration>(PENDING_KEY);
 }
 
 export function clearPendingRegistration() {

@@ -17,7 +17,7 @@ const sendEmail = async (to, subject, html) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: 'VG Logistics <onboarding@resend.dev>',
+        from: 'Zito Tech Africa Limited <onboarding@resend.dev>',
         to: [to],
         subject,
         html

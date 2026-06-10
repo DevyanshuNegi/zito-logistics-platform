@@ -400,7 +400,7 @@ export default function Assignments() {
                         </div>
                       )}
                       {v.ownership_type === 'vg_owned' && (
-                        <div style={{ marginTop: 6, fontSize: 12, color: '#e8a020', fontWeight: 600 }}>🏢 VG Global Owned Vehicle</div>
+                        <div style={{ marginTop: 6, fontSize: 12, color: '#e8a020', fontWeight: 600 }}>🏢 ZITO Network Vehicle</div>
                       )}
                       <div style={{ marginTop: 6, display: 'flex', gap: 10, fontSize: 11, color: '#545f73' }}>
                         <span>GVW: {v.gvw || '—'} kg</span>

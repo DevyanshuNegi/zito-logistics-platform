@@ -49,6 +49,7 @@ build
 .next-prod
 frontend/.next
 frontend/.next-dev
+frontend/.next-dev-public
 frontend/.next-prod
 out
 .nuxt
