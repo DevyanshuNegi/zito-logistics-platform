@@ -1,5 +1,17 @@
 {
   "installCommand": "npm --prefix frontend ci",
   "buildCommand": "npm --prefix frontend run build",
-  "outputDirectory": "frontend/.next-prod"
+  "outputDirectory": "frontend/.next",
+  "experimentalServices": {
+    "frontend": {
+      "root": "frontend",
+      "routePrefix": "/",
+      "framework": "nextjs"
+    },
+    "backend": {
+      "root": "backend",
+      "entrypoint": "dist/main.js",
+      "routePrefix": "/_/backend"
+    }
+  }
 }
