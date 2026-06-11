@@ -853,13 +853,13 @@ function HomeHero() {
               <Truck className="h-4 w-4" aria-hidden="true" />
             </Link>
           </div>
-          <Link href="/platform" className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-cyan-200 transition hover:text-white">
+          {/* <Link href="/platform" className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-cyan-200 transition hover:text-white">
             Explore ecosystem
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-          <div className="mt-7">
+          </Link> */}
+          {/* <div className="mt-7">
             <AppStoreButtons light />
-          </div>
+          </div> */}
         </div>
         <MobileAppShowcase />
       </div>
