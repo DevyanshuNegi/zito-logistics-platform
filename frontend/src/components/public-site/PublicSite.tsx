@@ -432,7 +432,7 @@ function BrandLockup({ compact = false, inverse = false }: { compact?: boolean; 
         className={cx(
           'relative shrink-0 overflow-hidden rounded-lg border',
           compact ? 'h-10 w-10' : 'h-12 w-12',
-            inverse ? 'border-cyan-300/30 bg-slate-950' : 'border-sky-100 bg-slate-950',
+          inverse ? 'border-cyan-300/30 bg-slate-950' : 'border-sky-100 bg-slate-950',
         )}
       >
         <Image
@@ -482,7 +482,7 @@ function PublicHeader() {
             href="/contact"
             className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#e9f7ff] px-4 text-sm font-black text-slate-950 shadow-lg shadow-slate-950/20 transition hover:bg-[#d9efff] focus:outline-none focus:ring-2 focus:ring-blue-300"
           >
-            Download app
+            Coming soon
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
           <details className="relative lg:hidden">
@@ -695,10 +695,7 @@ function PhotoTile({
 
 function AppStoreButtons({ light = false }: { light?: boolean }) {
   const items: Array<[string, string, LucideIcon]> = [
-    ['Android app', 'Google Play', Smartphone],
-    ['iOS app', 'App Store', Smartphone],
-    ['Direct install', 'Android APK', Download],
-    ['Scan to download', 'QR code', QrCode],
+    ['Status', 'Coming soon', Smartphone],
   ];
 
   return (
@@ -706,22 +703,22 @@ function AppStoreButtons({ light = false }: { light?: boolean }) {
       {items.map(([label, store, Icon]) => {
         const DisplayIcon = Icon as LucideIcon;
         return (
-        <Link
-          key={store}
-          href="/contact"
-          className={cx(
-            'inline-flex min-h-12 items-center gap-3 rounded-lg px-3 transition focus:outline-none focus:ring-2 focus:ring-blue-300',
-            light
-              ? 'border border-white/20 bg-white/10 text-white hover:bg-white/20'
-              : 'border border-sky-100 bg-[#f7fcff] text-slate-950 shadow-sm hover:bg-[#eaf6ff]',
-          )}
-        >
-          <DisplayIcon className={cx('h-5 w-5 shrink-0', light ? 'text-cyan-100' : 'text-blue-700')} aria-hidden="true" />
-          <span className="flex flex-col leading-none">
-            <span className={cx('text-[11px] font-bold', light ? 'text-slate-300' : 'text-slate-500')}>{label}</span>
-            <span className="mt-1 text-sm font-black">{store}</span>
-          </span>
-        </Link>
+          <Link
+            key={store}
+            href="/contact"
+            className={cx(
+              'inline-flex min-h-12 items-center gap-3 rounded-lg px-3 transition focus:outline-none focus:ring-2 focus:ring-blue-300',
+              light
+                ? 'border border-white/20 bg-white/10 text-white hover:bg-white/20'
+                : 'border border-sky-100 bg-[#f7fcff] text-slate-950 shadow-sm hover:bg-[#eaf6ff]',
+            )}
+          >
+            <DisplayIcon className={cx('h-5 w-5 shrink-0', light ? 'text-cyan-100' : 'text-blue-700')} aria-hidden="true" />
+            <span className="flex flex-col leading-none">
+              <span className={cx('text-[11px] font-bold', light ? 'text-slate-300' : 'text-slate-500')}>{label}</span>
+              <span className="mt-1 text-sm font-black">{store}</span>
+            </span>
+          </Link>
         );
       })}
     </div>
@@ -741,91 +738,55 @@ function MobileAppShowcase() {
           Live network
         </span>
       </div>
-      <div className="grid gap-4 lg:grid-cols-[1.04fr_0.96fr]">
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="grid gap-4">
-          <PhotoTile image={logisticsImages.truck} label="Trucking network" className="h-60" />
+          <PhotoTile image={logisticsImages.truck} label="Trucking network" className="h-48 sm:h-56" />
           <div className="grid gap-4 sm:grid-cols-2">
-            <PhotoTile image={logisticsImages.warehouse} label="Warehouses" className="h-36" />
-            <PhotoTile image={logisticsImages.fleet} label="Fleet operations" className="h-36" />
+            <PhotoTile image={logisticsImages.warehouse} label="Warehouses" className="h-32" />
+            <PhotoTile image={logisticsImages.fleet} label="Fleet operations" className="h-32" />
           </div>
         </div>
 
-        <div className="grid gap-4">
-          <div className="rounded-[1.25rem] border border-white/10 bg-[#0d1628] p-4 text-white">
-            <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-white/[0.05] p-3 sm:grid-cols-3">
-              {[
-                ['Nairobi', 'Pickup ready'],
-                ['Route GPS', 'Live'],
-                ['Mombasa', 'Warehouse slot'],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <p className="text-[10px] font-black uppercase text-slate-400">{label}</p>
-                  <p className="mt-1 text-xs font-black text-cyan-100">{value}</p>
-                </div>
-              ))}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-[0.86fr_1.14fr]">
-              <div className="rounded-[1.15rem] bg-[#f8fcff] p-3 text-slate-950">
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                  <Image src={BRAND.assets.appIcon} alt="" width={34} height={34} className="rounded-lg" />
-                  <div>
-                    <p className="text-xs font-black">Customer App</p>
-                    <p className="text-[11px] text-slate-500">Booking and tracking</p>
-                  </div>
-                </div>
-                <div className="mt-3 rounded-lg bg-blue-50 p-3">
-                  <p className="text-xs font-black text-blue-900">Live shipment</p>
-                  <p className="mt-2 text-[11px] leading-5 text-slate-600">Pickup confirmed. Cargo in transit.</p>
-                  <div className="mt-3 h-2 rounded-full bg-[#d8ecfb]">
-                    <div className="h-2 w-2/3 rounded-full bg-blue-600" />
-                  </div>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {['Book', 'Track', 'Pay'].map((item) => (
-                    <div key={item} className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2">
-                      <CheckCircle2 className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                      <span className="text-xs font-black text-slate-700">{item}</span>
-                    </div>
-                  ))}
+        <div className="rounded-[1.25rem] border border-white/10 bg-[#0d1628] p-4 text-white flex flex-col justify-center">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-[1.15rem] bg-[#f8fcff] p-4 text-slate-950">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                <Image src={BRAND.assets.appIcon} alt="" width={34} height={34} className="rounded-lg" />
+                <div>
+                  <p className="text-xs font-black">Customer App</p>
+                  <p className="text-[11px] text-slate-500">Booking & tracking</p>
                 </div>
               </div>
+              <div className="mt-4 rounded-lg bg-blue-50 p-4">
+                <p className="text-xs font-black text-blue-900">Live shipment</p>
+                <p className="mt-2 text-[11px] leading-5 text-slate-600">Pickup confirmed. Cargo in transit.</p>
+                <div className="mt-4 h-2 rounded-full bg-[#d8ecfb]">
+                  <div className="h-2 w-2/3 rounded-full bg-blue-600" />
+                </div>
+              </div>
+            </div>
 
-              <div className="space-y-4">
-                <div className="rounded-lg border border-white/10 bg-white/10 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-black uppercase text-cyan-100">Fleet dashboard</p>
-                      <p className="mt-2 text-2xl font-black">GPS active</p>
-                    </div>
-                    <RadioTower className="h-7 w-7 text-cyan-100" aria-hidden="true" />
-                  </div>
-                  <div className="mt-5 grid grid-cols-3 gap-3">
-                    {[
-                      ['24', 'Trucks'],
-                      ['18', 'Drivers'],
-                      ['7', 'Loads'],
-                    ].map(([value, label]) => (
-                      <div key={label} className="rounded-lg bg-[#f2fbff] p-3 text-slate-950">
-                        <p className="text-xl font-black">{value}</p>
-                        <p className="mt-1 text-[11px] font-bold text-slate-500">{label}</p>
-                      </div>
-                    ))}
-                  </div>
+            <div className="rounded-lg border border-white/10 bg-white/10 p-4 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase text-cyan-100">Fleet dashboard</p>
+                  <p className="mt-2 text-2xl font-black">GPS active</p>
                 </div>
-                <div className="rounded-lg bg-[#f8fcff] p-4 text-slate-950">
-                  <p className="text-xs font-black uppercase text-blue-700">Marketplace load</p>
-                  <p className="mt-2 text-sm font-black">Industrial Area to regional warehouse</p>
-                  <p className="mt-2 text-xs leading-5 text-slate-600">Truck capacity, route visibility, and earnings connected in one workflow.</p>
-                </div>
+                <RadioTower className="h-7 w-7 text-cyan-100" aria-hidden="true" />
+              </div>
+              <div className="mt-6 grid grid-cols-3 gap-2">
+                {[
+                  ['24', 'Trucks'],
+                  ['18', 'Drivers'],
+                  ['7', 'Loads'],
+                ].map(([value, label]) => (
+                  <div key={label} className="rounded-lg bg-[#f2fbff] p-2 text-slate-950 text-center">
+                    <p className="text-lg font-black">{value}</p>
+                    <p className="text-[10px] font-bold text-slate-500">{label}</p>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {['Customer apps', 'Fleet GPS', 'Warehouses'].map((item) => (
-              <div key={item} className="rounded-lg border border-white/10 bg-white/[0.08] px-3 py-3 text-center text-xs font-black text-cyan-50">
-                {item}
-              </div>
-            ))}
           </div>
         </div>
       </div>
@@ -843,18 +804,18 @@ function HomeHero() {
         <div className="max-w-3xl py-8">
           <div className="mb-8 inline-flex items-center gap-3 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-bold text-cyan-100 shadow-sm backdrop-blur">
             <Sparkles className="h-4 w-4" aria-hidden="true" />
-            Download the platform. Join the ecosystem.
+            App coming soon. Join the ecosystem.
           </div>
           <div className="mb-6 flex items-center gap-4">
-            <span className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-slate-950 shadow-xl shadow-slate-950/30">
+            <span className="relative h-24 w-24 overflow-hidden rounded-lg border border-white/10 bg-slate-950 shadow-xl shadow-slate-950/30">
               <Image src={BRAND.assets.appIcon} alt="ZITO product logo" fill sizes="64px" className="object-cover" priority />
             </span>
             <div>
-              <p className="text-4xl font-black leading-none text-white sm:text-5xl">ZITO</p>
+              <p className="text-5xl font-black leading-none text-white sm:text-6xl">ZITO</p>
               <p className="mt-2 text-sm font-bold text-cyan-200">{BRAND.appTagline}</p>
             </div>
           </div>
-          <h1 className="max-w-4xl text-4xl font-black leading-[1.06] text-white sm:text-5xl lg:text-[4rem]">
+          <h1 className="max-w-4xl text-5xl font-black leading-[1.06] text-white sm:text-6xl lg:text-[4rem]">
             Powering Africa's{' '}
             <span className="bg-gradient-to-r from-cyan-200 via-blue-200 to-violet-200 bg-clip-text text-transparent">
               Smart Logistics
@@ -881,7 +842,7 @@ function HomeHero() {
               href="/contact"
               className="inline-flex min-h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#e9f7ff] px-6 text-sm font-black text-slate-950 shadow-xl shadow-slate-950/20 transition hover:bg-[#d9efff] focus:outline-none focus:ring-2 focus:ring-blue-300"
             >
-              Download Customer App
+              Coming soon
               <Smartphone className="h-4 w-4" aria-hidden="true" />
             </Link>
             <Link
@@ -1127,139 +1088,6 @@ function HomePageContent() {
 
       <BookingFlowBand />
 
-      <section id="fleet" className="bg-[#f2f9ff] px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <PhotoTile image={logisticsImages.fleet} label="Fleet operations" className="h-72 sm:h-96" />
-            <div className="grid gap-4">
-              <div className="rounded-[1.25rem] border border-sky-100 bg-[#f8fcff] p-5 shadow-sm">
-                <p className="text-sm font-black uppercase text-blue-700">GPS visibility</p>
-                <p className="mt-4 text-4xl font-black text-slate-950">Live</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">Vehicle location, route status, driver movement, and cargo progress.</p>
-              </div>
-              <PhotoTile image={logisticsImages.truck} label="Trucking ecosystem" className="h-52" />
-            </div>
-          </div>
-          <div>
-            <SectionIntro
-              eyebrow="Fleet and GPS technology"
-              title="Fleet management that feels operational, not abstract."
-              description="ZITO supports fleet owners with tracking, analytics, fuel monitoring, route control, driver coordination, and load visibility."
-            />
-            <div className="mt-8 grid gap-3">
-              {['GPS tracking ecosystem', 'Fleet analytics and fuel signals', 'Driver and route operations', 'Transporter earnings visibility'].map((item) => (
-                <div key={item} className="flex items-center gap-3 rounded-lg border border-sky-100 bg-[#f8fcff] p-4 shadow-sm">
-                  <CheckCircle2 className="h-5 w-5 text-blue-600" aria-hidden="true" />
-                  <p className="text-sm font-bold text-slate-700">{item}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="warehousing" className="bg-[#eaf6ff] px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
-          <SectionIntro
-            eyebrow="Warehousing ecosystem"
-            title="Storage, inventory movement, and shipment visibility connected to transport."
-            description="ZITO brings warehouses into the same logistics ecosystem as fleets, drivers, customers, and enterprise operations."
-          />
-          <div className="rounded-[1.25rem] border border-sky-100 bg-[#f2f9ff] p-4 shadow-sm">
-            <PhotoTile image={logisticsImages.warehouse} label="Warehouse coordination" className="h-72" />
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {['Inventory movement', 'Storage capacity', 'Shipment handoffs'].map((item) => (
-                <div key={item} className="rounded-lg bg-[#f8fcff] p-4 text-sm font-black text-slate-800 shadow-sm">{item}</div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-[#f2f9ff] px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl">
-          <SectionIntro
-            eyebrow="Services"
-            title="A complete logistics technology ecosystem."
-            description="The public site now shows the full business: trucking, fleet management, GPS tracking, warehousing, marketplace, transport operations, driver operations, and enterprise logistics."
-            centered
-          />
-          <div className="mt-10">
-            <FeatureGrid items={services} />
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-[#eaf6ff] px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.82fr_1.18fr]">
-          <SectionIntro
-            eyebrow="Marketplace ecosystem"
-            title="Connect cargo demand with verified transport supply and warehouse capacity."
-            description="The marketplace story is now operational: customers post logistics demand, verified partners respond, and ZITO keeps route visibility, warehouse handoffs, support, and payment context connected."
-          />
-          <div className="grid gap-5">
-            <MarketplaceWorkflowPanel />
-            <div className="grid gap-3 sm:grid-cols-4">
-              {marketplaceItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <article key={item.title} className="rounded-lg border border-sky-100 bg-[#f8fcff] p-4 shadow-sm">
-                    <Icon className="h-5 w-5 text-blue-700" aria-hidden="true" />
-                    <h3 className="mt-3 text-sm font-black text-slate-950">{item.title}</h3>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-[linear-gradient(135deg,#10223f_0%,#173b68_55%,#0f2a4f_100%)] px-4 py-16 text-white sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.82fr_1.18fr]">
-          <SectionIntro
-            eyebrow="Enterprise tools"
-            title="Operational logistics intelligence for serious teams."
-            description="For enterprise logistics clients, ZITO provides the technology layer for tracking, fleet visibility, warehouse coordination, partner workflows, and logistics control."
-            light
-          />
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[
-              ['Fleet management system', 'Vehicles, drivers, capacity, compliance, and route readiness.'],
-              ['GPS tracking ecosystem', 'Live movement, vehicle location, route intelligence, and operational visibility.'],
-              ['Warehouse ecosystem', 'Inventory movement, handoffs, storage capacity, and shipment visibility.'],
-              ['Logistics intelligence', 'Analytics, marketplace signals, operational reliability, and enterprise reporting.'],
-            ].map(([title, body]) => (
-              <article key={title} className="rounded-lg border border-white/10 bg-white/[0.055] p-5">
-                <h3 className="text-lg font-black text-white">{title}</h3>
-                <p className="mt-3 text-sm leading-6 text-slate-300">{body}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-[#f2f9ff] px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.8fr_1.2fr]">
-          <SectionIntro
-            eyebrow="Coverage across Africa"
-            title="Kenya focus. East Africa expansion. Africa-scale infrastructure."
-            description="ZITO should feel like a modern African technology company building logistics connectivity across cities, fleets, warehouses, and trade routes."
-          />
-          <div className="grid gap-4 sm:grid-cols-3">
-            {[
-              ['Kenya launch', 'Nairobi, ports, warehouses, enterprise cargo, and transport corridors.'],
-              ['East Africa', 'Regional trucking, partners, cross-border logistics, and warehousing.'],
-              ['Africa scale', 'A platform model designed for repeated city and country expansion.'],
-            ].map(([title, body]) => (
-              <article key={title} className="rounded-[1.25rem] border border-sky-100 bg-[#f8fcff] p-5 shadow-sm">
-                <Globe2 className="h-6 w-6 text-blue-700" aria-hidden="true" />
-                <h3 className="mt-5 text-lg font-black text-slate-950">{title}</h3>
-                <p className="mt-3 text-sm leading-6 text-slate-600">{body}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
 
       <section className="bg-[#eaf6ff] px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
@@ -1293,8 +1121,8 @@ function HomePageContent() {
 function ContactCta({
   eyebrow = 'Start with ZITO',
   title = 'Move your first shipment or join the supply network.',
-  description = 'Download the customer app, register as a transport partner, or speak with the ZITO team about logistics operations.',
-  primaryLabel = 'Download App',
+  description = 'Register as a transport partner or speak with the ZITO team about logistics operations (Customer app coming soon!).',
+  primaryLabel = 'Coming soon',
   secondaryLabel = 'Partner Signup',
   secondaryHref = '/partners/register',
 }: {
