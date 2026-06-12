@@ -1,5 +1,5 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
-import * as africasTalking from 'africastalking';
+import AfricasTalking from 'africastalking';
 import {
   OtpProvider,
   OtpProviderMode,
@@ -15,11 +15,19 @@ export class AfricasTalkingOtpProvider implements OtpProvider {
   private at: any;
 
   constructor() {
+    this.logger.log(`Initializing AfricasTalkingOtpProvider... AT_USERNAME=${process.env.AT_USERNAME || 'not set'}`);
     if (process.env.AT_USERNAME && process.env.AT_API_KEY) {
-      this.at = africasTalking({
-        apiKey: process.env.AT_API_KEY,
-        username: process.env.AT_USERNAME,
-      });
+      try {
+        this.at = AfricasTalking({
+          apiKey: process.env.AT_API_KEY,
+          username: process.env.AT_USERNAME,
+        });
+        this.logger.log("Africa's Talking SDK initialized successfully.");
+      } catch (err: any) {
+        this.logger.error(`Failed to initialize Africa's Talking SDK: ${err.message}`);
+      }
+    } else {
+      this.logger.warn("Africa's Talking credentials missing from environment variables.");
     }
   }
 
