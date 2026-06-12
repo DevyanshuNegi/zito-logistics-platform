@@ -13,6 +13,7 @@ import { StatCard } from '@/components/layout/StatCard';
 import { ApiError, api } from '@/lib/api';
 import { buildPhoneContact, normalizePhoneNumber } from '@/lib/auth-login';
 import {
+  // comment
   DEFAULT_COUNTRY_ISO_CODE,
   findCountryCodeOptionByIsoCode,
 } from '@/lib/country-codes';
@@ -312,14 +313,14 @@ export function PartnerControlDesk({
         const partner = partnerMap.get(id) ?? null;
         const fallbackAccount = partner?.user
           ? {
-              id: partner.user.id,
-              fullName: partner.user.fullName ?? null,
-              companyName: partner.companyName,
-              email: partner.user.email ?? null,
-              phone: partner.user.phone ?? null,
-              role: partner.user.role,
-              status: partner.user.status ?? 'UNKNOWN',
-            }
+            id: partner.user.id,
+            fullName: partner.user.fullName ?? null,
+            companyName: partner.companyName,
+            email: partner.user.email ?? null,
+            phone: partner.user.phone ?? null,
+            role: partner.user.role,
+            status: partner.user.status ?? 'UNKNOWN',
+          }
           : null;
         const account = userMap.get(id) ?? fallbackAccount;
         const accountInvoices = invoices.filter((invoice) => invoice.customerId === id);
