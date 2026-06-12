@@ -479,10 +479,22 @@ function PublicHeader() {
         </div>
         <div className="flex items-center gap-2">
           <Link
+            href="/login"
+            className="hidden text-sm font-semibold text-slate-300 transition hover:text-white sm:block px-3 py-2"
+          >
+            Log in
+          </Link>
+          <Link
+            href="/select-role"
+            className="hidden rounded-lg bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20 sm:block"
+          >
+            Register
+          </Link>
+          <Link
             href="/coming-soon"
             className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#e9f7ff] px-4 text-sm font-black text-slate-950 shadow-lg shadow-slate-950/20 transition hover:bg-[#d9efff] focus:outline-none focus:ring-2 focus:ring-blue-300"
           >
-            Coming soon
+            Download App
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
           <details className="relative lg:hidden">
@@ -495,6 +507,13 @@ function PublicHeader() {
                   {link.label}
                 </Link>
               ))}
+              <div className="my-2 border-t border-white/10" />
+              <Link href="/login" className="block rounded-lg px-3 py-3 text-sm font-semibold text-slate-200 hover:bg-white/10">
+                Log in
+              </Link>
+              <Link href="/select-role" className="block rounded-lg px-3 py-3 text-sm font-semibold text-cyan-200 hover:bg-white/10">
+                Register account
+              </Link>
             </div>
           </details>
         </div>
