@@ -137,9 +137,12 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger:
       process.env.NODE_ENV === 'production'
-        ? ['error', 'warn']
+        ? ['error', 'warn', 'log']
         : ['error', 'warn', 'log', 'debug'],
   });
+
+  // Enable trust proxy for rate limiting behind reverse proxies (like Railway)
+  app.set('trust proxy', 1);
 
   // PRD §28 - Security headers
   app.use(helmet());
