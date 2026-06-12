@@ -740,45 +740,49 @@ function MobileAppShowcase() {
       </div>
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="grid gap-4">
-          <PhotoTile image={logisticsImages.truck} label="Trucking network" className="h-48 sm:h-56" />
+          <PhotoTile image={logisticsImages.truck} label="Trucking network" className="h-48 sm:h-[15.5rem]" />
           <div className="grid gap-4 sm:grid-cols-2">
-            <PhotoTile image={logisticsImages.warehouse} label="Warehouses" className="h-32" />
-            <PhotoTile image={logisticsImages.fleet} label="Fleet operations" className="h-32" />
+            <PhotoTile image={logisticsImages.warehouse} label="Warehouses" className="h-32 sm:h-[9.5rem]" />
+            <PhotoTile image={logisticsImages.fleet} label="Fleet operations" className="h-32 sm:h-[9.5rem]" />
           </div>
         </div>
 
-        <div className="rounded-[1.25rem] border border-white/10 bg-[#0d1628] p-4 text-white flex flex-col gap-4 justify-between">
-          <div className="rounded-[1.15rem] bg-[#f8fcff] p-4 text-slate-950 shadow-md">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-              <Image src={BRAND.assets.appIcon} alt="" width={38} height={38} className="rounded-xl shadow-sm" />
+        <div className="rounded-[1.25rem] border border-white/10 bg-[#0d1628] p-5 text-white flex flex-col gap-5 justify-center">
+          <div className="rounded-[1.15rem] bg-[#f8fcff] p-5 text-slate-950 shadow-md">
+            <div className="flex items-center gap-4 border-b border-slate-100 pb-4">
+              <Image src={BRAND.assets.appIcon} alt="" width={42} height={42} className="rounded-xl shadow-sm" />
               <div>
-                <p className="text-sm font-black">Customer App</p>
-                <p className="text-xs text-slate-500">Booking & tracking</p>
+                <p className="font-black text-slate-900">Customer App</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mt-0.5">Booking & tracking</p>
               </div>
             </div>
-            <div className="mt-4 rounded-xl bg-blue-50/70 p-4 border border-blue-100/50">
+            <div className="mt-5 rounded-xl bg-blue-50/80 p-4 border border-blue-100/50">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-black text-blue-900">Live shipment</p>
-                <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                <p className="text-xs font-black text-blue-900 uppercase tracking-wide">Live shipment</p>
+                <span className="inline-flex items-center rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
                   In transit
                 </span>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-slate-600">Pickup confirmed. Cargo in transit.</p>
-              <div className="mt-4 h-2 rounded-full bg-blue-100 overflow-hidden">
+              <p className="mt-3 text-xs font-semibold leading-relaxed text-slate-600">Pickup confirmed. Cargo in transit.</p>
+              <div className="mt-4 h-2 rounded-full bg-blue-200/60 overflow-hidden">
                 <div className="h-full w-2/3 rounded-full bg-blue-600 transition-all duration-500" />
+              </div>
+              <div className="mt-3 flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <span>Nairobi</span>
+                <span>Mombasa</span>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.04] p-4 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+          <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.04] p-5 flex flex-col">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4">
               <div>
-                <p className="text-xs font-black uppercase text-cyan-100">Fleet dashboard</p>
-                <p className="mt-1 text-xl font-black">GPS active</p>
+                <p className="text-[11px] font-black uppercase tracking-wider text-cyan-400">Fleet dashboard</p>
+                <p className="mt-1 text-xl font-black text-white">GPS active</p>
               </div>
-              <RadioTower className="h-7 w-7 text-cyan-100 animate-pulse" aria-hidden="true" />
+              <RadioTower className="h-8 w-8 text-cyan-400 animate-pulse" aria-hidden="true" />
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="mt-5 grid grid-cols-3 gap-3">
               {[
                 ['24', 'Trucks'],
                 ['18', 'Drivers'],
@@ -786,9 +790,16 @@ function MobileAppShowcase() {
               ].map(([value, label]) => (
                 <div key={label} className="rounded-xl bg-[#f2fbff] p-3 text-slate-950 text-center shadow-sm border border-sky-100">
                   <p className="text-2xl font-black leading-none">{value}</p>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1 leading-none">{label}</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1.5 leading-none">{label}</p>
                 </div>
               ))}
+            </div>
+            <div className="mt-5 flex items-center gap-2 rounded-lg bg-emerald-400/10 px-3 py-2 text-[10px] font-bold text-emerald-400 w-fit border border-emerald-400/20">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              Telemetry synced
             </div>
           </div>
         </div>
