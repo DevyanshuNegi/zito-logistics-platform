@@ -747,45 +747,48 @@ function MobileAppShowcase() {
           </div>
         </div>
 
-        <div className="rounded-[1.25rem] border border-white/10 bg-[#0d1628] p-4 text-white flex flex-col justify-center">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-[1.15rem] bg-[#f8fcff] p-4 text-slate-950">
-              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                <Image src={BRAND.assets.appIcon} alt="" width={34} height={34} className="rounded-lg" />
-                <div>
-                  <p className="text-xs font-black">Customer App</p>
-                  <p className="text-[11px] text-slate-500">Booking & tracking</p>
-                </div>
-              </div>
-              <div className="mt-4 rounded-lg bg-blue-50 p-4">
-                <p className="text-xs font-black text-blue-900">Live shipment</p>
-                <p className="mt-2 text-[11px] leading-5 text-slate-600">Pickup confirmed. Cargo in transit.</p>
-                <div className="mt-4 h-2 rounded-full bg-[#d8ecfb]">
-                  <div className="h-2 w-2/3 rounded-full bg-blue-600" />
-                </div>
+        <div className="rounded-[1.25rem] border border-white/10 bg-[#0d1628] p-4 text-white flex flex-col gap-4 justify-between">
+          <div className="rounded-[1.15rem] bg-[#f8fcff] p-4 text-slate-950 shadow-md">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <Image src={BRAND.assets.appIcon} alt="" width={38} height={38} className="rounded-xl shadow-sm" />
+              <div>
+                <p className="text-sm font-black">Customer App</p>
+                <p className="text-xs text-slate-500">Booking & tracking</p>
               </div>
             </div>
-
-            <div className="rounded-lg border border-white/10 bg-white/10 p-4 flex flex-col justify-between">
+            <div className="mt-4 rounded-xl bg-blue-50/70 p-4 border border-blue-100/50">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-black uppercase text-cyan-100">Fleet dashboard</p>
-                  <p className="mt-2 text-2xl font-black">GPS active</p>
+                <p className="text-xs font-black text-blue-900">Live shipment</p>
+                <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                  In transit
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">Pickup confirmed. Cargo in transit.</p>
+              <div className="mt-4 h-2 rounded-full bg-blue-100 overflow-hidden">
+                <div className="h-full w-2/3 rounded-full bg-blue-600 transition-all duration-500" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.04] p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <div>
+                <p className="text-xs font-black uppercase text-cyan-100">Fleet dashboard</p>
+                <p className="mt-1 text-xl font-black">GPS active</p>
+              </div>
+              <RadioTower className="h-7 w-7 text-cyan-100 animate-pulse" aria-hidden="true" />
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              {[
+                ['24', 'Trucks'],
+                ['18', 'Drivers'],
+                ['7', 'Loads'],
+              ].map(([value, label]) => (
+                <div key={label} className="rounded-xl bg-[#f2fbff] p-3 text-slate-950 text-center shadow-sm border border-sky-100">
+                  <p className="text-2xl font-black leading-none">{value}</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1 leading-none">{label}</p>
                 </div>
-                <RadioTower className="h-7 w-7 text-cyan-100" aria-hidden="true" />
-              </div>
-              <div className="mt-6 grid grid-cols-3 gap-2">
-                {[
-                  ['24', 'Trucks'],
-                  ['18', 'Drivers'],
-                  ['7', 'Loads'],
-                ].map(([value, label]) => (
-                  <div key={label} className="rounded-lg bg-[#f2fbff] p-2 text-slate-950 text-center">
-                    <p className="text-lg font-black">{value}</p>
-                    <p className="text-[10px] font-bold text-slate-500">{label}</p>
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         </div>
@@ -800,7 +803,7 @@ function HomeHero() {
       <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(26,111,255,0.13),transparent_38%,rgba(168,85,247,0.10)_72%,transparent)]" />
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
       <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,transparent,rgba(15,23,42,0.72))]" />
-      <div className="relative mx-auto grid min-h-[78svh] max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
+      <div className="relative mx-auto grid min-h-[78svh] max-w-7xl items-start gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
         <div className="max-w-3xl py-8">
           <div className="mb-8 inline-flex items-center gap-3 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-bold text-cyan-100 shadow-sm backdrop-blur">
             <Sparkles className="h-4 w-4" aria-hidden="true" />
