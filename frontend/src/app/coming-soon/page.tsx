@@ -26,7 +26,7 @@ export default function ComingSoonPage() {
 
         <div className="pt-8">
           <Link href="/">
-            <Button variant="outline" className="gap-2 border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white">
+            <Button variant="secondary" className="gap-2 border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white">
               <ArrowLeft className="h-4 w-4" />
               Return to Home
             </Button>
