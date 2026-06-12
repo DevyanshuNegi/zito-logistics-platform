@@ -479,7 +479,7 @@ function PublicHeader() {
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="/contact"
+            href="/coming-soon"
             className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#e9f7ff] px-4 text-sm font-black text-slate-950 shadow-lg shadow-slate-950/20 transition hover:bg-[#d9efff] focus:outline-none focus:ring-2 focus:ring-blue-300"
           >
             Coming soon
@@ -517,7 +517,7 @@ function PublicFooter() {
     {
       title: 'Platform',
       links: [
-        { label: 'Customer App', href: '/contact' },
+        { label: 'Customer App', href: '/coming-soon' },
         { label: 'Partner App', href: '/partners/register' },
         { label: 'Fleet Management', href: '/fleet' },
         { label: 'Warehousing', href: '/warehousing' },
@@ -705,7 +705,7 @@ function AppStoreButtons({ light = false }: { light?: boolean }) {
         return (
           <Link
             key={store}
-            href="/contact"
+            href="/coming-soon"
             className={cx(
               'inline-flex min-h-12 items-center gap-3 rounded-lg px-3 transition focus:outline-none focus:ring-2 focus:ring-blue-300',
               light
@@ -839,7 +839,7 @@ function HomeHero() {
           </div>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
-              href="/contact"
+              href="/coming-soon"
               className="inline-flex min-h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#e9f7ff] px-6 text-sm font-black text-slate-950 shadow-xl shadow-slate-950/20 transition hover:bg-[#d9efff] focus:outline-none focus:ring-2 focus:ring-blue-300"
             >
               Coming soon
