@@ -13,6 +13,7 @@ import { ReauthGuard } from '../../common/guards/reauth.guard';
 import { TwilioOtpProvider } from './otp/twilio.provider';
 import { TestOtpProvider } from './otp/test.provider';
 import { FirebaseOtpProvider } from './otp/firebase.provider';
+import { AfricasTalkingOtpProvider } from './otp/africastalking.provider';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { FirebaseOtpProvider } from './otp/firebase.provider';
     TwilioOtpProvider,
     TestOtpProvider,
     FirebaseOtpProvider,
+    AfricasTalkingOtpProvider,
     RolesGuard,
     SessionStateService,
     SessionGuard,

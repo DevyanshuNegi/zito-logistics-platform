@@ -11,6 +11,7 @@ import { FirebaseOtpProvider } from './otp/firebase.provider';
 import { OtpProvider, OtpProviderMode, maskOtpTarget } from './otp/otp-provider.interface';
 import { TestOtpProvider } from './otp/test.provider';
 import { TwilioOtpProvider } from './otp/twilio.provider';
+import { AfricasTalkingOtpProvider } from './otp/africastalking.provider';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const COOLDOWN_SECS = 30;
@@ -42,6 +43,7 @@ export class OtpService {
     private readonly twilioProvider: TwilioOtpProvider,
     private readonly testProvider: TestOtpProvider,
     private readonly firebaseProvider: FirebaseOtpProvider,
+    private readonly africasTalkingProvider: AfricasTalkingOtpProvider,
   ) {}
 
   async sendOtp(contact: string, purpose: string): Promise<OtpSendResult> {
@@ -307,13 +309,20 @@ export class OtpService {
     if (mode === 'test') return this.testProvider;
     if (mode === 'twilio') return this.twilioProvider;
     if (mode === 'firebase') return this.firebaseProvider;
+    if (mode === 'africastalking') return this.africasTalkingProvider;
     return this.localProvider();
   }
 
   private getOtpMode(contact: string): OtpProviderMode {
     const configuredMode = (process.env.OTP_MODE ?? '').trim().toLowerCase();
+    
+    // Explicitly check for Africa's Talking
+    if (configuredMode === 'africastalking' && this.isPhoneContact(contact)) {
+      return 'africastalking';
+    }
+
     if (configuredMode === 'test' || configuredMode === 'firebase') {
-      return configuredMode;
+      return configuredMode as OtpProviderMode;
     }
 
     if (configuredMode === 'twilio') {

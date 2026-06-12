@@ -1,4 +1,4 @@
-export type OtpProviderMode = 'local' | 'test' | 'twilio' | 'firebase';
+export type OtpProviderMode = 'local' | 'test' | 'twilio' | 'firebase' | 'africastalking';
 
 export type OtpProviderSendInput = {
   contact: string;
