@@ -1,17 +1,1199 @@
-// ============================================================
-// ZITO Super App Platform — Prisma Schema
-// PRD v10 ULTIMATE | NestJS + Neon PostgreSQL + PostGIS
-// ============================================================
-
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                    String                    @id @default(uuid())
+  fullName              String?
+  companyName           String?
+  email                 String?                   @unique
+  phone                 String                    @unique
+  password              String?
+  role                  UserRole                  @default(CUSTOMER)
+  status                AccountStatus             @default(PENDING)
+  agencyId              String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  auditLogs             AuditLog[]
+  disbursementsApproved Disbursement[]            @relation("DisbursementApprover")
+  disbursementsReceived Disbursement[]            @relation("DisbursementBeneficiary")
+  disbursementsCreated  Disbursement[]            @relation("DisbursementCreator")
+  ownedDrivers          Driver[]                  @relation("DriverOwner")
+  driverProfile         Driver?
+  kycDocuments          KycDocument[]
+  reportedLosses        LossReport[]              @relation("Reporter")
+  reviewedLosses        LossReport[]              @relation("Reviewer")
+  notifications         Notification[]
+  staffProfile          Staff?
+  subscription          Subscription?             @relation("UserSubscription")
+  assignedTickets       SupportTicket[]           @relation("TicketHandler")
+  supportTickets        SupportTicket[]           @relation("TicketRaiser")
+  supportMessages       SupportTicketMessage[]    @relation("SupportMessageAuthor")
+  agency                Agency?                   @relation(fields: [agencyId], references: [id])
+  ownedVehicles         Vehicle[]                 @relation("VehicleOwner")
+  certificates          VerificationCertificate[] @relation("UserCertificates")
+  verificationFees      VerificationFeePayment[]  @relation("UserVerificationFees")
+  wallets               Wallet[]
+  managedWarehouses     Warehouse[]               @relation("WarehouseManager")
+}
+
+model KycDocument {
+  id               String    @id @default(uuid())
+  userId           String
+  type             String
+  fileUrl          String
+  status           String    @default("PENDING")
+  documentNumber   String?
+  issuingAuthority String?
+  countryOfIssue   String?
+  documentSide     String?
+  issueDate        DateTime?
+  expiryDate       DateTime?
+  reviewNote       String?
+  rejectionReason  String?
+  verifiedAt       DateTime?
+  verifiedBy       String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id])
+}
+
+model Agency {
+  id         String      @id @default(uuid())
+  name       String
+  address    String?
+  latitude   Float?
+  longitude  Float?
+  managerId  String?
+  status     String      @default("ACTIVE")
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  bookings   Booking[]
+  staff      Staff[]
+  users      User[]
+  warehouses Warehouse[]
+}
+
+model Staff {
+  id         String          @id @default(uuid())
+  userId     String          @unique
+  scope      StaffScope      @default(AGENCY)
+  agencyId   String?
+  department StaffDepartment
+  role       String
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  agency     Agency?         @relation(fields: [agencyId], references: [id])
+  user       User            @relation(fields: [userId], references: [id])
+
+  @@index([userId, scope, department])
+}
+
+model Driver {
+  id               String             @id @default(uuid())
+  userId           String             @unique
+  ownerUserId      String?
+  isOnline         Boolean            @default(false)
+  isAvailable      Boolean            @default(true)
+  currentLatitude  Float?
+  currentLongitude Float?
+  lastLocationAt   DateTime?
+  rating           Float              @default(5.0)
+  completionRate   Float              @default(0)
+  acceptanceRate   Float              @default(0)
+  totalTrips       Int                @default(0)
+  licenseNumber    String?
+  licenseExpiry    DateTime?
+  licenseVerified  Boolean            @default(false)
+  isBlacklisted    Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  bookings         Booking[]          @relation("AssignedDriver")
+  ownerUser        User?              @relation("DriverOwner", fields: [ownerUserId], references: [id])
+  user             User               @relation(fields: [userId], references: [id])
+  assignments      DriverAssignment[] @relation("DriverAssignments")
+  incentives       DriverIncentive[]
+  payrolls         DriverPayroll[]
+  penalties        DriverPenalty[]
+  shifts           DriverShift[]
+  fuelLogs         FuelLog[]
+  vehicle          Vehicle?           @relation("AssignedVehicle")
+  breakdowns       VehicleBreakdown[]
+
+  @@index([currentLatitude, currentLongitude])
+  @@index([ownerUserId])
+}
+
+model DriverShift {
+  id               String           @id @default(uuid())
+  driverId         String
+  shiftStartTime   DateTime
+  shiftEndTime     DateTime?
+  totalHours       Float?
+  tripHours        Float?
+  idleHours        Float?
+  attendanceStatus AttendanceStatus @default(PRESENT)
+  status           String           @default("ACTIVE")
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  driver           Driver           @relation(fields: [driverId], references: [id])
+}
+
+model DriverPayroll {
+  id             String    @id @default(uuid())
+  driverId       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  totalTrips     Int       @default(0)
+  tripEarnings   Float     @default(0)
+  hourlyEarnings Float     @default(0)
+  incentiveTotal Float     @default(0)
+  penaltyTotal   Float     @default(0)
+  netPayout      Float     @default(0)
+  status         String    @default("PENDING")
+  approvedBy     String?
+  approvedAt     DateTime?
+  paidAt         DateTime?
+  transactionRef String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  driver         Driver    @relation(fields: [driverId], references: [id])
+}
+
+model DriverIncentive {
+  id        String   @id @default(uuid())
+  driverId  String
+  type      String
+  amount    Float
+  reason    String?
+  bookingId String?
+  createdAt DateTime @default(now())
+  driver    Driver   @relation(fields: [driverId], references: [id])
+}
+
+model DriverPenalty {
+  id        String   @id @default(uuid())
+  driverId  String
+  type      String
+  amount    Float
+  reason    String
+  bookingId String?
+  createdAt DateTime @default(now())
+  driver    Driver   @relation(fields: [driverId], references: [id])
+}
+
+model Vehicle {
+  id                          String                     @id @default(uuid())
+  plateNumber                 String                     @unique
+  chassisNumber               String?
+  make                        String?
+  model                       String?
+  year                        Int?
+  type                        VehicleType
+  status                      VehicleStatus              @default(INACTIVE)
+  capacityKg                  Float
+  capacityM3                  Float?
+  deviceGpsLat                Float?
+  deviceGpsLng                Float?
+  lastGpsAt                   DateTime?
+  insuranceCompany            String?
+  insurancePolicyNumber       String?
+  insuranceExpiry             DateTime?
+  insuranceVerified           Boolean                    @default(false)
+  permitExpiry                DateTime?
+  permitVerified              Boolean                    @default(false)
+  inspectionCertificateExpiry DateTime?
+  verificationStatus          String                     @default("PENDING_REVIEW")
+  verificationReviewedAt      DateTime?
+  verificationReviewedBy      String?
+  verificationNote            String?
+  rejectionReason             String?
+  ownerUserId                 String?
+  driverId                    String?                    @unique
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  bookings                    Booking[]                  @relation("BookingVehicle")
+  assignments                 DriverAssignment[]         @relation("AssignmentVehicles")
+  fuelLogs                    FuelLog[]
+  maintenanceLogs             MaintenanceLog[]
+  driver                      Driver?                    @relation("AssignedVehicle", fields: [driverId], references: [id])
+  ownerUser                   User?                      @relation("VehicleOwner", fields: [ownerUserId], references: [id])
+  breakdowns                  VehicleBreakdown[]
+  verificationPhotos          VehicleVerificationPhoto[] @relation("VerificationPhotos")
+
+  @@index([ownerUserId])
+  @@index([deviceGpsLat, deviceGpsLng])
+}
+
+model FuelLog {
+  id           String   @id @default(uuid())
+  vehicleId    String
+  driverId     String?
+  bookingId    String?
+  fuelExpected Float
+  fuelActual   Float
+  fuelCost     Float
+  variance     Float
+  notes        String?
+  isFlagged    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  booking      Booking? @relation(fields: [bookingId], references: [id])
+  driver       Driver?  @relation(fields: [driverId], references: [id])
+  vehicle      Vehicle  @relation(fields: [vehicleId], references: [id])
+}
+
+model VehicleBreakdown {
+  id              String    @id @default(uuid())
+  vehicleId       String
+  driverId        String
+  bookingId       String?
+  description     String
+  latitude        Float?
+  longitude       Float?
+  status          String    @default("REPORTED")
+  backupVehicleId String?
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  booking         Booking?  @relation(fields: [bookingId], references: [id])
+  driver          Driver    @relation(fields: [driverId], references: [id])
+  vehicle         Vehicle   @relation(fields: [vehicleId], references: [id])
+}
+
+model MaintenanceLog {
+  id          String    @id @default(uuid())
+  vehicleId   String
+  type        String
+  description String
+  cost        Float?
+  scheduledAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
+}
+
+model Booking {
+  id                     String                @id @default(uuid())
+  reference              String                @unique
+  status                 BookingStatus         @default(CREATED)
+  serviceType            ServiceType           @default(COURIER)
+  capacitySource         BookingCapacitySource @default(CFA_NETWORK)
+  customerId             String
+  agencyId               String?
+  driverId               String?
+  vehicleId              String?
+  requiredVehicleType    VehicleType?
+  baseFare               Float                 @default(0)
+  distanceFare           Float                 @default(0)
+  stopFare               Float                 @default(0)
+  surgeMultiplier        Float                 @default(1.0)
+  totalPrice             Float                 @default(0)
+  estimatedDistKm        Float                 @default(0)
+  cancelledAt            DateTime?
+  cancellationReason     String?
+  cancelledBy            String?
+  deliveryOtp            String?
+  deliveryOtpAttempts    Int                   @default(0)
+  deliveryOtpLockedUntil DateTime?
+  deliveryProofUrl       String?
+  deliveredAt            DateTime?
+  assignedAt             DateTime?
+  acceptedAt             DateTime?
+  dispatchLogId          String?
+  manuallyAssignedBy     String?
+  manuallyAssignedAt     DateTime?
+  idempotencyKey         String?               @unique
+  cargoType              String?
+  cargoWeightKg          Float?
+  cargoDescription       String?
+  specialInstructions    String?
+  isScheduled            Boolean               @default(false)
+  tradeMode              FreightTradeMode?
+  railCorridorCode       RailCorridorCode?
+  originNode             String?
+  destinationNode        String?
+  containerReference     String?
+  billOfLadingNumber     String?
+  idfNumber              String?
+  pacReady               Boolean               @default(false)
+  customsStatus          TradeDocumentStatus?
+  icmsStatus             TradeDocumentStatus?
+  isFeatured             Boolean               @default(false)
+  featuredTier           FeaturedListingTier?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  agency                 Agency?               @relation(fields: [agencyId], references: [id])
+  driver                 Driver?               @relation("AssignedDriver", fields: [driverId], references: [id])
+  vehicle                Vehicle?              @relation("BookingVehicle", fields: [vehicleId], references: [id])
+  quote                  BookingQuote?
+  stops                  BookingStop[]
+  assignments            DriverAssignment[]    @relation("BookingAssignments")
+  escrow                 Escrow?
+  featuredListing        FeaturedListing?
+  freightMilestones      FreightMilestone[]
+  fuelLogs               FuelLog[]
+  parcels                InventoryItem[]
+  invoice                Invoice?
+  lossReports            LossReport[]
+  payments               Payment[]
+  rtoReturn              RtoReturn?
+  scanEvents             ScanEvent[]
+  supportTickets         SupportTicket[]
+  breakdowns             VehicleBreakdown[]
+  waybills               Waybill[]
+}
+
+model DriverAssignment {
+  id                      String                 @id @default(uuid())
+  bookingId               String
+  driverId                String
+  vehicleId               String?
+  status                  DriverAssignmentStatus @default(OFFERED)
+  offeredAt               DateTime               @default(now())
+  acceptedAt              DateTime?
+  rejectedAt              DateTime?
+  rejectionReason         String?
+  reassignedAt            DateTime?
+  completedAt             DateTime?
+  matchScore              Float?
+  priorityScore           Float?
+  distanceKm              Float?
+  estimatedArrivalMinutes Int?
+  manuallyOfferedBy       String?
+  manuallyOfferedAt       DateTime?
+  radiusKmAtOffer         Int?                   @default(10)
+  attemptNumber           Int                    @default(1)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  booking                 Booking                @relation("BookingAssignments", fields: [bookingId], references: [id])
+  driver                  Driver                 @relation("DriverAssignments", fields: [driverId], references: [id])
+  vehicle                 Vehicle?               @relation("AssignmentVehicles", fields: [vehicleId], references: [id])
+
+  @@index([bookingId, status])
+  @@index([driverId, status])
+  @@index([offeredAt])
+}
+
+model VehicleVerificationPhoto {
+  id          String                  @id @default(uuid())
+  vehicleId   String
+  photoType   VehiclePhotoType
+  photoUrl    String
+  status      PhotoVerificationStatus @default(PENDING_REVIEW)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  reviewNotes String?
+  timestamp   DateTime?
+  latitude    Float?
+  longitude   Float?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  vehicle     Vehicle                 @relation("VerificationPhotos", fields: [vehicleId], references: [id])
+
+  @@index([vehicleId, photoType])
+  @@index([status])
+}
+
+model FreightMilestone {
+  id            String    @id @default(uuid())
+  bookingId     String
+  sequence      Int
+  code          String
+  title         String
+  nodeLabel     String?
+  status        String    @default("PENDING")
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  blockedReason String?
+  note          String?
+  recordedBy    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  booking       Booking   @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId, sequence])
+}
+
+model BookingQuote {
+  id                  String    @id @default(uuid())
+  bookingId           String    @unique
+  quotedPrice         Float
+  currency            String    @default("KES")
+  validityStartsAt    DateTime  @default(now())
+  validityExpiresAt   DateTime
+  quotedBy            String
+  quotedAt            DateTime  @default(now())
+  acceptedAt          DateTime?
+  acceptedBy          String?
+  rejectedAt          DateTime?
+  rejectionReason     String?
+  revisionRequestedAt DateTime?
+  revisionNote        String?
+  terms               String?
+  paymentTerms        String?
+  specialConditions   String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  booking             Booking   @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId, validityExpiresAt])
+}
+
+model BookingStop {
+  id           String    @id @default(uuid())
+  bookingId    String
+  sequence     Int
+  address      String
+  latitude     Float
+  longitude    Float
+  landmark     String?
+  contactName  String
+  contactPhone String
+  stopType     String
+  arrivalTime  DateTime?
+  completedAt  DateTime?
+  otp          String?
+  createdAt    DateTime  @default(now())
+  booking      Booking   @relation(fields: [bookingId], references: [id])
+}
+
+model RtoReturn {
+  id          String     @id @default(uuid())
+  bookingId   String     @unique
+  reason      String
+  status      RtoStatus  @default(INITIATED)
+  warehouseId String?
+  closedAt    DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  booking     Booking    @relation(fields: [bookingId], references: [id])
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
+}
+
+model RateCard {
+  id              String      @id @default(uuid())
+  vehicleType     VehicleType
+  serviceType     ServiceType
+  countryCode     String      @default("KE")
+  county          String?
+  localityType    String      @default("ANY")
+  baseFare        Float
+  ratePerKm       Float
+  perStopRate     Float       @default(0)
+  minDistance     Float       @default(0)
+  surgeMultiplier Float       @default(1.0)
+  isActive        Boolean     @default(true)
+  version         Int         @default(1)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([countryCode, county, localityType, vehicleType, serviceType, isActive])
+}
+
+model Contract {
+  id              String    @id @default(uuid())
+  customerId      String
+  agencyId        String?
+  businessName    String
+  creditLimit     Float     @default(0)
+  creditUsed      Float     @default(0)
+  billingCycle    String    @default("MONTHLY")
+  paymentTermDays Int       @default(30)
+  status          String    @default("ACTIVE")
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model LoginOtp {
+  id          String   @id @default(uuid())
+  contact     String
+  otp         String
+  expiresAt   DateTime
+  resendCount Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([contact])
+}
+
+model LoginAttempt {
+  identifier    String    @id
+  count         Int       @default(0)
+  lastAttemptAt DateTime  @default(now())
+  lockExpiresAt DateTime?
+}
+
+model Warehouse {
+  id         String             @id @default(uuid())
+  name       String
+  code       String             @unique
+  address    String?
+  latitude   Float?
+  longitude  Float?
+  status     String             @default("ACTIVE")
+  agencyId   String
+  managerId  String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  items      InventoryItem[]
+  rtoReturns RtoReturn[]
+  agency     Agency             @relation(fields: [agencyId], references: [id])
+  manager    User?              @relation("WarehouseManager", fields: [managerId], references: [id])
+  listings   WarehouseListing[]
+  zones      WarehouseZone[]
+}
+
+model WarehouseListing {
+  id                 String             @id @default(uuid())
+  warehouseId        String
+  partnerId          String
+  companyName        String
+  companyEmail       String?
+  companyPhone       String?
+  vatNumber          String?
+  vatRatePct         Float              @default(0)
+  vatApplies         Boolean            @default(false)
+  title              String
+  description        String?
+  areaLabel          String
+  address            String
+  latitude           Float?
+  longitude          Float?
+  serviceRadiusKm    Float?
+  storageTypes       Json
+  amenities          Json
+  photoUrls          Json
+  documentUrls       Json
+  totalCapacity      Float
+  availableCapacity  Float
+  capacityUnit       String             @default("SQM")
+  rateAmount         Float
+  rateUnit           String             @default("DAY")
+  handlingFee        Float              @default(0)
+  minimumBookingDays Int                @default(1)
+  status             String             @default("PENDING_REVIEW")
+  reviewNote         String?
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  bookings           WarehouseBooking[]
+  warehouse          Warehouse          @relation(fields: [warehouseId], references: [id])
+
+  @@index([partnerId, status])
+  @@index([areaLabel, status])
+  @@index([warehouseId])
+}
+
+model WarehouseBooking {
+  id                String           @id @default(uuid())
+  reference         String           @unique
+  listingId         String
+  customerId        String
+  partnerId         String
+  status            String           @default("REQUESTED")
+  storageType       String
+  goodsDescription  String
+  startDate         DateTime
+  endDate           DateTime
+  capacityRequested Float
+  capacityUnit      String           @default("SQM")
+  baseAmount        Float
+  handlingFee       Float            @default(0)
+  vatAmount         Float            @default(0)
+  totalAmount       Float
+  commissionRatePct Float            @default(10)
+  commissionAmount  Float
+  partnerNetAmount  Float
+  customerNote      String?
+  partnerNote       String?
+  adminNote         String?
+  acceptedAt        DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  listing           WarehouseListing @relation(fields: [listingId], references: [id])
+
+  @@index([customerId, status])
+  @@index([partnerId, status])
+  @@index([listingId])
+}
+
+model WarehouseZone {
+  id          String          @id @default(uuid())
+  name        String
+  code        String
+  type        String          @default("DRY")
+  capacity    Float
+  warehouseId String
+  racks       WarehouseRack[]
+  warehouse   Warehouse       @relation(fields: [warehouseId], references: [id])
+}
+
+model WarehouseRack {
+  id     String         @id @default(uuid())
+  label  String
+  zoneId String
+  bins   WarehouseBin[]
+  zone   WarehouseZone  @relation(fields: [zoneId], references: [id])
+}
+
+model WarehouseBin {
+  id         String          @id @default(uuid())
+  label      String
+  isOccupied Boolean         @default(false)
+  rackId     String
+  items      InventoryItem[]
+  rack       WarehouseRack   @relation(fields: [rackId], references: [id])
+}
+
+model InventoryItem {
+  id               String              @id @default(uuid())
+  parcelId         String              @unique
+  barcodeUrl       String?
+  bookingId        String
+  waybillId        String?
+  ownerId          String
+  status           InventoryStatus     @default(RECEIVED)
+  isFragile        Boolean             @default(false)
+  isHazmat         Boolean             @default(false)
+  weight           Float
+  dimensions       String?
+  expiryDate       DateTime?
+  warehouseId      String?
+  binId            String?
+  currentVehicleId String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  bin              WarehouseBin?       @relation(fields: [binId], references: [id])
+  booking          Booking             @relation(fields: [bookingId], references: [id])
+  warehouse        Warehouse?          @relation(fields: [warehouseId], references: [id])
+  waybill          Waybill?            @relation(fields: [waybillId], references: [id])
+  movements        InventoryMovement[]
+  lossReports      LossReport[]
+  scanEvents       ScanEvent[]
+}
+
+model InventoryMovement {
+  id                  String        @id @default(uuid())
+  itemId              String
+  status              String
+  locationDescription String
+  remarks             String?
+  performedBy         String
+  createdAt           DateTime      @default(now())
+  item                InventoryItem @relation(fields: [itemId], references: [id])
+}
+
+model ScanEvent {
+  id          String         @id @default(uuid())
+  itemId      String
+  bookingId   String?
+  waybillId   String?
+  vehicleId   String?
+  driverId    String?
+  checkpoint  ScanCheckpoint
+  latitude    Float?
+  longitude   Float?
+  performedBy String
+  notes       String?
+  createdAt   DateTime       @default(now())
+  booking     Booking?       @relation(fields: [bookingId], references: [id])
+  item        InventoryItem  @relation(fields: [itemId], references: [id])
+  waybill     Waybill?       @relation(fields: [waybillId], references: [id])
+}
+
+model Waybill {
+  id          String          @id @default(uuid())
+  number      String          @unique
+  type        String          @default("WAYBILL")
+  status      WaybillStatus   @default(CREATED)
+  isLocked    Boolean         @default(false)
+  bookingId   String
+  issuedAt    DateTime        @default(now())
+  deliveredAt DateTime?
+  items       InventoryItem[]
+  scanEvents  ScanEvent[]
+  booking     Booking         @relation(fields: [bookingId], references: [id])
+}
+
+model LossReport {
+  id                   String           @id @default(uuid())
+  bookingId            String
+  itemId               String?
+  type                 String
+  description          String
+  estimatedValue       Float
+  status               LossReportStatus @default(PENDING)
+  resolutionNotes      String?
+  evidenceUrls         String[]
+  isHighValue          Boolean          @default(false)
+  requiresDualApproval Boolean          @default(false)
+  reportedBy           String
+  reviewerId           String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  booking              Booking          @relation(fields: [bookingId], references: [id])
+  item                 InventoryItem?   @relation(fields: [itemId], references: [id])
+  reporter             User             @relation("Reporter", fields: [reportedBy], references: [id])
+  reviewer             User?            @relation("Reviewer", fields: [reviewerId], references: [id])
+}
+
+model Payment {
+  id                               String         @id @default(uuid())
+  bookingId                        String?
+  invoiceId                        String?
+  amount                           Float
+  method                           PaymentMethod
+  status                           PaymentStatus  @default(INITIATED)
+  reference                        String?
+  proofUrl                         String?
+  provider                         String?
+  providerMode                     String?
+  providerStatus                   String?
+  merchantRequestId                String?
+  checkoutRequestId                String?
+  providerReceiptNumber            String?
+  providerConversationId           String?
+  providerOriginatorConversationId String?
+  providerPayload                  Json?
+  callbackReceivedAt               DateTime?
+  confirmedAt                      DateTime?
+  idempotencyKey                   String?        @unique
+  retryCount                       Int            @default(0)
+  failureReason                    String?
+  reversedAt                       DateTime?
+  createdAt                        DateTime       @default(now())
+  updatedAt                        DateTime       @updatedAt
+  disbursements                    Disbursement[]
+  booking                          Booking?       @relation(fields: [bookingId], references: [id])
+  invoice                          Invoice?       @relation(fields: [invoiceId], references: [id])
+
+  @@index([bookingId])
+  @@index([invoiceId])
+}
+
+model Disbursement {
+  id                               String             @id @default(uuid())
+  beneficiaryUserId                String?
+  createdByUserId                  String
+  approvedByUserId                 String?
+  sourcePaymentId                  String?
+  sourceInvoiceId                  String?
+  rail                             DisbursementRail
+  status                           DisbursementStatus @default(CREATED)
+  amount                           Float
+  currency                         String             @default("KES")
+  reference                        String             @unique
+  purpose                          String
+  beneficiaryName                  String
+  beneficiaryPhone                 String?
+  beneficiaryPartyNumber           String?
+  accountReference                 String?
+  provider                         String?
+  providerMode                     String?
+  providerStatus                   String?
+  providerReceiptNumber            String?
+  providerConversationId           String?
+  providerOriginatorConversationId String?
+  providerPayload                  Json?
+  failureReason                    String?
+  initiatedAt                      DateTime?
+  processedAt                      DateTime?
+  reversedAt                       DateTime?
+  createdAt                        DateTime           @default(now())
+  updatedAt                        DateTime           @updatedAt
+  approvedByUser                   User?              @relation("DisbursementApprover", fields: [approvedByUserId], references: [id])
+  beneficiaryUser                  User?              @relation("DisbursementBeneficiary", fields: [beneficiaryUserId], references: [id])
+  createdByUser                    User               @relation("DisbursementCreator", fields: [createdByUserId], references: [id])
+  sourceInvoice                    Invoice?           @relation(fields: [sourceInvoiceId], references: [id])
+  sourcePayment                    Payment?           @relation(fields: [sourcePaymentId], references: [id])
+
+  @@index([rail, status])
+  @@index([beneficiaryUserId])
+  @@index([sourcePaymentId])
+  @@index([sourceInvoiceId])
+}
+
+model Wallet {
+  id           String              @id @default(uuid())
+  userId       String
+  balance      Float               @default(0)
+  currency     String              @default("KES")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id])
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id             String   @id @default(uuid())
+  walletId       String
+  type           String
+  amount         Float
+  balance        Float
+  reference      String?
+  description    String?
+  bookingId      String?
+  idempotencyKey String?  @unique
+  createdAt      DateTime @default(now())
+  wallet         Wallet   @relation(fields: [walletId], references: [id])
+}
+
+model Escrow {
+  id          String       @id @default(uuid())
+  bookingId   String       @unique
+  amount      Float
+  status      EscrowStatus @default(HELD)
+  heldAt      DateTime     @default(now())
+  releasedAt  DateTime?
+  refundedAt  DateTime?
+  releaseNote String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  booking     Booking      @relation(fields: [bookingId], references: [id])
+}
+
+model Invoice {
+  id                 String            @id @default(uuid())
+  number             String            @unique
+  type               InvoiceType
+  status             InvoiceStatus     @default(DRAFT)
+  isLocked           Boolean           @default(false)
+  bookingId          String?           @unique
+  customerId         String
+  agencyId           String?
+  subtotal           Float
+  taxAmount          Float             @default(0)
+  totalAmount        Float
+  paidAmount         Float             @default(0)
+  dueDate            DateTime?
+  issuedAt           DateTime?
+  paidAt             DateTime?
+  isApprovalRequired Boolean           @default(false)
+  approvedBy         String?
+  approvedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  disbursements      Disbursement[]
+  booking            Booking?          @relation(fields: [bookingId], references: [id])
+  lineItems          InvoiceLineItem[]
+  payments           Payment[]
+}
+
+model InvoiceLineItem {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  description String
+  quantity    Float   @default(1)
+  unitPrice   Float
+  totalPrice  Float
+  invoice     Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model SupportTicket {
+  id                    String                 @id @default(uuid())
+  bookingId             String?
+  raisedBy              String
+  handlerId             String?
+  category              String
+  description           String
+  status                TicketStatus           @default(OPEN)
+  priority              String                 @default("MEDIUM")
+  sourceContextType     String?
+  sourceContextId       String?
+  autobotSummary        String?
+  autobotArticle        String?
+  autobotConfidence     String?
+  autobotQuickAction    String?
+  autobotEscalationDesk String?
+  autobotSuggestedReply String?
+  resolution            String?
+  closedAt              DateTime?
+  escalationLevel       Int                    @default(1)
+  escalatedAt           DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  booking               Booking?               @relation(fields: [bookingId], references: [id])
+  handler               User?                  @relation("TicketHandler", fields: [handlerId], references: [id])
+  raiser                User                   @relation("TicketRaiser", fields: [raisedBy], references: [id])
+  messages              SupportTicketMessage[]
+}
+
+model SupportTicketMessage {
+  id         String        @id @default(uuid())
+  ticketId   String
+  authorId   String?
+  actorType  String
+  message    String
+  isInternal Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  author     User?         @relation("SupportMessageAuthor", fields: [authorId], references: [id])
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId, createdAt])
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  userId     String
+  title      String
+  message    String
+  channel    String
+  status     String    @default("PENDING")
+  retryCount Int       @default(0)
+  readAt     DateTime?
+  entityType String?
+  entityId   String?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id])
+}
+
+model InternalAlert {
+  id         String   @id @default(uuid())
+  type       String
+  severity   String   @default("MEDIUM")
+  message    String
+  status     String   @default("PENDING")
+  agencyId   String?
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  details    Json?
+  ipAddress  String?
+  deviceInfo String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model FraudFlag {
+  id          String    @id @default(uuid())
+  entityType  String
+  entityId    String
+  type        String
+  description String
+  severity    String    @default("MEDIUM")
+  status      String    @default("OPEN")
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model SurgeZone {
+  id              String    @id @default(uuid())
+  name            String
+  latitude        Float
+  longitude       Float
+  radiusKm        Float
+  surgeMultiplier Float     @default(1.0)
+  isActive        Boolean   @default(false)
+  activatedAt     DateTime?
+  deactivatedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model IdempotencyRecord {
+  key         String    @id @unique
+  status      String
+  requestHash String
+  response    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  expiresAt   DateTime?
+}
+
+model MarketplacePartner {
+  userId             String    @id
+  partnerType        String
+  companyName        String
+  serviceAreas       Json
+  vehicleIds         Json
+  warehouseIds       Json
+  baseLatitude       Float?
+  baseLongitude      Float?
+  serviceRadiusKm    Float?
+  commissionRatePct  Float     @default(12)
+  serviceFeeFlat     Float     @default(0)
+  premiumListing     Boolean   @default(false)
+  verificationStatus String    @default("PENDING_REVIEW")
+  verificationNote   String?
+  submittedBy        String
+  approvedBy         String?
+  approvedAt         DateTime?
+  rejectedBy         String?
+  rejectedAt         DateTime?
+  suspendedBy        String?
+  suspendedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([partnerType, verificationStatus])
+  @@index([updatedAt])
+}
+
+model MarketplaceOpportunity {
+  bookingId         String           @id
+  bookingReference  String
+  serviceType       ServiceType
+  partnerType       String
+  pricingModel      String
+  status            String           @default("OPEN")
+  publishedBy       String
+  publishedAt       DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  expiresAt         DateTime?
+  currency          String           @default("KES")
+  bookingPrice      Float            @default(0)
+  fixedPrice        Float?
+  minimumBid        Float?
+  serviceAreaHints  Json
+  stopPoints        Json
+  routeSummary      Json
+  stopSummary       Json
+  fleetRequirements Json
+  awardedPartnerId  String?
+  selectedBidId     String?
+  awardedAt         DateTime?
+  awardedBy         String?
+  commissionAmount  Float?
+  commissionRatePct Float?
+  serviceFeeFlat    Float?
+  premiumListingFee Float?
+  partnerNetAmount  Float?
+  bids              MarketplaceBid[]
+
+  @@index([partnerType, status])
+  @@index([publishedAt])
+  @@index([expiresAt])
+}
+
+model MarketplaceBid {
+  id                   String                 @id
+  opportunityBookingId String
+  partnerId            String
+  amount               Float
+  note                 String?
+  submittedAt          DateTime               @default(now())
+  status               String                 @default("PENDING")
+  counterAmount        Float?
+  respondedAt          DateTime?
+  respondedBy          String?
+  opportunity          MarketplaceOpportunity @relation(fields: [opportunityBookingId], references: [bookingId], onDelete: Cascade)
+
+  @@index([opportunityBookingId, status])
+  @@index([partnerId, status])
+}
+
+model Subscription {
+  id              String               @id @default(uuid())
+  userId          String               @unique
+  tier            SubscriptionTier     @default(FREE)
+  monthlyPrice    Int                  @default(0)
+  status          SubscriptionStatus   @default(ACTIVE)
+  startDate       DateTime             @default(now())
+  nextBillingDate DateTime
+  cancelledDate   DateTime?
+  expiresAt       DateTime?
+  autoRenew       Boolean              @default(true)
+  failedAttempts  Int                  @default(0)
+  paymentMethod   String               @default("MPESA")
+  cancelReason    String?
+  notes           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  user            User                 @relation("UserSubscription", fields: [userId], references: [id], onDelete: Cascade)
+  charges         SubscriptionCharge[]
+
+  @@index([userId, status])
+  @@index([status, nextBillingDate])
+}
+
+model SubscriptionCharge {
+  id                   String                   @id @default(uuid())
+  subscriptionId       String
+  amount               Int
+  chargedDate          DateTime                 @default(now())
+  status               SubscriptionChargeStatus @default(PENDING)
+  transactionReference String?
+  failureReason        String?
+  createdAt            DateTime                 @default(now())
+  subscription         Subscription             @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, status])
+  @@index([chargedDate])
+}
+
+model FeaturedListing {
+  id                   String                @id @default(uuid())
+  bookingId            String                @unique
+  tier                 FeaturedListingTier   @default(FEATURED)
+  status               FeaturedListingStatus @default(ACTIVE)
+  startDate            DateTime              @default(now())
+  expiryDate           DateTime
+  durationDays         Int
+  totalCost            Int
+  transactionReference String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  booking              Booking               @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiryDate])
+  @@index([tier])
+}
+
+model VerificationFeePayment {
+  id                     String    @id @default(uuid())
+  userId                 String
+  amount                 Int
+  processingMode         String    @default("EXPEDITED")
+  status                 String    @default("PAID")
+  paidAt                 DateTime  @default(now())
+  completedAt            DateTime?
+  refundedAt             DateTime?
+  expectedCompletionDate DateTime?
+  transactionReference   String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  user                   User      @relation("UserVerificationFees", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, expectedCompletionDate])
+}
+
+model VerificationCertificate {
+  id                String   @id @default(uuid())
+  userId            String
+  certificateNumber String   @unique
+  status            String   @default("ACTIVE")
+  issuedBy          String
+  issuedAt          DateTime @default(now())
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation("UserCertificates", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([expiresAt])
 }
 
 enum UserRole {
@@ -238,10 +1420,6 @@ enum ScanCheckpoint {
   VEHICLE_UNLOAD
 }
 
-// ============================================================
-// PHASE 1: SUBSCRIPTION TIERS (Revenue Stream #2)
-// ============================================================
-
 enum SubscriptionTier {
   FREE
   SILVER
@@ -275,431 +1453,6 @@ enum FeaturedListingTier {
   VIP
 }
 
-model User {
-  id            String        @id @default(uuid())
-  fullName      String?
-  companyName   String?
-  email         String?       @unique
-  phone         String        @unique
-  password      String?
-  role          UserRole      @default(CUSTOMER)
-  status        AccountStatus @default(PENDING)
-
-  agencyId      String?
-  agency        Agency?       @relation(fields: [agencyId], references: [id])
-
-  driverProfile     Driver?
-  staffProfile      Staff?
-  kycDocuments      KycDocument[]
-  managedWarehouses Warehouse[]     @relation("WarehouseManager")
-  reportedLosses    LossReport[]    @relation("Reporter")
-  reviewedLosses    LossReport[]    @relation("Reviewer")
-  supportTickets    SupportTicket[] @relation("TicketRaiser")
-  assignedTickets   SupportTicket[] @relation("TicketHandler")
-  supportMessages   SupportTicketMessage[] @relation("SupportMessageAuthor")
-  auditLogs         AuditLog[]
-  wallets           Wallet[]
-  notifications     Notification[]
-  ownedDrivers      Driver[]        @relation("DriverOwner")
-  ownedVehicles     Vehicle[]       @relation("VehicleOwner")
-  disbursementsReceived Disbursement[] @relation("DisbursementBeneficiary")
-  disbursementsCreated  Disbursement[] @relation("DisbursementCreator")
-  disbursementsApproved Disbursement[] @relation("DisbursementApprover")
-  subscription      Subscription?   @relation("UserSubscription")
-  verificationFees  VerificationFeePayment[] @relation("UserVerificationFees")
-  certificates      VerificationCertificate[] @relation("UserCertificates")
-
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-}
-
-model KycDocument {
-  id               String    @id @default(uuid())
-  userId           String
-  user             User      @relation(fields: [userId], references: [id])
-  type             String
-  fileUrl          String
-  status           String    @default("PENDING")
-  documentNumber   String?
-  issuingAuthority String?
-  countryOfIssue   String?
-  documentSide     String?
-  issueDate        DateTime?
-  expiryDate       DateTime?
-  reviewNote       String?
-  rejectionReason  String?
-  verifiedAt       DateTime?
-  verifiedBy       String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-}
-
-model Agency {
-  id          String    @id @default(uuid())
-  name        String
-  address     String?
-  latitude    Float?
-  longitude   Float?
-  managerId   String?
-  status      String    @default("ACTIVE")
-
-  users       User[]
-  warehouses  Warehouse[]
-  bookings    Booking[]
-  staff       Staff[]
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-}
-
-model Staff {
-  id          String         @id @default(uuid())
-  userId      String         @unique
-  user        User           @relation(fields: [userId], references: [id])
-  
-  scope       StaffScope     @default(AGENCY)
-  agencyId    String?
-  agency      Agency?        @relation(fields: [agencyId], references: [id])
-  
-  department  StaffDepartment
-  role        String
-  isActive    Boolean        @default(true)
-  
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  
-  @@index([userId, scope, department])
-}
-
-model Driver {
-  id               String    @id @default(uuid())
-  userId           String    @unique
-  user             User      @relation(fields: [userId], references: [id])
-  ownerUserId      String?
-  ownerUser        User?     @relation("DriverOwner", fields: [ownerUserId], references: [id])
-
-  isOnline         Boolean   @default(false)
-  isAvailable      Boolean   @default(true)
-  currentLatitude  Float?
-  currentLongitude Float?
-  lastLocationAt   DateTime?
-
-  rating           Float     @default(5.0)
-  completionRate   Float     @default(0)
-  acceptanceRate   Float     @default(0)
-  totalTrips       Int       @default(0)
-
-  licenseNumber    String?
-  licenseExpiry    DateTime?
-  licenseVerified  Boolean   @default(false)
-  isBlacklisted    Boolean   @default(false)
-
-  vehicle          Vehicle?          @relation("AssignedVehicle")
-  shifts           DriverShift[]
-  payrolls         DriverPayroll[]
-  incentives       DriverIncentive[]
-  penalties        DriverPenalty[]
-  bookings         Booking[]         @relation("AssignedDriver")
-  fuelLogs         FuelLog[]
-  breakdowns       VehicleBreakdown[]
-  assignments      DriverAssignment[] @relation("DriverAssignments")  // Module 5 dispatch assignments
-
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  @@index([currentLatitude, currentLongitude])
-  @@index([ownerUserId])
-}
-
-model DriverShift {
-  id               String           @id @default(uuid())
-  driverId         String
-  driver           Driver           @relation(fields: [driverId], references: [id])
-
-  shiftStartTime   DateTime
-  shiftEndTime     DateTime?
-  totalHours       Float?
-  tripHours        Float?
-  idleHours        Float?
-  attendanceStatus AttendanceStatus  @default(PRESENT)
-  status           String           @default("ACTIVE")
-
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-}
-
-model DriverPayroll {
-  id             String    @id @default(uuid())
-  driverId       String
-  driver         Driver    @relation(fields: [driverId], references: [id])
-
-  periodStart    DateTime
-  periodEnd      DateTime
-  totalTrips     Int       @default(0)
-  tripEarnings   Float     @default(0)
-  hourlyEarnings Float     @default(0)
-  incentiveTotal Float     @default(0)
-  penaltyTotal   Float     @default(0)
-  netPayout      Float     @default(0)
-  status         String    @default("PENDING")
-
-  approvedBy     String?
-  approvedAt     DateTime?
-  paidAt         DateTime?
-  transactionRef String?
-
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-}
-
-model DriverIncentive {
-  id        String   @id @default(uuid())
-  driverId  String
-  driver    Driver   @relation(fields: [driverId], references: [id])
-  type      String
-  amount    Float
-  reason    String?
-  bookingId String?
-  createdAt DateTime @default(now())
-}
-
-model DriverPenalty {
-  id        String   @id @default(uuid())
-  driverId  String
-  driver    Driver   @relation(fields: [driverId], references: [id])
-  type      String
-  amount    Float
-  reason    String
-  bookingId String?
-  createdAt DateTime @default(now())
-}
-
-model Vehicle {
-  id                String        @id @default(uuid())
-  plateNumber       String        @unique
-  chassisNumber     String?
-  make              String?
-  model             String?
-  year              Int?
-  type              VehicleType
-  status            VehicleStatus @default(INACTIVE)
-
-  capacityKg        Float
-  capacityM3        Float?
-
-  deviceGpsLat      Float?
-  deviceGpsLng      Float?
-  lastGpsAt         DateTime?
-
-  insuranceCompany  String?
-  insurancePolicyNumber String?
-  insuranceExpiry   DateTime?
-  insuranceVerified Boolean       @default(false)
-  permitExpiry      DateTime?
-  permitVerified    Boolean       @default(false)
-  inspectionCertificateExpiry DateTime?
-  verificationStatus String       @default("PENDING_REVIEW")
-  verificationReviewedAt DateTime?
-  verificationReviewedBy String?
-  verificationNote  String?
-  rejectionReason   String?
-
-  ownerUserId       String?
-  ownerUser         User?         @relation("VehicleOwner", fields: [ownerUserId], references: [id])
-  driverId          String?       @unique
-  driver            Driver?       @relation("AssignedVehicle", fields: [driverId], references: [id])
-
-  bookings          Booking[]         @relation("BookingVehicle")
-  fuelLogs          FuelLog[]
-  breakdowns        VehicleBreakdown[]
-  maintenanceLogs   MaintenanceLog[]
-  verificationPhotos VehicleVerificationPhoto[] @relation("VerificationPhotos")
-  assignments       DriverAssignment[] @relation("AssignmentVehicles")  // Module 5 dispatch assignments
-
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-
-  @@index([ownerUserId])
-  @@index([deviceGpsLat, deviceGpsLng])
-}
-
-model FuelLog {
-  id           String   @id @default(uuid())
-  vehicleId    String
-  vehicle      Vehicle  @relation(fields: [vehicleId], references: [id])
-  driverId     String?
-  driver       Driver?  @relation(fields: [driverId], references: [id])
-  bookingId    String?
-  booking      Booking? @relation(fields: [bookingId], references: [id])
-
-  fuelExpected Float
-  fuelActual   Float
-  fuelCost     Float
-  variance     Float
-  notes        String?
-  isFlagged    Boolean  @default(false)
-
-  createdAt    DateTime @default(now())
-}
-
-model VehicleBreakdown {
-  id              String   @id @default(uuid())
-  vehicleId       String
-  vehicle         Vehicle  @relation(fields: [vehicleId], references: [id])
-  driverId        String
-  driver          Driver   @relation(fields: [driverId], references: [id])
-  bookingId       String?
-  booking         Booking? @relation(fields: [bookingId], references: [id])
-
-  description     String
-  latitude        Float?
-  longitude       Float?
-  status          String   @default("REPORTED")
-  backupVehicleId String?
-  resolvedAt      DateTime?
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-model MaintenanceLog {
-  id          String    @id @default(uuid())
-  vehicleId   String
-  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
-  type        String
-  description String
-  cost        Float?
-  scheduledAt DateTime?
-  completedAt DateTime?
-  createdAt   DateTime  @default(now())
-}
-
-model Booking {
-  id              String        @id @default(uuid())
-  reference       String        @unique
-  status          BookingStatus @default(CREATED)
-  serviceType     ServiceType   @default(COURIER)
-  capacitySource  BookingCapacitySource @default(CFA_NETWORK)
-
-  customerId      String
-  agencyId        String?
-  agency          Agency?       @relation(fields: [agencyId], references: [id])
-
-  driverId        String?
-  driver          Driver?       @relation("AssignedDriver", fields: [driverId], references: [id])
-  vehicleId       String?
-  vehicle         Vehicle?      @relation("BookingVehicle", fields: [vehicleId], references: [id])
-  requiredVehicleType   VehicleType?
-  baseFare        Float         @default(0)
-  distanceFare    Float         @default(0)
-  stopFare        Float         @default(0)
-  surgeMultiplier Float         @default(1.0)
-  totalPrice      Float         @default(0)
-  estimatedDistKm Float         @default(0)
-
-  cancelledAt        DateTime?
-  cancellationReason String?
-  cancelledBy        String?
-
-  deliveryOtp      String?
-  deliveryOtpAttempts Int @default(0)
-  deliveryOtpLockedUntil DateTime?
-  deliveryProofUrl String?
-  deliveredAt      DateTime?
-
-  // Dispatch tracking (Module 5)
-  assignedAt       DateTime?
-  acceptedAt       DateTime?
-  dispatchLogId    String?
-  manuallyAssignedBy String?
-  manuallyAssignedAt DateTime?
-
-  idempotencyKey   String?       @unique
-
-  cargoType           String?
-  cargoWeightKg       Float?
-  cargoDescription    String?
-  specialInstructions String?
-  isScheduled         Boolean       @default(false)
-  tradeMode           FreightTradeMode?
-  railCorridorCode    RailCorridorCode?
-  originNode          String?
-  destinationNode     String?
-  containerReference  String?
-  billOfLadingNumber  String?
-  idfNumber           String?
-  pacReady            Boolean       @default(false)
-  customsStatus       TradeDocumentStatus?
-  icmsStatus          TradeDocumentStatus?
-
-  stops          BookingStop[]
-  freightMilestones FreightMilestone[]
-  quote          BookingQuote?
-  parcels        InventoryItem[]
-  waybills       Waybill[]
-  lossReports    LossReport[]
-  payments       Payment[]
-  invoice        Invoice?
-  escrow         Escrow?
-  scanEvents     ScanEvent[]
-  fuelLogs       FuelLog[]
-  breakdowns     VehicleBreakdown[]
-  supportTickets SupportTicket[]
-  rtoReturn      RtoReturn?
-  featuredListing FeaturedListing?
-  assignments    DriverAssignment[] @relation("BookingAssignments")  // Module 5 dispatch history
-  
-  isFeatured     Boolean         @default(false)
-  featuredTier   FeaturedListingTier?
-
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-}
-
-// Module 5: Driver Assignment tracking (PRD §16 - Dispatch)
-// Tracks the lifecycle of driver assignment: OFFERED → ACCEPTED/REJECTED → REASSIGNED/COMPLETED
-model DriverAssignment {
-  id              String   @id @default(uuid())
-  bookingId       String
-  booking         Booking  @relation("BookingAssignments", fields: [bookingId], references: [id])
-  
-  driverId        String
-  driver          Driver   @relation("DriverAssignments", fields: [driverId], references: [id])
-  
-  vehicleId       String?
-  vehicle         Vehicle? @relation("AssignmentVehicles", fields: [vehicleId], references: [id])
-  
-  // Assignment workflow
-  status          DriverAssignmentStatus @default(OFFERED)  // OFFERED, ACCEPTED, REJECTED, REASSIGNED, COMPLETED
-  offeredAt       DateTime @default(now())
-  acceptedAt      DateTime?
-  rejectedAt      DateTime?
-  rejectionReason String?
-  reassignedAt    DateTime?
-  completedAt     DateTime?
-  
-  // Matching scores for audit trail (PRD §7 - Driver Matching Engine)
-  matchScore      Float?   // Overall match score (0-100)
-  priorityScore   Float?   // Priority weight in dispatch queue
-  distanceKm      Float?   // Distance from pickup to driver
-  estimatedArrivalMinutes Int?  // ETA to pickup
-  
-  // Manual override (ops team)
-  manuallyOfferedBy String?  // Ops staff user ID if manually assigned
-  manuallyOfferedAt DateTime?
-  
-  // Fallback tracking (PRD §7 - fallback logic)
-  radiusKmAtOffer Int? @default(10)  // Radius used when this assignment was offered
-  attemptNumber   Int @default(1)    // Which attempt this is (1st radius, 2nd expanded, etc)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@index([bookingId, status])
-  @@index([driverId, status])
-  @@index([offeredAt])
-}
-
 enum DriverAssignmentStatus {
   OFFERED
   ACCEPTED
@@ -709,46 +1462,19 @@ enum DriverAssignmentStatus {
   EXPIRED
 }
 
-// Module 5: Vehicle Verification Photos (PRD §9 - Fleet System)
-// Mandatory 7-photo verification for trucks before dispatch-eligibility
-model VehicleVerificationPhoto {
-  id              String   @id @default(uuid())
-  vehicleId       String
-  vehicle         Vehicle  @relation("VerificationPhotos", fields: [vehicleId], references: [id])
-  
-  photoType       VehiclePhotoType  // PLATE, FRONT, RIGHT, LEFT, REAR, CHASSIS, INSURANCE
-  photoUrl        String   // S3/blob URL
-  status          PhotoVerificationStatus @default(PENDING_REVIEW)  // PENDING_REVIEW, APPROVED, REJECTED, RESUBMISSION_REQUIRED
-  
-  reviewedBy      String?  // Admin user ID who reviewed
-  reviewedAt      DateTime?
-  reviewNotes     String?  // Why rejected / what needs resubmission
-  
-  // Metadata
-  timestamp       DateTime?  // When the photo was taken (if available)
-  latitude        Float?     // GPS coordinates if available
-  longitude       Float?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@index([vehicleId, photoType])
-  @@index([status])
-}
-
 enum VehiclePhotoType {
-  PLATE           // License plate close-up
-  FRONT           // Front view
-  RIGHT           // Right side view
-  LEFT            // Left side view
-  REAR            // Rear/back view
-  CHASSIS         // Chassis/VIN evidence view
-  INSURANCE       // Insurance document photo
-  LOGBOOK         // Vehicle logbook / ownership document
-  NTSA_INSPECTION // NTSA inspection certificate
-  GOODS_TRANSPORT_LICENSE // Goods transport license
-  ROAD_SERVICE_LICENSE // Road service license
-  AXLE_LOAD_CERTIFICATE // Axle-load compliance certificate
+  PLATE
+  FRONT
+  RIGHT
+  LEFT
+  REAR
+  CHASSIS
+  INSURANCE
+  LOGBOOK
+  NTSA_INSPECTION
+  GOODS_TRANSPORT_LICENSE
+  ROAD_SERVICE_LICENSE
+  AXLE_LOAD_CERTIFICATE
 }
 
 enum PhotoVerificationStatus {
@@ -757,875 +1483,3 @@ enum PhotoVerificationStatus {
   REJECTED
   RESUBMISSION_REQUIRED
 }
-
-model FreightMilestone {
-  id            String   @id @default(uuid())
-  bookingId      String
-  booking        Booking  @relation(fields: [bookingId], references: [id])
-  sequence       Int
-  code           String
-  title          String
-  nodeLabel      String?
-  status         String   @default("PENDING")
-  scheduledAt    DateTime?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  blockedReason  String?
-  note           String?
-  recordedBy     String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([bookingId, sequence])
-}
-
-model BookingQuote {
-  id                String   @id @default(uuid())
-  bookingId         String   @unique
-  booking           Booking  @relation(fields: [bookingId], references: [id])
-  
-  quotedPrice       Float
-  currency          String   @default("KES")
-  validityStartsAt  DateTime @default(now())
-  validityExpiresAt DateTime
-  
-  quotedBy          String   // admin user ID who created the quote
-  quotedAt          DateTime @default(now())
-  
-  acceptedAt        DateTime?
-  acceptedBy        String?  // customer ID
-  
-  rejectedAt        DateTime?
-  rejectionReason   String?
-  
-  revisionRequestedAt DateTime?
-  revisionNote      String?
-  
-  terms             String?  // JSON or text
-  paymentTerms      String?  // prepayment, on-delivery, installment
-  specialConditions String?  // special terms/conditions
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  @@index([bookingId, validityExpiresAt])
-}
-
-model BookingStop {
-  id           String    @id @default(uuid())
-  bookingId    String
-  booking      Booking   @relation(fields: [bookingId], references: [id])
-
-  sequence     Int
-  address      String
-  latitude     Float
-  longitude    Float
-  landmark     String?
-  contactName  String
-  contactPhone String
-  stopType     String
-
-  arrivalTime  DateTime?
-  completedAt  DateTime?
-  otp          String?
-
-  createdAt    DateTime  @default(now())
-}
-
-model RtoReturn {
-  id          String     @id @default(uuid())
-  bookingId   String     @unique
-  booking     Booking    @relation(fields: [bookingId], references: [id])
-  reason      String
-  status      RtoStatus  @default(INITIATED)
-  warehouseId String?
-  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
-  closedAt    DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-}
-
-model RateCard {
-  id              String      @id @default(uuid())
-  vehicleType     VehicleType
-  serviceType     ServiceType
-  countryCode     String      @default("KE")
-  county          String?
-  localityType    String      @default("ANY")
-  baseFare        Float
-  ratePerKm       Float
-  perStopRate     Float       @default(0)
-  minDistance     Float       @default(0)
-  surgeMultiplier Float       @default(1.0)
-  isActive        Boolean     @default(true)
-  version         Int         @default(1)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  @@index([countryCode, county, localityType, vehicleType, serviceType, isActive])
-}
-
-model Contract {
-  id              String    @id @default(uuid())
-  customerId      String
-  agencyId        String?
-  businessName    String
-  creditLimit     Float     @default(0)
-  creditUsed      Float     @default(0)
-  billingCycle    String    @default("MONTHLY")
-  paymentTermDays Int       @default(30)
-  status          String    @default("ACTIVE")
-  expiresAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-}
-
-model LoginOtp {
-  id          String   @id @default(uuid())
-  contact     String
-  otp         String
-  expiresAt   DateTime
-  resendCount Int      @default(0)
-  createdAt   DateTime @default(now())
-
-  @@index([contact])
-}
-
-model LoginAttempt {
-  identifier    String    @id
-  count         Int       @default(0)
-  lastAttemptAt DateTime  @default(now())
-  lockExpiresAt DateTime?
-}
-
-model Warehouse {
-  id        String    @id @default(uuid())
-  name      String
-  code      String    @unique
-  address   String?
-  latitude  Float?
-  longitude Float?
-  status    String    @default("ACTIVE")
-
-  agencyId  String
-  agency    Agency    @relation(fields: [agencyId], references: [id])
-
-  managerId String?
-  manager   User?     @relation("WarehouseManager", fields: [managerId], references: [id])
-
-  zones      WarehouseZone[]
-  items      InventoryItem[]
-  rtoReturns RtoReturn[]
-  listings   WarehouseListing[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model WarehouseListing {
-  id                 String   @id @default(uuid())
-  warehouseId        String
-  warehouse          Warehouse @relation(fields: [warehouseId], references: [id])
-  partnerId          String
-  companyName        String
-  companyEmail       String?
-  companyPhone       String?
-  vatNumber          String?
-  vatRatePct         Float    @default(0)
-  vatApplies         Boolean  @default(false)
-  title              String
-  description        String?
-  areaLabel          String
-  address            String
-  latitude           Float?
-  longitude          Float?
-  serviceRadiusKm    Float?
-  storageTypes       Json
-  amenities          Json
-  photoUrls          Json
-  documentUrls       Json
-  totalCapacity      Float
-  availableCapacity  Float
-  capacityUnit       String   @default("SQM")
-  rateAmount         Float
-  rateUnit           String   @default("DAY")
-  handlingFee        Float    @default(0)
-  minimumBookingDays Int      @default(1)
-  status             String   @default("PENDING_REVIEW")
-  reviewNote         String?
-  reviewedBy         String?
-  reviewedAt         DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  bookings WarehouseBooking[]
-
-  @@index([partnerId, status])
-  @@index([areaLabel, status])
-  @@index([warehouseId])
-}
-
-model WarehouseBooking {
-  id                  String   @id @default(uuid())
-  reference           String   @unique
-  listingId           String
-  listing             WarehouseListing @relation(fields: [listingId], references: [id])
-  customerId          String
-  partnerId           String
-  status              String   @default("REQUESTED")
-  storageType         String
-  goodsDescription    String
-  startDate           DateTime
-  endDate             DateTime
-  capacityRequested   Float
-  capacityUnit        String   @default("SQM")
-  baseAmount          Float
-  handlingFee         Float    @default(0)
-  vatAmount           Float    @default(0)
-  totalAmount         Float
-  commissionRatePct   Float    @default(10)
-  commissionAmount    Float
-  partnerNetAmount    Float
-  customerNote        String?
-  partnerNote         String?
-  adminNote           String?
-  acceptedAt          DateTime?
-  completedAt         DateTime?
-  cancelledAt         DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  @@index([customerId, status])
-  @@index([partnerId, status])
-  @@index([listingId])
-}
-
-model WarehouseZone {
-  id          String    @id @default(uuid())
-  name        String
-  code        String
-  type        String    @default("DRY")
-  capacity    Float
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-  racks       WarehouseRack[]
-}
-
-model WarehouseRack {
-  id     String        @id @default(uuid())
-  label  String
-  zoneId String
-  zone   WarehouseZone @relation(fields: [zoneId], references: [id])
-  bins   WarehouseBin[]
-}
-
-model WarehouseBin {
-  id         String        @id @default(uuid())
-  label      String
-  isOccupied Boolean       @default(false)
-  rackId     String
-  rack       WarehouseRack @relation(fields: [rackId], references: [id])
-  items      InventoryItem[]
-}
-
-model InventoryItem {
-  id       String          @id @default(uuid())
-  parcelId String          @unique
-  barcodeUrl String?
-
-  bookingId String
-  booking   Booking         @relation(fields: [bookingId], references: [id])
-
-  waybillId String?
-  waybill   Waybill?        @relation(fields: [waybillId], references: [id])
-
-  ownerId   String
-
-  status      InventoryStatus @default(RECEIVED)
-  isFragile   Boolean         @default(false)
-  isHazmat    Boolean         @default(false)
-  weight      Float
-  dimensions  String?
-  expiryDate  DateTime?
-
-  warehouseId      String?
-  warehouse        Warehouse?    @relation(fields: [warehouseId], references: [id])
-  binId            String?
-  bin              WarehouseBin? @relation(fields: [binId], references: [id])
-  currentVehicleId String?
-
-  movements   InventoryMovement[]
-  lossReports LossReport[]
-  scanEvents  ScanEvent[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model InventoryMovement {
-  id                  String        @id @default(uuid())
-  itemId              String
-  item                InventoryItem @relation(fields: [itemId], references: [id])
-  status              String
-  locationDescription String
-  remarks             String?
-  performedBy         String
-  createdAt           DateTime      @default(now())
-}
-
-model ScanEvent {
-  id        String        @id @default(uuid())
-  itemId    String
-  item      InventoryItem @relation(fields: [itemId], references: [id])
-
-  bookingId String?
-  booking   Booking?      @relation(fields: [bookingId], references: [id])
-  waybillId String?
-  waybill   Waybill?      @relation(fields: [waybillId], references: [id])
-  vehicleId String?
-  driverId  String?
-
-  checkpoint  ScanCheckpoint
-  latitude    Float?
-  longitude   Float?
-  performedBy String
-  notes       String?
-
-  createdAt DateTime @default(now())
-}
-
-model Waybill {
-  id          String        @id @default(uuid())
-  number      String        @unique
-  type        String        @default("WAYBILL")
-  status      WaybillStatus @default(CREATED)
-  isLocked    Boolean       @default(false)
-
-  bookingId   String
-  booking     Booking       @relation(fields: [bookingId], references: [id])
-
-  items      InventoryItem[]
-  scanEvents ScanEvent[]
-
-  issuedAt    DateTime  @default(now())
-  deliveredAt DateTime?
-}
-
-model LossReport {
-  id              String           @id @default(uuid())
-  bookingId       String
-  booking         Booking          @relation(fields: [bookingId], references: [id])
-
-  itemId          String?
-  item            InventoryItem?   @relation(fields: [itemId], references: [id])
-
-  type            String
-  description     String
-  estimatedValue  Float
-  status          LossReportStatus @default(PENDING)
-  resolutionNotes String?
-  evidenceUrls    String[]
-
-  isHighValue          Boolean @default(false)
-  requiresDualApproval Boolean @default(false)
-
-  reportedBy String
-  reporter   User             @relation("Reporter", fields: [reportedBy], references: [id])
-  reviewerId String?
-  reviewer   User?            @relation("Reviewer", fields: [reviewerId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Payment {
-  id             String        @id @default(uuid())
-  bookingId      String?
-  booking        Booking?      @relation(fields: [bookingId], references: [id])
-  invoiceId      String?
-  invoice        Invoice?      @relation(fields: [invoiceId], references: [id])
-
-  amount         Float
-  method         PaymentMethod
-  status         PaymentStatus @default(INITIATED)
-  reference      String?
-  proofUrl       String?
-  provider       String?
-  providerMode   String?
-  providerStatus String?
-  merchantRequestId String?
-  checkoutRequestId String?
-  providerReceiptNumber String?
-  providerConversationId String?
-  providerOriginatorConversationId String?
-  providerPayload Json?
-  callbackReceivedAt DateTime?
-  confirmedAt    DateTime?
-  idempotencyKey String?       @unique
-  retryCount     Int           @default(0)
-  failureReason  String?
-  reversedAt     DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  disbursements Disbursement[]
-
-  @@index([bookingId])
-  @@index([invoiceId])
-}
-
-model Disbursement {
-  id                        String             @id @default(uuid())
-  beneficiaryUserId         String?
-  beneficiaryUser           User?              @relation("DisbursementBeneficiary", fields: [beneficiaryUserId], references: [id])
-  createdByUserId           String
-  createdByUser             User               @relation("DisbursementCreator", fields: [createdByUserId], references: [id])
-  approvedByUserId          String?
-  approvedByUser            User?              @relation("DisbursementApprover", fields: [approvedByUserId], references: [id])
-  sourcePaymentId           String?
-  sourcePayment             Payment?           @relation(fields: [sourcePaymentId], references: [id])
-  sourceInvoiceId           String?
-  sourceInvoice             Invoice?           @relation(fields: [sourceInvoiceId], references: [id])
-  rail                      DisbursementRail
-  status                    DisbursementStatus @default(CREATED)
-  amount                    Float
-  currency                  String             @default("KES")
-  reference                 String             @unique
-  purpose                   String
-  beneficiaryName           String
-  beneficiaryPhone          String?
-  beneficiaryPartyNumber    String?
-  accountReference          String?
-  provider                  String?
-  providerMode              String?
-  providerStatus            String?
-  providerReceiptNumber     String?
-  providerConversationId    String?
-  providerOriginatorConversationId String?
-  providerPayload           Json?
-  failureReason             String?
-  initiatedAt               DateTime?
-  processedAt               DateTime?
-  reversedAt                DateTime?
-  createdAt                 DateTime           @default(now())
-  updatedAt                 DateTime           @updatedAt
-
-  @@index([rail, status])
-  @@index([beneficiaryUserId])
-  @@index([sourcePaymentId])
-  @@index([sourceInvoiceId])
-}
-
-model Wallet {
-  id       String   @id @default(uuid())
-  userId   String
-  user     User     @relation(fields: [userId], references: [id])
-  balance  Float    @default(0)
-  currency String   @default("KES")
-
-  transactions WalletTransaction[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model WalletTransaction {
-  id             String   @id @default(uuid())
-  walletId       String
-  wallet         Wallet   @relation(fields: [walletId], references: [id])
-  type           String
-  amount         Float
-  balance        Float
-  reference      String?
-  description    String?
-  bookingId      String?
-  idempotencyKey String?  @unique
-  createdAt      DateTime @default(now())
-}
-
-model Escrow {
-  id          String       @id @default(uuid())
-  bookingId   String       @unique
-  booking     Booking      @relation(fields: [bookingId], references: [id])
-  amount      Float
-  status      EscrowStatus @default(HELD)
-  heldAt      DateTime     @default(now())
-  releasedAt  DateTime?
-  refundedAt  DateTime?
-  releaseNote String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-}
-
-model Invoice {
-  id       String        @id @default(uuid())
-  number   String        @unique
-  type     InvoiceType
-  status   InvoiceStatus @default(DRAFT)
-  isLocked Boolean       @default(false)
-
-  bookingId  String?  @unique
-  booking    Booking? @relation(fields: [bookingId], references: [id])
-  customerId String
-  agencyId   String?
-
-  subtotal    Float
-  taxAmount   Float    @default(0)
-  totalAmount Float
-  paidAmount  Float    @default(0)
-  dueDate     DateTime?
-  issuedAt    DateTime?
-  paidAt      DateTime?
-
-  isApprovalRequired Boolean   @default(false)
-  approvedBy         String?
-  approvedAt         DateTime?
-
-  payments Payment[]
-  disbursements Disbursement[]
-  lineItems InvoiceLineItem[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model InvoiceLineItem {
-  id          String  @id @default(uuid())
-  invoiceId   String
-  invoice     Invoice @relation(fields: [invoiceId], references: [id])
-  description String
-  quantity    Float   @default(1)
-  unitPrice   Float
-  totalPrice  Float
-}
-
-model SupportTicket {
-  id        String       @id @default(uuid())
-  bookingId String?
-  booking   Booking?     @relation(fields: [bookingId], references: [id])
-
-  raisedBy  String
-  raiser    User         @relation("TicketRaiser", fields: [raisedBy], references: [id])
-  handlerId String?
-  handler   User?        @relation("TicketHandler", fields: [handlerId], references: [id])
-
-  category        String
-  description     String
-  status          TicketStatus @default(OPEN)
-  priority        String       @default("MEDIUM")
-  sourceContextType String?
-  sourceContextId   String?
-  autobotSummary    String?
-  autobotArticle    String?
-  autobotConfidence String?
-  autobotQuickAction String?
-  autobotEscalationDesk String?
-  autobotSuggestedReply String?
-  resolution      String?
-  closedAt        DateTime?
-  escalationLevel Int          @default(1)
-  escalatedAt     DateTime?
-  messages        SupportTicketMessage[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model SupportTicketMessage {
-  id         String        @id @default(uuid())
-  ticketId    String
-  ticket      SupportTicket @relation(fields: [ticketId], references: [id])
-  authorId    String?
-  author      User?         @relation("SupportMessageAuthor", fields: [authorId], references: [id])
-  actorType   String
-  message     String
-  isInternal  Boolean       @default(false)
-  createdAt   DateTime      @default(now())
-
-  @@index([ticketId, createdAt])
-}
-
-model Notification {
-  id         String    @id @default(uuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id])
-  title      String
-  message    String
-  channel    String
-  status     String    @default("PENDING")
-  retryCount Int       @default(0)
-  readAt     DateTime?
-  entityType String?
-  entityId   String?
-  createdAt  DateTime  @default(now())
-}
-
-model InternalAlert {
-  id         String   @id @default(uuid())
-  type       String
-  severity   String   @default("MEDIUM")
-  message    String
-  status     String   @default("PENDING")
-  agencyId   String?
-  entityType String
-  entityId   String
-  metadata   Json?
-  createdAt  DateTime @default(now())
-}
-
-model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  action     String
-  entityType String
-  entityId   String
-  details    Json?
-  ipAddress  String?
-  deviceInfo String?
-  createdAt  DateTime @default(now())
-}
-
-model FraudFlag {
-  id          String    @id @default(uuid())
-  entityType  String
-  entityId    String
-  type        String
-  description String
-  severity    String    @default("MEDIUM")
-  status      String    @default("OPEN")
-  reviewedBy  String?
-  reviewedAt  DateTime?
-  createdAt   DateTime  @default(now())
-}
-
-model SurgeZone {
-  id              String    @id @default(uuid())
-  name            String
-  latitude        Float
-  longitude       Float
-  radiusKm        Float
-  surgeMultiplier Float     @default(1.0)
-  isActive        Boolean   @default(false)
-  activatedAt     DateTime?
-  deactivatedAt   DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-}
-
-model IdempotencyRecord {
-  key         String    @id @unique
-  status      String    // e.g., 'PENDING', 'COMPLETED', 'FAILED'
-  requestHash String    // A hash of the original request payload for validation
-  response    Json?     // The stored response to return for duplicate requests
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  expiresAt   DateTime? // Optional: for automatic cleanup of old records
-}
-
-model MarketplacePartner {
-  userId             String   @id
-  partnerType        String
-  companyName        String
-  serviceAreas       Json
-  vehicleIds         Json
-  warehouseIds       Json
-  baseLatitude       Float?
-  baseLongitude      Float?
-  serviceRadiusKm    Float?
-  commissionRatePct  Float    @default(12)
-  serviceFeeFlat     Float    @default(0)
-  premiumListing     Boolean  @default(false)
-  verificationStatus String   @default("PENDING_REVIEW")
-  verificationNote   String?
-  submittedBy        String
-  approvedBy         String?
-  approvedAt         DateTime?
-  rejectedBy         String?
-  rejectedAt         DateTime?
-  suspendedBy        String?
-  suspendedAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  @@index([partnerType, verificationStatus])
-  @@index([updatedAt])
-}
-
-model MarketplaceOpportunity {
-  bookingId            String           @id
-  bookingReference     String
-  serviceType          ServiceType
-  partnerType          String
-  pricingModel         String
-  status               String           @default("OPEN")
-  publishedBy          String
-  publishedAt          DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
-  expiresAt            DateTime?
-  currency             String           @default("KES")
-  bookingPrice         Float            @default(0)
-  fixedPrice           Float?
-  minimumBid           Float?
-  serviceAreaHints     Json
-  stopPoints           Json
-  routeSummary         Json
-  stopSummary          Json
-  fleetRequirements    Json
-  awardedPartnerId     String?
-  selectedBidId        String?
-  awardedAt            DateTime?
-  awardedBy            String?
-  commissionAmount     Float?
-  commissionRatePct    Float?
-  serviceFeeFlat       Float?
-  premiumListingFee    Float?
-  partnerNetAmount     Float?
-  bids                 MarketplaceBid[]
-
-  @@index([partnerType, status])
-  @@index([publishedAt])
-  @@index([expiresAt])
-}
-
-model MarketplaceBid {
-  id                   String                 @id
-  opportunityBookingId String
-  opportunity          MarketplaceOpportunity @relation(fields: [opportunityBookingId], references: [bookingId], onDelete: Cascade)
-  partnerId            String
-  amount               Float
-  note                 String?
-  submittedAt          DateTime               @default(now())
-  status               String                 @default("PENDING")
-  counterAmount        Float?
-  respondedAt          DateTime?
-  respondedBy          String?
-
-  @@index([opportunityBookingId, status])
-  @@index([partnerId, status])
-}
-
-// ============================================================
-// PHASE 1: SUBSCRIPTION MODELS (Recurring Billing)
-// ============================================================
-
-model Subscription {
-  id                String              @id @default(uuid())
-  userId            String              @unique
-  user              User                @relation("UserSubscription", fields: [userId], references: [id], onDelete: Cascade)
-
-  tier              SubscriptionTier    @default(FREE)
-  monthlyPrice      Int                 @default(0) // In cents (KES * 100)
-  status            SubscriptionStatus  @default(ACTIVE)
-
-  startDate         DateTime            @default(now())
-  nextBillingDate   DateTime
-  cancelledDate     DateTime?
-  expiresAt         DateTime?
-
-  autoRenew         Boolean             @default(true)
-  failedAttempts    Int                 @default(0)
-  paymentMethod     String              @default("MPESA") // MPESA, BANK_TRANSFER, WALLET
-
-  cancelReason      String?
-  notes             String?
-
-  charges           SubscriptionCharge[]
-
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-
-  @@index([userId, status])
-  @@index([status, nextBillingDate])
-}
-
-model SubscriptionCharge {
-  id                    String                    @id @default(uuid())
-  subscriptionId        String
-  subscription          Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-  amount                Int                       // In cents (KES * 100)
-  chargedDate           DateTime                  @default(now())
-  status                SubscriptionChargeStatus  @default(PENDING)
-  transactionReference  String?
-  failureReason         String?
-
-  createdAt             DateTime                  @default(now())
-
-  @@index([subscriptionId, status])
-  @@index([chargedDate])
-}
-
-// ============================================================
-// PHASE 1: FEATURED LISTINGS (Revenue Stream #3)
-// ============================================================
-
-model FeaturedListing {
-  id                    String                  @id @default(uuid())
-  bookingId             String                  @unique
-  booking               Booking                 @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-
-  tier                  FeaturedListingTier     @default(FEATURED)
-  status                FeaturedListingStatus   @default(ACTIVE)
-
-  startDate             DateTime                @default(now())
-  expiryDate            DateTime
-  durationDays          Int
-
-  totalCost             Int                     // In cents (KES * 100)
-  transactionReference  String?
-
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
-
-  @@index([status, expiryDate])
-  @@index([tier])
-}
-
-// ============================================================
-// PHASE 1: VERIFICATION FEES (Revenue Stream #4)
-// ============================================================
-
-model VerificationFeePayment {
-  id                        String    @id @default(uuid())
-  userId                    String
-  user                      User      @relation("UserVerificationFees", fields: [userId], references: [id], onDelete: Cascade)
-
-  amount                    Int       // In cents (KES * 100)
-  processingMode            String    @default("EXPEDITED") // STANDARD, EXPEDITED
-  status                    String    @default("PAID") // PAID, COMPLETED, REFUNDED, PENDING
-  
-  paidAt                    DateTime  @default(now())
-  completedAt               DateTime?
-  refundedAt                DateTime?
-  expectedCompletionDate    DateTime?
-
-  transactionReference      String?
-
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
-
-  @@index([userId, status])
-  @@index([status, expectedCompletionDate])
-}
-
-model VerificationCertificate {
-  id                    String    @id @default(uuid())
-  userId                String
-  user                  User      @relation("UserCertificates", fields: [userId], references: [id], onDelete: Cascade)
-
-  certificateNumber     String    @unique
-  status                String    @default("ACTIVE") // ACTIVE, EXPIRED, REVOKED
-  
-  issuedBy              String    // Admin user ID
-  issuedAt              DateTime  @default(now())
-  expiresAt             DateTime
-
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-
-  @@index([userId, status])
-  @@index([expiresAt])
-}
-

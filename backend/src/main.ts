@@ -69,6 +69,7 @@ function validateEnvironment() {
     const otpMode = (process.env.OTP_MODE ?? '').trim().toLowerCase();
     const productionRequired = [
       'ALLOWED_ORIGINS',
+      'MPESA_CALLBACK_SECRET',
     ];
     const missingProduction = productionRequired.filter((key) => !process.env[key]);
     if (missingProduction.length > 0) {
@@ -79,15 +80,19 @@ function validateEnvironment() {
 
     const allowedOrigins = process.env.ALLOWED_ORIGINS ?? '';
     if (/localhost|127\.0\.0\.1/i.test(allowedOrigins)) {
-      console.warn('WARNING: Production ALLOWED_ORIGINS includes localhost.');
+      throw new Error('Production ALLOWED_ORIGINS must not include localhost origins');
     }
 
     if (process.env.MPESA_ENVIRONMENT === 'sandbox') {
-      console.warn('WARNING: Production is using MPESA_ENVIRONMENT=sandbox.');
+      throw new Error('Production must not use MPESA_ENVIRONMENT=sandbox');
     }
 
     if (otpMode === 'test') {
-      console.warn('WARNING: OTP_MODE=test is enabled in production.');
+      throw new Error('OTP_MODE=test is forbidden in production');
+    }
+
+    if (otpMode !== 'twilio' && otpMode !== 'africastalking') {
+      throw new Error('Production OTP_MODE must be twilio or africastalking');
     }
   }
 
