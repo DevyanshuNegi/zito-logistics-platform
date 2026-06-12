@@ -856,7 +856,7 @@ function HomeHero() {
               href="/coming-soon"
               className="inline-flex min-h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#e9f7ff] px-6 text-sm font-black text-slate-950 shadow-xl shadow-slate-950/20 transition hover:bg-[#d9efff] focus:outline-none focus:ring-2 focus:ring-blue-300"
             >
-              Coming soon
+              Download App
               <Smartphone className="h-4 w-4" aria-hidden="true" />
             </Link>
             <Link
@@ -1135,8 +1135,9 @@ function HomePageContent() {
 function ContactCta({
   eyebrow = 'Start with ZITO',
   title = 'Move your first shipment or join the supply network.',
-  description = 'Register as a transport partner or speak with the ZITO team about logistics operations (Customer app coming soon!).',
-  primaryLabel = 'Coming soon',
+  description = 'Download the customer app, register as a transport partner, or speak with the ZITO team about logistics operations.',
+  primaryLabel = 'Download App',
+  primaryHref = '/coming-soon',
   secondaryLabel = 'Partner Signup',
   secondaryHref = '/partners/register',
 }: {
@@ -1144,6 +1145,7 @@ function ContactCta({
   title?: string;
   description?: string;
   primaryLabel?: string;
+  primaryHref?: string;
   secondaryLabel?: string;
   secondaryHref?: string;
 }) {
@@ -1158,7 +1160,7 @@ function ContactCta({
         <div className="rounded-[1rem] border border-white/10 bg-white/[0.06] p-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Link
-              href="/contact"
+              href={primaryHref}
               className="inline-flex min-h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#e9f7ff] px-5 text-sm font-black text-slate-950 transition hover:bg-[#d9efff] focus:outline-none focus:ring-2 focus:ring-cyan-300"
             >
               {primaryLabel}
@@ -1320,6 +1322,7 @@ export function AboutPage() {
         title="Talk with ZITO about partnerships, infrastructure, or expansion."
         description="Use this path for company inquiries, investor conversations, enterprise logistics discussions, and strategic partner alignment."
         primaryLabel="Contact Team"
+        primaryHref="/contact"
         secondaryLabel="View Platform"
         secondaryHref="/platform"
       />
@@ -1397,6 +1400,7 @@ export function ServicesPage() {
         title="Choose the logistics workflow your business needs first."
         description="Start with customer delivery, transport operations, enterprise logistics, or marketplace capacity depending on your role."
         primaryLabel="Discuss Solution"
+        primaryHref="/contact"
         secondaryLabel="Explore Fleet"
         secondaryHref="/fleet"
       />
@@ -1459,6 +1463,7 @@ export function FleetPage() {
         title="Bring vehicles, drivers, and load operations into one fleet layer."
         description="Fleet owners can use ZITO to coordinate driver activity, GPS visibility, route status, earnings, and shipment execution."
         primaryLabel="Fleet Inquiry"
+        primaryHref="/contact"
         secondaryLabel="Partner Signup"
       />
     </PublicShell>
@@ -1505,6 +1510,7 @@ export function WarehousingPage() {
         title="Connect storage capacity with shipment movement and transport readiness."
         description="Warehouse teams can coordinate inventory movement, receiving, dispatch, cargo visibility, and fleet handoffs through the ZITO ecosystem."
         primaryLabel="Warehouse Inquiry"
+        primaryHref="/contact"
         secondaryLabel="View Solutions"
         secondaryHref="/services"
       />
@@ -1547,6 +1553,7 @@ export function TechnologyPage() {
         title="Review the tracking, API, and governance layer behind ZITO."
         description="For enterprise teams, partners, and technical stakeholders, ZITO can support secure integrations, fleet telemetry, and operating dashboards."
         primaryLabel="Talk Technology"
+        primaryHref="/contact"
         secondaryLabel="View Platform"
         secondaryHref="/platform"
       />
@@ -1603,6 +1610,7 @@ export function PlatformPage() {
         title="Map your logistics role into the ZITO ecosystem."
         description="Customers, fleet partners, drivers, warehouses, and enterprise operators can connect through one coordinated platform model."
         primaryLabel="Start Mapping"
+        primaryHref="/contact"
         secondaryLabel="View Solutions"
         secondaryHref="/services"
       />
@@ -1663,6 +1671,7 @@ export function CareersPage() {
         title="Help build logistics infrastructure with product discipline and field awareness."
         description="Careers at ZITO are for people who can turn real operational pressure into clear, reliable software and service systems."
         primaryLabel="Contact Careers"
+        primaryHref="/contact"
         secondaryLabel="View Company"
         secondaryHref="/about"
       />
@@ -1815,6 +1824,7 @@ export function LegalPage({ kind }: LegalPageProps) {
         title="Need policy, privacy, compliance, or NDA clarification?"
         description="Contact ZITO for data protection questions, legal terms, compliance review, vendor due diligence, or document access requests."
         primaryLabel="Email Governance"
+        primaryHref="/contact"
         secondaryLabel="Contact Page"
         secondaryHref="/contact"
       />
