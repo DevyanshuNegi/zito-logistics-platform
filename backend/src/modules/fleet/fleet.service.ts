@@ -11,6 +11,7 @@ import { extname, join } from 'path';
 import { VehicleStatus, VehicleType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BreakdownService } from './breakdown/breakdown.service';
+import { StorageService } from '../storage/storage.service';
 import { FleetExpiryService } from './fleet-expiry.service';
 import { FuelService } from './fuel/fuel.service';
 import {
@@ -47,6 +48,7 @@ export class FleetService {
     private readonly breakdownService: BreakdownService,
     private readonly fleetExpiryService: FleetExpiryService,
     private readonly fuelService: FuelService,
+    private readonly storageService: StorageService,
   ) {}
 
   private vehicleInclude = {
@@ -92,16 +94,14 @@ export class FleetService {
     category: VehiclePhotoCategory,
     file: MulterFile,
   ) {
-    const directory = join(UPLOAD_ROOT, 'fleet-verification', vehicleId, category);
-    await mkdir(directory, { recursive: true });
-
     const extension = this.getUploadExtension(file);
     const originalBaseName = file.originalname.replace(extname(file.originalname), '');
     const baseName = this.getSafeFileName(originalBaseName) || category;
     const fileName = `${Date.now()}_${baseName}${extension}`;
-    await writeFile(join(directory, fileName), file.buffer);
+    const relativePath = `fleet-verification/${vehicleId}/${category}/${fileName}`;
+    const fileUrl = await this.storageService.uploadFile(relativePath, file.buffer, file.mimetype);
 
-    return `/uploads/fleet-verification/${vehicleId}/${category}/${fileName}`;
+    return `/${fileUrl}`;
   }
 
   private validateVerificationUpload(file: MulterFile) {

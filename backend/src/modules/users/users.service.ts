@@ -20,6 +20,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UploadKycDto } from './dto/upload-kyc.dto';
 import { UpdateUserPreferencesDto } from './dto/update-user-preferences.dto';
 import { CreateInternalUserDto } from './dto/create-internal-user.dto';
+import { StorageService } from '../storage/storage.service';
 
 // PRD §4 — Inline Multer type (avoids @types/multer dependency)
 interface MulterFile {
@@ -121,7 +122,10 @@ const REVIEW_OVERDUE_HOURS = 48;
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private storageService: StorageService,
+  ) {}
 
   private preferencesKey(userId: string) {
     return `user-preferences:${userId}`;
@@ -627,7 +631,8 @@ export class UsersService {
     }
 
     const safeName = file.originalname.replace(/\s+/g, '_');
-    const fileUrl = `kyc/${userId}/${dto.documentType}/${Date.now()}_${safeName}`;
+    const relativePath = `kyc/${userId}/${dto.documentType}/${Date.now()}_${safeName}`;
+    const fileUrl = await this.storageService.uploadFile(relativePath, file.buffer, file.mimetype);
 
     const reviewNote = [
       dto.notes?.trim() || null,

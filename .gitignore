@@ -114,7 +114,7 @@ bower_components/
 # Uploads / Documents (CRITICAL - PRD)
 # =========================
 uploads/
-storage/
+/storage/
 public/uploads/
 backend/uploads/
 docs/

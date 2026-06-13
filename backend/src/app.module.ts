@@ -41,13 +41,14 @@ import { EventsModule } from './modules/events/events.module';
 import { QuotationsModule } from './modules/quotations/quotations.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
   imports: [
-    PrismaModule, EventsModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, QuotationsModule, DispatchModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule, RateCardsModule, InvoicesModule, BillingModule, ContractsModule, AuditModule, SlaModule, ReconciliationModule, StaffPerformanceModule, RetentionModule, AnalyticsModule, FraudModule, SurgePricingModule, RouteOptimizationModule, HeatmapModule, CapacityPlanningModule, AlertsModule, SystemHealthModule, MarketplaceModule, SubscriptionsModule, UssdModule, AiSupportModule
+    PrismaModule, EventsModule, AuthModule, UsersModule, AgenciesModule, StaffModule, BookingsModule, QuotationsModule, DispatchModule, DriversModule, FleetModule, PaymentsModule, NotificationsModule, TrackingModule, SupportModule, WarehouseModule, InventoryModule, WaybillModule, ScanModule, LossDetectionModule, RtoModule, RateCardsModule, InvoicesModule, BillingModule, ContractsModule, AuditModule, SlaModule, ReconciliationModule, StaffPerformanceModule, RetentionModule, AnalyticsModule, FraudModule, SurgePricingModule, RouteOptimizationModule, HeatmapModule, CapacityPlanningModule, AlertsModule, SystemHealthModule, MarketplaceModule, SubscriptionsModule, UssdModule, AiSupportModule, StorageModule
   ],
   providers: [GlobalExceptionFilter, IdempotencyInterceptor, AuditInterceptor],
 })

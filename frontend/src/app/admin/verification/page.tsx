@@ -6,8 +6,17 @@ import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, getApiOrigin } from '@/lib/api';
 import { formatDateTime, formatStatus } from '@/lib/format';
+
+function getFullFileUrl(fileUrl: string) {
+  if (fileUrl.startsWith('http')) return fileUrl;
+  const normalizedPath = fileUrl.startsWith('/') ? fileUrl.substring(1) : fileUrl;
+  if (normalizedPath.startsWith('uploads/')) {
+    return `${getApiOrigin()}/${normalizedPath}`;
+  }
+  return `${getApiOrigin()}/uploads/${normalizedPath}`;
+}
 
 type VerificationDocument = {
   id: string;
@@ -346,6 +355,40 @@ export default function AdminVerificationPage() {
                           <p className="mt-2 text-xs text-rose-400">Reason: {document.rejectionReason}</p>
                         ) : null}
 
+                        {document.fileUrl ? (
+                          <div className="mt-3 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+                            {document.fileUrl.toLowerCase().endsWith('.pdf') ? (
+                              <a
+                                href={getFullFileUrl(document.fileUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-center p-3 text-xs font-semibold text-cyan-300 hover:text-cyan-100 transition hover:bg-slate-850"
+                              >
+                                <span className="mr-2">📄</span> View PDF Document
+                              </a>
+                            ) : (
+                              <a
+                                href={getFullFileUrl(document.fileUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group relative block aspect-[4/3] w-full overflow-hidden"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={getFullFileUrl(document.fileUrl)}
+                                  alt={document.type}
+                                  className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100">
+                                  <span className="rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg">
+                                    View full size ↗
+                                  </span>
+                                </div>
+                              </a>
+                            )}
+                          </div>
+                        ) : null}
+
                         <div className="mt-3 grid gap-2">
                           <Button
                             className="w-full"
@@ -504,6 +547,40 @@ export default function AdminVerificationPage() {
                           ) : null}
                           {photo?.rejectionReason ? (
                             <p className="mt-2 text-xs text-rose-400">Reason: {photo.rejectionReason}</p>
+                          ) : null}
+
+                          {photo && (photo.photoUrl ?? photo.fileUrl) ? (
+                            <div className="mt-3 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+                              {(photo.photoUrl ?? photo.fileUrl)!.toLowerCase().endsWith('.pdf') ? (
+                                <a
+                                  href={getFullFileUrl(photo.photoUrl ?? photo.fileUrl ?? '')}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center justify-center p-3 text-xs font-semibold text-cyan-300 hover:text-cyan-100 transition hover:bg-slate-850"
+                                >
+                                  <span className="mr-2">📄</span> View PDF Document
+                                </a>
+                              ) : (
+                                <a
+                                  href={getFullFileUrl(photo.photoUrl ?? photo.fileUrl ?? '')}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group relative block aspect-[4/3] w-full overflow-hidden"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={getFullFileUrl(photo.photoUrl ?? photo.fileUrl ?? '')}
+                                    alt={category}
+                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                                  />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100">
+                                    <span className="rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg">
+                                      View full size ↗
+                                    </span>
+                                  </div>
+                                </a>
+                              )}
+                            </div>
                           ) : null}
 
                           {photo ? (
