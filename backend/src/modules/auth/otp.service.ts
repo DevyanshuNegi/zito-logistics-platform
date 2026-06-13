@@ -92,7 +92,7 @@ export class OtpService {
       });
     }
 
-    const plainOtp = provider.mode === 'local'
+    const plainOtp = provider.mode === 'local' || provider.mode === 'africastalking'
       ? crypto.randomInt(100000, 999999).toString()
       : null;
     const hashedOtp = plainOtp
