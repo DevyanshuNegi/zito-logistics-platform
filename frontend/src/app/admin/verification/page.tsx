@@ -6,16 +6,16 @@ import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { SurfaceCard } from '@/components/layout/SurfaceCard';
 import { StatCard } from '@/components/layout/StatCard';
-import { ApiError, api, getApiOrigin } from '@/lib/api';
+import { ApiError, api, getApiOrigin, getApiBaseUrl } from '@/lib/api';
 import { formatDateTime, formatStatus } from '@/lib/format';
 
 function getFullFileUrl(fileUrl: string) {
   if (fileUrl.startsWith('http')) return fileUrl;
   const normalizedPath = fileUrl.startsWith('/') ? fileUrl.substring(1) : fileUrl;
   if (normalizedPath.startsWith('uploads/')) {
-    return `${getApiOrigin()}/${normalizedPath}`;
+    return `${getApiBaseUrl()}/${normalizedPath}`;
   }
-  return `${getApiOrigin()}/uploads/${normalizedPath}`;
+  return `${getApiBaseUrl()}/uploads/${normalizedPath}`;
 }
 
 type VerificationDocument = {

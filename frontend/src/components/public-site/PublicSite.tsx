@@ -833,24 +833,25 @@ function HomeHero() {
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
       <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,transparent,rgba(15,23,42,0.72))]" />
       <div className="relative mx-auto grid min-h-[78svh] max-w-7xl items-start gap-10 px-4 pt-6 pb-12 sm:py-14 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
-        <div className="max-w-3xl pt-0 pb-6 sm:py-8">
-          <div className="mb-6 flex items-center gap-4">
-            <span className="relative h-24 w-24 overflow-hidden rounded-lg border border-white/10 bg-slate-950 shadow-xl shadow-slate-950/30">
-              <Image src={BRAND.assets.appIcon} alt="ZITO product logo" fill sizes="64px" className="object-cover" priority />
-            </span>
-            <div>
-              <p className="text-5xl font-black leading-none text-white sm:text-6xl">ZITO</p>
-              <p className="mt-2 text-sm font-bold text-cyan-200">{BRAND.appTagline}</p>
-            </div>
+        <div className="max-w-3xl pt-0 pb-6 sm:pt-0 sm:pb-8">
+          <div className="relative mb-6 w-full max-w-[480px] aspect-[1144/408] rounded-2xl overflow-hidden border border-white/10 shadow-xl shadow-slate-950/30">
+            <Image
+              src="/zito-rectangular-logo.png"
+              alt="ZITO Smart Logistics"
+              fill
+              sizes="(max-width: 640px) 100vw, 480px"
+              className="object-cover"
+              priority
+            />
           </div>
-          <h1 className="max-w-4xl text-5xl font-black leading-[1.06] text-white sm:text-6xl lg:text-[4rem]">
+          <h1 className="max-w-4xl text-4xl font-black leading-[1.06] text-white sm:text-5xl lg:text-[3.5rem]">
             Powering Africa's{' '}
             <span className="bg-gradient-to-r from-cyan-200 via-blue-200 to-violet-200 bg-clip-text text-transparent">
               Smart Logistics
             </span>{' '}
             Infrastructure
           </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
             ZITO connects customers, fleets, warehouses, GPS systems, transport operations, and logistics intelligence through one intelligent digital ecosystem.
           </p>
           <div className="mt-6 grid max-w-2xl gap-3 sm:grid-cols-3">
