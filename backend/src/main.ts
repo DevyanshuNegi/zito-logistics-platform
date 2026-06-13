@@ -68,9 +68,11 @@ function validateEnvironment() {
   if (isProduction) {
     const otpMode = (process.env.OTP_MODE ?? '').trim().toLowerCase();
     const bypassProductionHardErrors = process.env.BYPASS_PROD_CHECKS === 'true';
+    const isMpesaActive = !!(process.env.MPESA_CONSUMER_KEY && process.env.MPESA_CONSUMER_SECRET);
+
     const productionRequired = [
       'ALLOWED_ORIGINS',
-      'MPESA_CALLBACK_SECRET',
+      ...(isMpesaActive ? ['MPESA_CALLBACK_SECRET'] : []),
     ];
     const missingProduction = productionRequired.filter((key) => !process.env[key]);
     if (missingProduction.length > 0) {
