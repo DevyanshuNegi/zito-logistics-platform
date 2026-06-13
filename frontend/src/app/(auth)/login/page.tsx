@@ -275,6 +275,7 @@ function LoginPageScreen() {
   );
   const [approvalStatus, setApprovalStatus] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [quickLoginError, setQuickLoginError] = useState<string | null>(null);
   const [requestingOtp, setRequestingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [submittingPassword, setSubmittingPassword] = useState(false);
@@ -683,6 +684,56 @@ function LoginPageScreen() {
     }
   }
 
+  async function handleQuickLogin(email: string) {
+    setQuickLoginError(null);
+    setFlowErrors(emptyFlowErrors());
+    setApprovalStatus(null);
+    setInfoMessage(null);
+    try {
+      const loginPayload = { email, method: 'EMAIL' };
+      const otpRes = await api.post<any>('/auth/login', loginPayload);
+      const tempToken = otpRes.data?.temp_token || otpRes.data?.tempToken;
+      if (!tempToken) {
+        throw new Error('Failed to start login');
+      }
+
+      const verifyRes = await api.post<any>(
+        '/auth/verify-otp',
+        { otp: '123456' },
+        { headers: { Authorization: `Bearer ${tempToken}` }, token: '' }
+      );
+
+      const tempToken2 = verifyRes.data?.temp_token || verifyRes.data?.tempToken;
+      const passwordRes = await api.post<any>(
+        '/auth/complete-email-login',
+        { password: '123' },
+        { headers: { Authorization: `Bearer ${tempToken2}` }, token: '' }
+      );
+
+      login({
+        user: {
+          id: passwordRes.data.user.id,
+          email: passwordRes.data.user.email,
+          phone: passwordRes.data.user.phone,
+          fullName: passwordRes.data.user.fullName,
+          companyName: passwordRes.data.user.companyName,
+          role: passwordRes.data.user.role,
+          status: passwordRes.data.user.status,
+          staffScope: passwordRes.data.user.staffScope,
+          staffDepartment: passwordRes.data.user.staffDepartment,
+          staffAgencyName: passwordRes.data.user.staffAgencyName,
+        },
+        accessToken: passwordRes.data.token,
+        refreshToken: passwordRes.data.refreshToken ?? null,
+      });
+
+      router.replace(getPostLoginPath(passwordRes.data.user));
+    } catch (err: any) {
+      console.error('Quick login error:', err);
+      setQuickLoginError(err instanceof ApiError ? err.message : 'Quick login failed');
+    }
+  }
+
   function resetToContactStep(nextMode: LoginMode = mode) {
     setStep('contact');
     setMode(nextMode);
@@ -1038,6 +1089,63 @@ function LoginPageScreen() {
           </Button>
         </form>
       ) : null}
+
+      {process.env.NODE_ENV !== 'production' && (
+        <div className="mt-8 border-t border-slate-800 pt-6">
+          <p className="text-center text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+            Developer Quick Login
+          </p>
+          {quickLoginError && (
+            <Alert title="Quick Login Issue" variant="danger">
+              {quickLoginError}
+            </Alert>
+          )}
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('sa@z.com')}
+              className="rounded-xl border border-violet-500/30 bg-violet-950/20 px-3 py-2 text-violet-200 hover:bg-violet-950/40 transition text-center"
+            >
+              Super Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('a@z.com')}
+              className="rounded-xl border border-violet-500/30 bg-violet-950/20 px-3 py-2 text-violet-200 hover:bg-violet-950/40 transition text-center"
+            >
+              Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('c@z.com')}
+              className="rounded-xl border border-blue-500/30 bg-blue-950/20 px-3 py-2 text-blue-200 hover:bg-blue-950/40 transition text-center"
+            >
+              Customer
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('d@z.com')}
+              className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-amber-200 hover:bg-amber-950/40 transition text-center"
+            >
+              Driver
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('w@z.com')}
+              className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 text-emerald-200 hover:bg-emerald-950/40 transition text-center"
+            >
+              Warehouse
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('tr@z.com')}
+              className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 px-3 py-2 text-cyan-200 hover:bg-cyan-950/40 transition text-center"
+            >
+              Transporter
+            </button>
+          </div>
+        </div>
+      )}
     </AuthShell>
   );
 }
