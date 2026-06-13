@@ -4,13 +4,13 @@
   "version": "8.0.0",
   "description": "ZITO Platform — Web Portal (Next.js 14)",
   "scripts": {
-    "dev": "node scripts/run-next.mjs .next-dev dev --hostname 127.0.0.1 --port 3003",
-    "dev:clean": "node scripts/free-port.js 3003 && node scripts/run-next.mjs .next-dev dev --hostname 127.0.0.1 --port 3003",
+    "dev": "node scripts/run-next.mjs .next-dev dev --hostname 0.0.0.0 --port 3003",
+    "dev:clean": "node scripts/free-port.js 3003 && node scripts/run-next.mjs .next-dev dev --hostname 0.0.0.0 --port 3003",
     "build": "node scripts/clean-next-dist.mjs .next && node scripts/run-next.mjs .next build",
-    "start": "node scripts/run-next.mjs .next start --hostname 127.0.0.1 --port 3003",
+    "start": "node scripts/run-next.mjs .next start --hostname 0.0.0.0 --port 3003",
     "lint": "next lint",
-    "preview:start": "node scripts/run-next.mjs .next start --hostname 127.0.0.1 --port 3003",
-    "preview:start:clean": "node scripts/free-port.js 3003 && node scripts/run-next.mjs .next start --hostname 127.0.0.1 --port 3003",
+    "preview:start": "node scripts/run-next.mjs .next start --hostname 0.0.0.0 --port 3003",
+    "preview:start:clean": "node scripts/free-port.js 3003 && node scripts/run-next.mjs .next start --hostname 0.0.0.0 --port 3003",
     "preview:build": "npm run build",
     "preview:verify": "node scripts/verify-preview-assets.mjs"
   },

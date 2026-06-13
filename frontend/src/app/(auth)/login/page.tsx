@@ -706,7 +706,7 @@ function LoginPageScreen() {
       const tempToken2 = verifyRes.data?.temp_token || verifyRes.data?.tempToken;
       const passwordRes = await api.post<any>(
         '/auth/complete-email-login',
-        { password: '123' },
+        { password: '123456789' },
         { headers: { Authorization: `Bearer ${tempToken2}` }, token: '' }
       );
 

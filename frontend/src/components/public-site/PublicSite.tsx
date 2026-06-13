@@ -37,7 +37,6 @@ import {
   Send,
   ShieldCheck,
   Smartphone,
-  Sparkles,
   Truck,
   UsersRound,
   Warehouse,
@@ -833,12 +832,8 @@ function HomeHero() {
       <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(26,111,255,0.13),transparent_38%,rgba(168,85,247,0.10)_72%,transparent)]" />
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
       <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,transparent,rgba(15,23,42,0.72))]" />
-      <div className="relative mx-auto grid min-h-[78svh] max-w-7xl items-start gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
-        <div className="max-w-3xl py-8">
-          <div className="mb-8 inline-flex items-center gap-3 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-bold text-cyan-100 shadow-sm backdrop-blur">
-            <Sparkles className="h-4 w-4" aria-hidden="true" />
-            App coming soon. Join the ecosystem.
-          </div>
+      <div className="relative mx-auto grid min-h-[78svh] max-w-7xl items-start gap-10 px-4 pt-6 pb-12 sm:py-14 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
+        <div className="max-w-3xl pt-0 pb-6 sm:py-8">
           <div className="mb-6 flex items-center gap-4">
             <span className="relative h-24 w-24 overflow-hidden rounded-lg border border-white/10 bg-slate-950 shadow-xl shadow-slate-950/30">
               <Image src={BRAND.assets.appIcon} alt="ZITO product logo" fill sizes="64px" className="object-cover" priority />
@@ -1233,7 +1228,7 @@ function PageHero({
   ];
 
   return (
-    <section className="relative overflow-hidden bg-[#101a2b] px-4 py-16 text-white sm:px-6 lg:px-8">
+    <section className="relative overflow-hidden bg-[#101a2b] px-4 py-8 sm:py-16 text-white sm:px-6 lg:px-8">
       <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(26,111,255,0.14),transparent_42%,rgba(168,85,247,0.09)_74%,transparent)]" />
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:80px_80px] opacity-20" />
       <div className="relative mx-auto grid max-w-7xl items-end gap-10 lg:grid-cols-[1fr_0.72fr]">
