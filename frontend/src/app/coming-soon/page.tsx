@@ -24,7 +24,7 @@ export default function ComingSoonPage() {
           </p>
         </div>
 
-        <form action="mailto:info@zitoafrica.com" method="post" encType="text/plain" className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 text-left shadow-xl backdrop-blur-sm">
+        <form action="mailto:info@zitoafrica.com?subject=Zito App Waitlist Registration" method="post" encType="text/plain" className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 text-left shadow-xl backdrop-blur-sm">
           <div className="grid gap-4 sm:grid-cols-2">
             {[
               ['Full name', 'name', 'text'],
