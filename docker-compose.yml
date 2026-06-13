@@ -50,6 +50,7 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: prod_fallback_jwt_secret_please_change
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3003
+      BYPASS_PROD_CHECKS: "true"
     ports:
       - "5000:5000"
     depends_on:
