@@ -316,10 +316,10 @@ export default function AdminVerificationPage() {
                   <div className="text-right text-xs text-slate-400">
                     <p>Required docs: {user.requiredDocuments.map(formatStatus).join(', ')}</p>
                     <p>
-                      Missing docs:{' '}
+                      Not yet approved:{' '}
                       {user.missingDocuments.length > 0
                         ? user.missingDocuments.map(formatStatus).join(', ')
-                        : 'None'}
+                        : 'All approved ✓'}
                     </p>
                   </div>
                 </div>

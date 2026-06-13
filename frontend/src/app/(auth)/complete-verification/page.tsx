@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { Alert } from '@/components/ui/Alert';
@@ -44,7 +45,8 @@ function getStatusClasses(status: string) {
 }
 
 export default function CompleteVerificationPage() {
-  const { user, accessToken } = useAuth();
+  const { user, accessToken, logout } = useAuth();
+  const router = useRouter();
   const [summary, setSummary] = useState<VerificationSummary | null>(null);
   const [selectedType, setSelectedType] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -196,7 +198,10 @@ export default function CompleteVerificationPage() {
             <button
               key={document.type}
               type="button"
-              onClick={() => setSelectedType(document.type)}
+              onClick={() => {
+                setSelectedType(document.type);
+                setSelectedFile(null);
+              }}
               className={`rounded-2xl border p-4 text-left transition ${
                 selectedType === document.type
                   ? 'border-cyan-300 bg-cyan-400/10'
@@ -222,6 +227,7 @@ export default function CompleteVerificationPage() {
           </label>
           <p className="mt-1 text-xs text-slate-400">Only live camera image capture is accepted for KYC verification.</p>
           <input
+            key={selectedType}
             id="kyc-camera-input"
             className="mt-4 block w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-slate-100 file:mr-4 file:rounded-xl file:border-0 file:bg-cyan-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
             type="file"
@@ -247,6 +253,19 @@ export default function CompleteVerificationPage() {
               View review status
             </Button>
           </Link>
+        </div>
+
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              router.push('/login');
+            }}
+            className="text-sm text-cyan-200 hover:text-cyan-100 transition underline underline-offset-4"
+          >
+            Sign out to change email, phone number, or role
+          </button>
         </div>
       </div>
     </AuthShell>

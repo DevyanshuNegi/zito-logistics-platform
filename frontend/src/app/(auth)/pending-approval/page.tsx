@@ -183,9 +183,15 @@ export default function PendingApprovalPage() {
         <VerificationExpeditePanel enabled={Boolean(user)} compact />
 
         <div className="flex flex-wrap gap-3">
-          <Link href={portal.loginPath} className="flex-1 min-w-[180px]">
-            <Button className="w-full">Back to login</Button>
-          </Link>
+          <Button
+            className="flex-1 min-w-[180px]"
+            onClick={() => {
+              logout();
+              router.push(portal.loginPath);
+            }}
+          >
+            Back to login
+          </Button>
           <Button
             className="flex-1 min-w-[180px]"
             variant="secondary"

@@ -1,5 +1,5 @@
 const DEFAULT_ALLOWED_ORIGINS = 'http://127.0.0.1:3001,http://localhost:3001';
-const LOCAL_DEV_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1):3001$/;
+const LOCAL_DEV_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/;
 
 const normalizeOrigin = (origin: string) => origin.trim().replace(/\/+$/, '');
 

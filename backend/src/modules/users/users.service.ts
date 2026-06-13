@@ -629,25 +629,62 @@ export class UsersService {
     const safeName = file.originalname.replace(/\s+/g, '_');
     const fileUrl = `kyc/${userId}/${dto.documentType}/${Date.now()}_${safeName}`;
 
-    const doc = await this.prisma.kycDocument.create({
-      data: {
+    const reviewNote = [
+      dto.notes?.trim() || null,
+      `captureSource=${dto.captureSource}`,
+      `capturedAt=${new Date(dto.capturedAt).toISOString()}`,
+    ].filter(Boolean).join('\n');
+
+    const normalizedSide = dto.documentSide?.trim().toUpperCase() || null;
+
+    // Upsert: find an existing document of the same type (and side) for this user.
+    // This prevents duplicate cards in the admin dashboard when a user re-uploads.
+    const existingDoc = await this.prisma.kycDocument.findFirst({
+      where: {
         userId,
         type: dto.documentType,
-        fileUrl,
-        documentNumber: dto.documentNumber?.trim() || null,
-        issuingAuthority: dto.issuingAuthority?.trim() || null,
-        countryOfIssue: dto.countryOfIssue?.trim().toUpperCase() || null,
-        documentSide: dto.documentSide?.trim().toUpperCase() || null,
-        issueDate: dto.issueDate ? new Date(dto.issueDate) : null,
-        expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
-        reviewNote: [
-          dto.notes?.trim() || null,
-          `captureSource=${dto.captureSource}`,
-          `capturedAt=${new Date(dto.capturedAt).toISOString()}`,
-        ].filter(Boolean).join('\n'),
-        status:     'PENDING',
+        ...(normalizedSide ? { documentSide: normalizedSide } : {}),
       },
+      orderBy: { createdAt: 'desc' },
     });
+
+    let doc;
+    if (existingDoc) {
+      // Update the existing record — reset review status for re-review
+      doc = await this.prisma.kycDocument.update({
+        where: { id: existingDoc.id },
+        data: {
+          fileUrl,
+          documentNumber: dto.documentNumber?.trim() || existingDoc.documentNumber,
+          issuingAuthority: dto.issuingAuthority?.trim() || existingDoc.issuingAuthority,
+          countryOfIssue: dto.countryOfIssue?.trim().toUpperCase() || existingDoc.countryOfIssue,
+          documentSide: normalizedSide ?? existingDoc.documentSide,
+          issueDate: dto.issueDate ? new Date(dto.issueDate) : existingDoc.issueDate,
+          expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : existingDoc.expiryDate,
+          reviewNote,
+          status: 'PENDING',
+          rejectionReason: null,
+          verifiedAt: null,
+          verifiedBy: null,
+        },
+      });
+    } else {
+      doc = await this.prisma.kycDocument.create({
+        data: {
+          userId,
+          type: dto.documentType,
+          fileUrl,
+          documentNumber: dto.documentNumber?.trim() || null,
+          issuingAuthority: dto.issuingAuthority?.trim() || null,
+          countryOfIssue: dto.countryOfIssue?.trim().toUpperCase() || null,
+          documentSide: normalizedSide,
+          issueDate: dto.issueDate ? new Date(dto.issueDate) : null,
+          expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+          reviewNote,
+          status: 'PENDING',
+        },
+      });
+    }
 
     // PRD §3 — New or replacement uploads return the account to the review queue.
     await this.prisma.user.update({
