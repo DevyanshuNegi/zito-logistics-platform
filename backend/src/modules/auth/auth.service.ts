@@ -585,6 +585,8 @@ export class AuthService {
   }
 
   private async findUserByIdentifier(identifier: string): Promise<AuthLookupUser | null> {
+    if (!identifier) return null;
+
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ email: identifier }, { phone: identifier }],

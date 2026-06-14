@@ -10,7 +10,7 @@ export class UploadsController {
 
   @Get('*')
   async serveFile(@Req() req: Request, @Res() res: Response) {
-    const filePath = req.params[0] || req.path.replace(/^\/uploads\//, '');
+    const filePath = req.params[0] || req.path.match(/\/uploads\/(.*)$/)?.[1];
     if (!filePath) {
       throw new NotFoundException('File path is required');
     }
