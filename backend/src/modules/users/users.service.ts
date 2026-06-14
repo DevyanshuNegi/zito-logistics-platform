@@ -238,7 +238,7 @@ export class UsersService {
       input.requiredDocuments.length > 0 &&
       input.requiredDocuments.every((documentType) => approvedTypes.has(documentType))
     ) {
-      return AccountStatus.VERIFIED;
+      return AccountStatus.ACTIVE;
     }
 
     if (hasRejectedDocument) {
